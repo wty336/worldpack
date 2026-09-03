@@ -20,11 +20,17 @@ actions:
     label: 修炼
     cost: 1
     effects: {stats: {martial: 3}}
+    scene: 长安城郊·后山
+    present: []
   - id: work
     label: 打工
     cost: 1
     effects: {stats: {silver: 15}}
+    scene: 长安城·东市
+    present: []
   - id: visit_shen
     label: 拜访沈清秋
     cost: 1
     effects: {}
+    scene: 长安城·沈府
+    present: [shen_qingqiu]

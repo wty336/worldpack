@@ -43,6 +43,7 @@ class StatChangeRecord:
 class GameState:
     pack_name: str
     day: int = 1
+    action_points_left: int = 0  # 当日剩余行动点（from_pack 按世界包初始化）
     stats: dict[str, float] = field(default_factory=dict)
     affections: dict[str, float] = field(default_factory=dict)
     flags: dict[str, bool] = field(default_factory=dict)
@@ -66,6 +67,7 @@ class GameState:
         s = pack.schedule
         return cls(
             pack_name=pack.world.name,
+            action_points_left=pack.schedule.day_action_points,
             stats={k: float(v.initial) for k, v in s.stats.items()},
             affections={k: float(v.initial) for k, v in s.affections.items()},
             flags=dict(s.flags),
@@ -84,6 +86,7 @@ class GameState:
             "version": 1,
             "pack_name": self.pack_name,
             "day": self.day,
+            "action_points_left": self.action_points_left,
             "stats": dict(self.stats),
             "affections": dict(self.affections),
             "flags": dict(self.flags),
@@ -108,6 +111,7 @@ class GameState:
         return cls(
             pack_name=d["pack_name"],
             day=d["day"],
+            action_points_left=d.get("action_points_left", 0),
             stats=dict(d["stats"]),
             affections=dict(d["affections"]),
             flags=dict(d["flags"]),

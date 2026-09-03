@@ -68,6 +68,8 @@ class ActionSpec(BaseModel):
     label: str
     cost: int = 1
     effects: ActionEffects = Field(default_factory=ActionEffects)
+    scene: str = ""  # 行动发生的地点（执行后写入 state.scene）
+    present: list[str] = Field(default_factory=list)  # 行动时在场的 NPC id
 
 
 class ScheduleSpec(BaseModel):
@@ -310,7 +312,7 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"好感对象 '{aff_id}' 缺少对应角色卡 npcs/{aff_id}.yaml"
             )
 
-    # 3) 日程行动的 effects 只能引用已声明属性/好感
+    # 3) 日程行动的 effects 只能引用已声明属性/好感；present 只能引用已声明 NPC
     for action in schedule.actions:
         bad_stats = set(action.effects.stats) - declared_stats
         if bad_stats:
@@ -321,6 +323,11 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         if bad_aff:
             raise WorldPackError(
                 f"行动 '{action.id}' 的效果引用了未声明的好感对象: {sorted(bad_aff)}"
+            )
+        bad_npcs = set(action.present) - set(npcs)
+        if bad_npcs:
+            raise WorldPackError(
+                f"行动 '{action.id}' 的 present 引用了不存在的 NPC: {sorted(bad_npcs)}"
             )
 
     # 4) 事件触发校验：condition 必须有 when；schedule 必须有 action 且存在于行动表
