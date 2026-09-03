@@ -48,6 +48,7 @@ class GameState:
     flags: dict[str, bool] = field(default_factory=dict)
     scene: str = ""
     current_node: str | None = None
+    present_npcs: list[str] = field(default_factory=list)  # 当前场景在场的 NPC id
     choice_log: list[ChoiceRecord] = field(default_factory=list)
     stat_log: list[StatChangeRecord] = field(default_factory=list)
     triggered_events: list[str] = field(default_factory=list)
@@ -83,6 +84,7 @@ class GameState:
             "flags": dict(self.flags),
             "scene": self.scene,
             "current_node": self.current_node,
+            "present_npcs": list(self.present_npcs),
             "choice_log": [vars(c) for c in self.choice_log],
             "stat_log": [vars(r) for r in self.stat_log],
             "triggered_events": list(self.triggered_events),
@@ -101,6 +103,7 @@ class GameState:
             flags=dict(d["flags"]),
             scene=d.get("scene", ""),
             current_node=d.get("current_node"),
+            present_npcs=list(d.get("present_npcs", [])),
             choice_log=[ChoiceRecord(**c) for c in d.get("choice_log", [])],
             stat_log=[StatChangeRecord(**r) for r in d.get("stat_log", [])],
             triggered_events=list(d.get("triggered_events", [])),
