@@ -83,3 +83,15 @@ def test_bad_event_trigger_raises(tmp_path: Path):
     events.write_text(text, encoding="utf-8")
     with pytest.raises(WorldPackError, match="不存在的日程行动"):
         load_worldpack(tmp_path / "pack")
+
+
+def test_node_present_unknown_npc_raises(tmp_path: Path):
+    """节点 on_enter.present 引用了不存在的 NPC 必须报错。"""
+    shutil.copytree(PACK_PATH, tmp_path / "pack")
+    mainline = tmp_path / "pack" / "mainline.yaml"
+    text = mainline.read_text(encoding="utf-8").replace(
+        "present: [shen_qingqiu]", "present: [nobody]"
+    )
+    mainline.write_text(text, encoding="utf-8")
+    with pytest.raises(WorldPackError, match="不存在的 NPC"):
+        load_worldpack(tmp_path / "pack")

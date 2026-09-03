@@ -8,6 +8,7 @@ nodes:
       flags: {met_shen: true}
     on_enter:
       scene: 长安城·沈府门前
+      present: [shen_qingqiu]
       briefing: |
         沈清秋在沈府门前被纨绔子弟纠缠，你出手相助（可文可武），由此与她结识。
         本节点目标：与沈清秋结识（完成信号 flag: met_shen）。
@@ -26,6 +27,7 @@ nodes:
       flags: {poetry_top3: true}
     on_enter:
       scene: 长安城·曲江池畔
+      present: [shen_qingqiu]
       briefing: |
         七夕之夜，曲江池畔诗会，才子云集。你与沈清秋同游。
         诗会上，众人起哄推举你上台应战。

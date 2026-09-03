@@ -49,6 +49,11 @@ class GameState:
     scene: str = ""
     current_node: str | None = None
     present_npcs: list[str] = field(default_factory=list)  # 当前场景在场的 NPC id
+    completed_nodes: list[str] = field(default_factory=list)  # 已完成的主线节点
+    node_turns: int = 0  # 当前节点内已进行的叙事回合数（卡壳保护计数）
+    stuck_stage: int = 0  # 卡壳保护阶段：0=无 / 1=已注入推进提示 / 2=已注入命运事件
+    pending_choice: str | None = None  # 等待玩家选择的关键选择 id（非 None 时锁定输入）
+    resolved_choices: list[str] = field(default_factory=list)  # 当前节点内已选择的关键选择 id
     choice_log: list[ChoiceRecord] = field(default_factory=list)
     stat_log: list[StatChangeRecord] = field(default_factory=list)
     triggered_events: list[str] = field(default_factory=list)
@@ -85,6 +90,11 @@ class GameState:
             "scene": self.scene,
             "current_node": self.current_node,
             "present_npcs": list(self.present_npcs),
+            "completed_nodes": list(self.completed_nodes),
+            "node_turns": self.node_turns,
+            "stuck_stage": self.stuck_stage,
+            "pending_choice": self.pending_choice,
+            "resolved_choices": list(self.resolved_choices),
             "choice_log": [vars(c) for c in self.choice_log],
             "stat_log": [vars(r) for r in self.stat_log],
             "triggered_events": list(self.triggered_events),
@@ -104,6 +114,11 @@ class GameState:
             scene=d.get("scene", ""),
             current_node=d.get("current_node"),
             present_npcs=list(d.get("present_npcs", [])),
+            completed_nodes=list(d.get("completed_nodes", [])),
+            node_turns=d.get("node_turns", 0),
+            stuck_stage=d.get("stuck_stage", 0),
+            pending_choice=d.get("pending_choice"),
+            resolved_choices=list(d.get("resolved_choices", [])),
             choice_log=[ChoiceRecord(**c) for c in d.get("choice_log", [])],
             stat_log=[StatChangeRecord(**r) for r in d.get("stat_log", [])],
             triggered_events=list(d.get("triggered_events", [])),

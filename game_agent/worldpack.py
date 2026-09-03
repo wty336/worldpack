@@ -120,6 +120,7 @@ class CriticalChoice(BaseModel):
 class OnEnter(BaseModel):
     scene: str
     briefing: str = ""
+    present: list[str] = Field(default_factory=list)  # 节点开场在场的 NPC id
 
 
 class NodeSpec(BaseModel):
@@ -265,6 +266,12 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         _collect_refs(dumped, "stat", stat_refs)
         _check_cond(node.when, f"主线节点 '{node.id}' 的 when")
         _check_cond(node.completion, f"主线节点 '{node.id}' 的 completion")
+        missing_npcs = set(node.on_enter.present) - set(npcs)
+        if missing_npcs:
+            raise WorldPackError(
+                f"主线节点 '{node.id}' 的 on_enter.present 引用了不存在的 NPC: "
+                f"{sorted(missing_npcs)}"
+            )
     for ev in events.events:
         dumped = ev.model_dump()
         _collect_refs(dumped, "flags", flag_refs)
