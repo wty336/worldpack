@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
-from types import SimpleNamespace
-
 import pytest
+
+from fakes import FakeClient, msg, resp, tool_call
 
 from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.stats import StatChangeError
@@ -14,38 +13,9 @@ from pathlib import Path
 
 PACK_PATH = Path(__file__).resolve().parent.parent / "world-packs" / "ancient_jianghu"
 
-
-def _tool_call(call_id: str, name: str, arguments: dict | str):
-    if isinstance(arguments, dict):
-        arguments = json.dumps(arguments)
-    return SimpleNamespace(
-        id=call_id, function=SimpleNamespace(name=name, arguments=arguments)
-    )
-
-
-def _msg(content=None, tool_calls=None, reasoning_content=None):
-    return SimpleNamespace(content=content, tool_calls=tool_calls, reasoning_content=reasoning_content)
-
-
-def _resp(message):
-    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
-
-
-class FakeCompletions:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls: list[dict] = []
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        if not self.responses:
-            raise AssertionError("假客户端响应耗尽——模型调用次数超出预期")
-        return self.responses.pop(0)
-
-
-class FakeClient:
-    def __init__(self, responses):
-        self.chat = SimpleNamespace(completions=FakeCompletions(responses))
+_tool_call = tool_call
+_msg = msg
+_resp = resp
 
 
 def _client(responses, apply_change=None):

@@ -1,0 +1,158 @@
+"""游戏主循环（W7）：把状态/数值/剧情/事件/日程/上下文/LLM 串成可玩回合。
+
+每个叙事回合（_narrate）统一走：
+  begin_turn（节点触发/关键选择门）→ LLM 协议闭环 → end_turn（完成判定/卡壳/结局）
+  → 条件事件级联（最多 2 层）。
+"""
+
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass
+
+from .context import ContextBuilder
+from .events import EventSystem
+from .llm import LLMClient
+from .schedule import ScheduleSystem
+from .state import GameState
+from .stats import StatsSystem
+from .storyline import StorylineEngine, filter_choices
+from .worldpack import ActionSpec, CriticalChoice, EndingSpec, WorldPack
+
+
+class GameError(Exception):
+    """游戏规则错误（如关键抉择期间尝试自由输入）。"""
+
+
+@dataclass
+class TurnView:
+    """一个叙事回合给玩家看的东西。"""
+
+    narration: str | None  # None = 关键选择待决（只显示固定选项）
+    choices: list[str]
+    ending: EndingSpec | None = None
+    choice_prompt: CriticalChoice | None = None
+
+
+class Game:
+    def __init__(
+        self,
+        pack: WorldPack,
+        state: GameState,
+        llm: LLMClient,
+        rng: random.Random | None = None,
+    ):
+        self.pack = pack
+        self.state = state
+        self.llm = llm
+        self.stats = StatsSystem(pack.schedule)
+        self.story = StorylineEngine(pack, self.stats)
+        self.events = EventSystem(pack, self.stats, rng)
+        self.schedule = ScheduleSystem(pack, self.stats)
+        self.builder = ContextBuilder.from_pack(pack)
+        self.history: list[dict] = []
+        self.ending: EndingSpec | None = None
+        self.last_choices: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 玩家操作
+    # ------------------------------------------------------------------
+
+    def start(self) -> TurnView:
+        """开场：触发初始节点并生成开场叙事。"""
+        return self._narrate("（游戏开始）你踏入了长安城。")
+
+    def act(self, action_id: str) -> TurnView:
+        """执行日程行动：结算 → 日程事件检查 → 叙事。"""
+        action = self.schedule.action_by_id(action_id)
+        self.schedule.execute_action(self.state, action_id)
+        prompt = f"（玩家选择日程行动：{action.label}）"
+        ev = self.events.check_schedule_event(self.state, action_id)
+        if ev is not None:
+            self.history.append(self.events.trigger(self.state, ev))
+        return self._narrate(prompt)
+
+    def say(self, text: str) -> TurnView:
+        """玩家自由输入（或点日常选项）。关键抉择期间拒绝。"""
+        if self.story.choice_locked(self.state):
+            raise GameError("此刻是关键抉择，只能从固定选项中选择")
+        return self._narrate(text)
+
+    def pick(self, option_index: int) -> TurnView:
+        """关键抉择：选择固定选项并叙述后果。"""
+        msg = self.story.choose_option(self.state, option_index)
+        self.history.append(msg)
+        return self._narrate(msg["content"])
+
+    def end_day(self) -> str:
+        self.schedule.end_day(self.state)
+        return f"—— 第 {self.state.day} 天 ——"
+
+    # ------------------------------------------------------------------
+    # 查询
+    # ------------------------------------------------------------------
+
+    def actions_available(self) -> list[ActionSpec]:
+        return [
+            a for a in self.schedule.actions() if a.cost <= self.state.action_points_left
+        ]
+
+    def status_text(self) -> str:
+        return self.builder.status_text(self.state, self.story.active_node(self.state))
+
+    # ------------------------------------------------------------------
+    # 内部：统一叙事回合
+    # ------------------------------------------------------------------
+
+    def _narrate(self, prompt: str | None = None) -> TurnView:
+        node, node_msgs = self.story.begin_turn(self.state)
+        self.history.extend(node_msgs)
+        choice = self.story.pending_choice(self.state)
+        if choice is not None:
+            return TurnView(
+                narration=None,
+                choices=[o.text for o in choice.options],
+                choice_prompt=choice,
+            )
+        if prompt is not None:
+            self.history.append({"role": "user", "content": prompt})
+
+        views: list[TurnView] = []
+        for _ in range(3):  # 1 个主回合 + 最多 2 个条件事件级联
+            view = self._llm_round()
+            views.append(view)
+            if view.ending is not None:
+                break
+            ev = self.events.check_condition_events(self.state)
+            if ev is None:
+                break
+            self.history.append(self.events.trigger(self.state, ev))
+
+        narration = "\n\n".join(v.narration for v in views if v.narration)
+        last = views[-1]
+        self.ending = last.ending
+        self.last_choices = last.choices
+        return TurnView(
+            narration=narration or None,
+            choices=last.choices,
+            ending=last.ending,
+        )
+
+    def _llm_round(self) -> TurnView:
+        messages = self.builder.build_messages(
+            self.state, self.history, self.story.active_node(self.state)
+        )
+        result = self.llm.run_turn(messages, self._apply_change)
+        self.history = result.messages
+        outcome = self.story.end_turn(self.state, result.plot_signal)
+        self.history.extend(outcome.messages)
+        return TurnView(
+            narration=result.narration,
+            choices=filter_choices(self.pack, result.choices),
+            ending=outcome.ending,
+        )
+
+    def _apply_change(self, args: dict) -> str:
+        return self.stats.apply_change(
+            self.state, args["target"], args["stat"], args["delta"], args["reason"]
+        ).message

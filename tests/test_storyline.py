@@ -39,7 +39,9 @@ def test_n1_enters_on_first_begin_turn():
     assert state.scene == "长安城·沈府门前"
     assert state.present_npcs == ["shen_qingqiu"]
     assert msgs and "【主线节点】初遇" in msgs[0]["content"]
-    assert not engine.choice_locked(state)  # N1 无关键选择
+    # N1 有关键选择（解围方式三选一）→ 进入即锁定输入
+    assert engine.choice_locked(state)
+    assert engine.pending_choice(state).id == "how_to_help"
 
 
 def test_completed_node_not_reentered():
@@ -137,6 +139,7 @@ def test_choose_option_invalid_index():
 def test_choose_option_when_not_locked():
     pack, state, _, engine = _engine()
     engine.begin_turn(state)
+    engine.choose_option(state, 0)  # 选择后待决队列清空（N1 只有一个关键选择）
     with pytest.raises(StorylineError, match="没有待选择"):
         engine.choose_option(state, 0)
 
