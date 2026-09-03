@@ -1,0 +1,28 @@
+# 事件规则（见 design.md §9）
+events:
+  - id: ev_moon_chat
+    title: 月下谈心
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {shen_qingqiu: {gte: 30}}}
+    priority: high
+    script: |
+      月下谈心：沈清秋主动约你在月下散步，谈及心事与过往。
+    effects:
+      affections: {shen_qingqiu: 5}
+    once: true
+
+  - id: ev_cliff_encounter
+    title: 后山奇遇
+    trigger:
+      kind: schedule
+      action: cultivate
+      chance: 0.3
+    priority: normal
+    script: |
+      后山奇遇：修炼时，你在后山崖壁的藤蔓后发现前人刻下的武功心得。
+    effects:
+      stats: {martial: 2}
+    once: true

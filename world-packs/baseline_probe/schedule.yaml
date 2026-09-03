@@ -1,0 +1,37 @@
+# 日程与数值定义：引擎状态的真值 schema（见 design.md §5）
+day_action_points: 1
+
+stats:
+  charm: {label: 魅力, min: 0, max: 100, initial: 10}
+  martial: {label: 武功, min: 0, max: 100, initial: 5}
+  silver: {label: 银两, min: 0, max: 999999, initial: 50}
+
+affections:
+  shen_qingqiu: {label: 沈清秋, min: 0, max: 100, initial: 5}
+
+# 剧情旗标：全部在此声明（初始值），正文只引用不新增
+flags:
+  met_shen: false        # 已结识沈清秋（节点 N1 完成信号）
+  poetry_resolved: false # 七夕诗会已决出结果（节点 N2 完成信号）
+  poetry_top3: false     # 诗会进入前三（影响「长相守」结局）
+  poetry_join: false     # 诗会关键选择：是否登台
+
+actions:
+  - id: cultivate
+    label: 修炼
+    cost: 1
+    effects: {stats: {martial: 3}}
+    scene: 长安城郊·后山
+    present: []
+  - id: work
+    label: 打工
+    cost: 1
+    effects: {stats: {silver: 15}}
+    scene: 长安城·东市
+    present: []
+  - id: visit_shen
+    label: 拜访沈清秋
+    cost: 1
+    effects: {}
+    scene: 长安城·沈府
+    present: [shen_qingqiu]
