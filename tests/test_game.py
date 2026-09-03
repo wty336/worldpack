@@ -125,7 +125,7 @@ def test_n2_trigger_and_choice_flow():
     )
     view = game.say("去曲江池逛逛")
     assert state.current_node == "n2_poetry_festival"
-    assert view.choice_prompt is not None and view.choice_prompt.id == "join_poetry"
+    assert view.choice_prompt is not None and view.choice_prompt.id == "poetry_choice"
     with pytest.raises(GameError):
         game.say("自由输入被拒")
 

@@ -56,9 +56,10 @@ def test_completed_node_not_reentered():
 
 def test_n2_triggers_only_when_conditions_met():
     pack, state, _, engine = _engine()
-    engine.begin_turn(state)
+    engine.begin_turn(state)  # N1
+    engine.choose_option(state, 0)  # 解围（效果写入 met_shen）
+    engine.end_turn(state)  # N1 完成
     # 只有 day 不满足 → 不触发
-    state.flags["met_shen"] = True
     assert engine.begin_turn(state)[0] is None
     # day 满足 → 触发 N2
     state.day = 6
@@ -101,29 +102,53 @@ def test_completion_by_flag():
 
 def test_critical_choice_locks_input():
     pack, state, _, engine = _engine()
-    engine.begin_turn(state)
-    state.flags["met_shen"] = True
+    engine.begin_turn(state)  # N1
+    engine.choose_option(state, 0)
+    engine.end_turn(state)
     state.day = 6
-    engine.begin_turn(state)
+    node, _ = engine.begin_turn(state)  # N2
+    assert node is not None and node.id == "n2_poetry_festival"
     assert engine.choice_locked(state)
     choice = engine.pending_choice(state)
-    assert choice.id == "join_poetry"
-    assert len(choice.options) == 2
+    assert choice.id == "poetry_choice"
+    assert len(choice.options) == 3
 
 
 def test_choose_option_applies_effects_and_records():
     pack, state, _, engine = _engine()
-    engine.begin_turn(state)
-    state.flags["met_shen"] = True
+    engine.begin_turn(state)  # N1
+    engine.choose_option(state, 0)
+    engine.end_turn(state)
     state.day = 6
-    engine.begin_turn(state)
-    msg = engine.choose_option(state, 0)
+    engine.begin_turn(state)  # N2
+    msg = engine.choose_option(state, 0)  # 咏月抒怀
     assert state.flags["poetry_join"] is True
-    assert len(state.choice_log) == 1
-    rec = state.choice_log[0]
-    assert rec.node_id == "n2_poetry_festival" and "欣然登台" in rec.text
-    assert "欣然登台" in msg["content"]
+    assert state.flags["poetry_top3"] is True
+    assert state.flags["poetry_resolved"] is True
+    assert state.stats["charm"] == 12.0  # 10 + 2
+    assert state.affections["shen_qingqiu"] == 11.0  # 5 + 3(N1 解围) + 3(N2 咏月)
+    assert len(state.choice_log) == 2  # N1 一次 + N2 一次
+    rec = state.choice_log[-1]
+    assert rec.node_id == "n2_poetry_festival" and "咏月抒怀" in rec.text
+    assert "咏月抒怀" in msg["content"]
     assert not engine.choice_locked(state)  # 选完解锁
+
+
+def test_n2_completes_via_resolved_flag():
+    """N2 完成 = poetry_resolved（无论是否进前三），两条路径都可完成。"""
+    pack, state, _, engine = _engine()
+    engine.begin_turn(state)  # N1
+    engine.choose_option(state, 0)
+    engine.end_turn(state)
+    state.day = 6
+    engine.begin_turn(state)  # N2
+    engine.choose_option(state, 2)  # 婉拒让贤：poetry_resolved true，poetry_top3 false
+    assert state.flags["poetry_resolved"] is True
+    assert state.flags["poetry_top3"] is False
+    outcome = engine.end_turn(state)
+    assert outcome.node_completed is not None
+    assert outcome.node_completed.id == "n2_poetry_festival"
+    assert state.current_node is None
 
 
 def test_choose_option_invalid_index():

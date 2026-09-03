@@ -12,7 +12,8 @@ affections:
 # 剧情旗标：全部在此声明（初始值），正文只引用不新增
 flags:
   met_shen: false        # 已结识沈清秋（节点 N1 完成信号）
-  poetry_top3: false     # 七夕诗会进入前三（节点 N2 完成信号）
+  poetry_resolved: false # 七夕诗会已决出结果（节点 N2 完成信号）
+  poetry_top3: false     # 诗会进入前三（影响「长相守」结局）
   poetry_join: false     # 诗会关键选择：是否登台
 
 actions:

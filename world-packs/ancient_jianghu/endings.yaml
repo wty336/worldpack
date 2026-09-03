@@ -5,7 +5,7 @@ endings:
     kind: auto
     when:
       all:
-        - {affection: {shen_qingqiu: {gte: 60}}}
+        - {affection: {shen_qingqiu: {gte: 40}}}
         - {flags: {poetry_top3: true}}
     text: |
       诗会夺魁，长安扬名。

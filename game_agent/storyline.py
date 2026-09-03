@@ -117,6 +117,8 @@ class StorylineEngine:
         return node, msgs
 
     def _try_enter_node(self, state: GameState) -> NodeSpec | None:
+        if state.current_node is not None:
+            return None  # 上一节点未完成，不进入新节点（剧情串行推进）
         for node in self.pack.mainline.nodes:
             if node.id in state.completed_nodes or node.id == state.current_node:
                 continue

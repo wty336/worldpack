@@ -95,3 +95,20 @@ def test_node_present_unknown_npc_raises(tmp_path: Path):
     mainline.write_text(text, encoding="utf-8")
     with pytest.raises(WorldPackError, match="不存在的 NPC"):
         load_worldpack(tmp_path / "pack")
+
+
+def test_completion_flag_unreachable_raises(tmp_path: Path):
+    """completion 要求的 flag 没有任何代码路径可写 → 加载期拒绝（防节点永远卡死）。"""
+    shutil.copytree(PACK_PATH, tmp_path / "pack")
+    schedule = tmp_path / "pack" / "schedule.yaml"
+    text = schedule.read_text(encoding="utf-8").replace(
+        "poetry_join: false", "poetry_join: false\n  phantom: false"
+    )
+    schedule.write_text(text, encoding="utf-8")
+    mainline = tmp_path / "pack" / "mainline.yaml"
+    text = mainline.read_text(encoding="utf-8").replace(
+        "flags: {poetry_resolved: true}", "flags: {phantom: true}"
+    )  # 只替换 completion 行（选项效果里的 poetry_resolved 保持原样）
+    mainline.write_text(text, encoding="utf-8")
+    with pytest.raises(WorldPackError, match="没有任何代码路径"):
+        load_worldpack(tmp_path / "pack")

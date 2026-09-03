@@ -17,7 +17,12 @@ def test_from_pack_initial_values():
     assert s.pack_name == "江湖旧梦"
     assert s.stats == {"charm": 10.0, "martial": 5.0, "silver": 50.0}
     assert s.affections == {"shen_qingqiu": 5.0}
-    assert s.flags == {"met_shen": False, "poetry_join": False, "poetry_top3": False}
+    assert s.flags == {
+        "met_shen": False,
+        "poetry_join": False,
+        "poetry_top3": False,
+        "poetry_resolved": False,
+    }
     assert s.day == 1
     assert s.scene == "长安城·东市"
     assert s.current_node is None

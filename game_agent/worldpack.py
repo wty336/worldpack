@@ -347,6 +347,28 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                     f"事件 '{ev.id}' 的 chance 必须在 0~1 之间，当前为 {chance}"
                 )
 
+    # 5) 节点 completion 可达性：要求的 flag 必须有代码路径可写
+    #    （关键选择选项效果 / 事件效果 / 日程行动效果），否则节点永远无法完成。
+    writable_flags: set[str] = set()
+    for node in mainline.nodes:
+        for choice in node.critical_choices:
+            for opt in choice.options:
+                _collect_refs(opt.effects, "flags", writable_flags)
+    for ev in events.events:
+        _collect_refs(ev.effects, "flags", writable_flags)
+    for action in schedule.actions:
+        _collect_refs(action.effects.model_dump(), "flags", writable_flags)
+    for node in mainline.nodes:
+        completion_flags: set[str] = set()
+        _collect_refs(node.completion, "flags", completion_flags)
+        unreachable = completion_flags - writable_flags
+        if unreachable:
+            raise WorldPackError(
+                f"主线节点 '{node.id}' 的 completion 要求 flag {sorted(unreachable)}，"
+                f"但没有任何代码路径（关键选择/事件/日程行动的效果）能写入它们——"
+                f"该节点将永远无法完成"
+            )
+
 
 def load_worldpack(root: str | Path) -> WorldPack:
     """加载并校验一个世界包文件夹。失败抛 WorldPackError（带可读信息）。"""
