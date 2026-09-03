@@ -33,7 +33,8 @@ def main() -> int:
             print(f"[✗] 找不到 {path}")
             continue
         text = path.read_text(encoding="utf-8")
-        segments = [s for s in text.split("-" * 60) if s.strip()]
+        # 兼容两种 transcript 格式：新格式用 60 个横线分隔，旧格式用空行
+        segments = [s for s in re.split(r"-{60}|\n\s*\n", text) if s.strip()]
         hits: list[tuple[str, str]] = []
         for tok in tokens:
             for m in re.finditer(re.escape(tok), text):

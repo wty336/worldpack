@@ -61,7 +61,7 @@ def _pick_word(state: GameState, mem: dict) -> str:
 
 def _log(lines: list[str], *parts) -> None:
     text = "\n".join(str(p) for p in parts if p)
-    lines.append(text)
+    lines.append(text + "\n" + "-" * 60)  # 分隔线入 transcript，供 OOC 分段统计
     print(text)
     print("-" * 60)
 

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -113,8 +114,8 @@ def make_client(settings: Settings) -> OpenAI:
     return OpenAI(
         api_key=settings.api_key,
         base_url=settings.base_url,
-        max_retries=2,  # API 层瞬时错误静默重试
-        timeout=120.0,
+        max_retries=5,  # API 层瞬时错误（限流/超时/连接抖动）静默重试，指数退避
+        timeout=180.0,
     )
 
 
@@ -153,6 +154,16 @@ def _protocol_fail(reason: str) -> dict:
         "role": "user",
         "content": f"[引擎提示] 你上一轮输出不符合协议：{reason}\n请重新生成本轮叙事。",
     }
+
+
+def clean_narration(text: str) -> str:
+    """兜底清洗：模型偶尔会把工具调用格式文本写进 narration（玩家会看到脏文本）。
+
+    移除 <invoke>...</invoke> 整块，以及残留的裸 XML 标签行。提示词已禁止该行为，此函数是纠正层（章 1）。
+    """
+    text = re.sub(r"<invoke\b[^>]*>.*?</invoke>", "", text, flags=re.DOTALL)
+    text = re.sub(r"^\s*</?[a-zA-Z_][\w-]*(\s[^>]*)?/?>\s*$", "", text, flags=re.MULTILINE)
+    return text.strip()
 
 
 def _validate_narration(args: Any) -> str | None:
@@ -253,7 +264,7 @@ class LLMClient:
 
             if narration_args is not None:
                 return TurnResult(
-                    narration=narration_args["narration"],
+                    narration=clean_narration(narration_args["narration"]),
                     choices=list(narration_args["choices"]),
                     plot_signal=narration_args["plot_signal"],
                     stat_changes=stat_changes,

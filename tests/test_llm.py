@@ -143,6 +143,23 @@ def test_tool_schema_enums_injected_from_pack():
     assert set(change["stat"]["enum"]) == {"charm", "martial", "silver", "affection"}
 
 
+def test_clean_narration_strips_tool_xml():
+    """模型偶尔把工具调用格式写进 narration（真机发现）——纠正层必须清除。"""
+    from game_agent.llm import clean_narration
+
+    dirty = (
+        "池畔风起，你整了整衣襟。\n\n"
+        '<invoke name="submit_narration">\n'
+        '<parameter name="choices">["甲", "乙", "丙"]</parameter>\n'
+        "</invoke>\n\n"
+        "她望着你，等你开口。"
+    )
+    cleaned = clean_narration(dirty)
+    assert "<invoke" not in cleaned and "<parameter" not in cleaned
+    assert "她望着你，等你开口。" in cleaned
+    assert "你整了整衣襟" in cleaned
+
+
 def test_tool_message_pairing_invariant():
     """协议不变量：历史中每条带 tool_calls 的 assistant 消息，
     其后必须紧跟覆盖全部 tool_call_id 的 tool 结果（否则下一次请求被 API 拒绝）。"""
