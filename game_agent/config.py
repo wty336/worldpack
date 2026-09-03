@@ -8,9 +8,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# DeepSeek 默认值：OpenAI 兼容端点 + 快速模型（可用 deepseek-reasoner 覆盖）
+# DeepSeek V4 默认值：OpenAI 兼容端点 + 快速模型（关键节点可换 deepseek-v4-pro）
+# 注：deepseek-chat / deepseek-reasoner 已于 2026-07-24 停用
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 
 @dataclass(frozen=True)

@@ -36,7 +36,7 @@
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| API 提供商 | ✅ 已定 | **DeepSeek**（OpenAI 兼容，`base_url=https://api.deepseek.com`，支持 tool calling；默认模型 `deepseek-chat`，可换 `deepseek-reasoner`） |
+| API 提供商 | ✅ 已定 | **DeepSeek V4**（OpenAI 兼容，`base_url=https://api.deepseek.com`；默认 `deepseek-v4-flash`，关键节点可换 `deepseek-v4-pro`。注：`deepseek-chat`/`deepseek-reasoner` 已于 2026-07-24 停用） |
 | Python 环境 | 待建 | Python 3.11+；依赖：`openai`、`pyyaml`、`pydantic`（世界包 schema 校验）、`python-dotenv`；用 uv 管理 |
 | 目录 | 已定 | **独立 git 仓库** `game-agent/`（与 ai-agent-book 同级）；`game_agent/`（引擎包）· `world-packs/ancient_jianghu/`（世界包）· `tests/` |
 
