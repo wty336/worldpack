@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, Callable
 
 from openai import OpenAI
@@ -197,24 +198,88 @@ class LLMClient:
         messages: list[dict],
         apply_change: Callable[[dict], str],
         max_iters: int = MAX_TURN_ITERATIONS,
+        on_text: Callable[[str], None] | None = None,
     ) -> TurnResult:
         """执行一轮：组装 → 生成 → 执行工具 → 校验 → 返回 TurnResult。
 
         apply_change(args) 由引擎注入：内部走 StatsSystem 契约；抛 StatChangeError
         时这里转为结构化 tool 错误回传。
+        on_text：提供时启用流式输出，内容增量实时回调（玩家边等边看）。
         """
         msgs = [dict(m) for m in messages]
         stat_changes: list[dict] = []
 
         for i in range(1, max_iters + 1):
-            resp = self._client.chat.completions.create(
+            kwargs: dict[str, Any] = dict(
                 model=self.model,
                 messages=msgs,
                 tools=self.tools,
                 tool_choice="auto",
                 max_tokens=MAX_OUTPUT_TOKENS,
-                stream=False,
             )
+            if on_text is not None:
+                # openai SDK v3 的流式对象不聚合，需手动累积各 delta
+                stream = self._client.chat.completions.create(**kwargs, stream=True)
+                content_parts: list[str] = []
+                reasoning_parts: list[str] = []
+                tool_call_parts: dict[int, dict] = {}
+                finish: str | None = None
+                for chunk in stream:
+                    if not getattr(chunk, "choices", None):
+                        continue
+                    choice = chunk.choices[0]
+                    if getattr(choice, "finish_reason", None):
+                        finish = choice.finish_reason
+                    delta = getattr(choice, "delta", None)
+                    if delta is None:
+                        continue
+                    piece = getattr(delta, "content", None)
+                    if piece:
+                        content_parts.append(piece)
+                        on_text(piece)
+                    rc = getattr(delta, "reasoning_content", None)
+                    if rc:
+                        reasoning_parts.append(rc)
+                    for tc_delta in getattr(delta, "tool_calls", None) or []:
+                        idx = tc_delta.index
+                        slot = tool_call_parts.setdefault(
+                            idx, {"id": "", "name": "", "arguments": ""}
+                        )
+                        if getattr(tc_delta, "id", None):
+                            slot["id"] = tc_delta.id
+                        fn = getattr(tc_delta, "function", None)
+                        if fn is not None:
+                            if getattr(fn, "name", None):
+                                slot["name"] += fn.name
+                            if getattr(fn, "arguments", None):
+                                slot["arguments"] += fn.arguments
+                # 聚合为与 SDK 消息对象同形状的响应
+                tool_calls_obj = None
+                if tool_call_parts:
+                    tool_calls_obj = [
+                        SimpleNamespace(
+                            id=tool_call_parts[i]["id"],
+                            function=SimpleNamespace(
+                                name=tool_call_parts[i]["name"],
+                                arguments=tool_call_parts[i]["arguments"],
+                            ),
+                        )
+                        for i in sorted(tool_call_parts)
+                    ]
+                resp = SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="".join(content_parts) or None,
+                                tool_calls=tool_calls_obj,
+                                reasoning_content="".join(reasoning_parts) or None,
+                            ),
+                            finish_reason=finish,
+                        )
+                    ]
+                )
+            else:
+                resp = self._client.chat.completions.create(**kwargs, stream=False)
             msg = resp.choices[0].message
             finish = getattr(resp.choices[0], "finish_reason", None)
             msgs.append(_assistant_to_dict(msg))

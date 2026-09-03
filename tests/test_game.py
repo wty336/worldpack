@@ -53,7 +53,7 @@ def _n1_done(s: GameState) -> None:
 
 
 def test_start_enters_n1_and_choices_filtered():
-    """开场：进入 N1（有关键选择）→ 视图锁定为固定选项。"""
+    """开场：进入 N1（有关键选择）→ 视图锁定为固定选项，并带剧情 briefing。"""
     pack, state, game = _game([])
     view = game.start()
     assert state.current_node == "n1_first_meeting"
@@ -61,6 +61,7 @@ def test_start_enters_n1_and_choices_filtered():
     assert view.choice_prompt is not None and view.choice_prompt.id == "how_to_help"
     assert len(view.choices) == 3
     assert FREE_INPUT_OPTION not in view.choices  # 关键抉择只有固定选项
+    assert view.briefing and "纨绔" in view.briefing  # 玩家可见的剧情背景（体验修复）
 
 
 def test_pick_applies_effects_then_narrates():

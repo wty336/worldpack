@@ -34,6 +34,7 @@ class TurnView:
     choices: list[str]
     ending: EndingSpec | None = None
     choice_prompt: CriticalChoice | None = None
+    briefing: str | None = None  # 关键抉择前的剧情背景（首次展示给玩家）
 
 
 class Game:
@@ -44,6 +45,7 @@ class Game:
         llm: LLMClient,
         rng: random.Random | None = None,
         autosave_path: str | Path | None = None,
+        on_text=None,
     ):
         self.pack = pack
         self.state = state
@@ -57,6 +59,8 @@ class Game:
         self.ending: EndingSpec | None = None
         self.last_choices: list[str] = []
         self.autosave_path = autosave_path  # 非 None 时，节点完成自动存档
+        self.on_text = on_text  # 流式显示回调（CLI 注入）
+        self.last_streamed: str = ""  # 本回合已流式显示的文本（供 CLI 去重）
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -116,10 +120,13 @@ class Game:
         self.history.extend(node_msgs)
         choice = self.story.pending_choice(self.state)
         if choice is not None:
+            # 关键抉择前把节点剧情背景带给玩家（修复"上来就是选项"体验问题）
+            briefing = node.on_enter.briefing if node is not None else None
             return TurnView(
                 narration=None,
                 choices=[o.text for o in choice.options],
                 choice_prompt=choice,
+                briefing=briefing,
             )
         if prompt is not None:
             self.history.append({"role": "user", "content": prompt})
@@ -149,7 +156,7 @@ class Game:
         messages = self.builder.build_messages(
             self.state, self.history, self.story.active_node(self.state)
         )
-        result = self.llm.run_turn(messages, self._apply_change)
+        result = self.llm.run_turn(messages, self._apply_change, on_text=self.on_text)
         self.history = result.messages
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)

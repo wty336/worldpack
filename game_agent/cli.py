@@ -8,11 +8,12 @@
 from __future__ import annotations
 
 import argparse
+import traceback
 from pathlib import Path
 
 from .config import load_settings
 from .game import Game
-from .llm import LLMClient, build_tools, make_client
+from .llm import LLMClient, LLMTurnError, build_tools, make_client
 from .save import load_game, save_game
 from .state import GameState
 from .worldpack import WorldPackError, load_worldpack
@@ -68,95 +69,159 @@ def _cmd_play(args: argparse.Namespace) -> int:
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
     # W-C：节点完成自动存档（引擎侧钩子）
     game = Game(pack, state, llm, autosave_path=AUTOSAVE)
+    # 流式显示：内容增量实时输出（修复"等很久才有反应"的体验）
+    game.on_text = _make_stream_display(game)
     return _repl(game)
+
+
+def _make_stream_display(game: Game):
+    state = {"begun": False}
+
+    def on_text(piece: str) -> None:
+        if not state["begun"]:
+            state["begun"] = True
+            print()  # 叙事开始，另起一行
+        print(piece, end="", flush=True)
+        game.last_streamed += piece
+
+    return on_text
+
+
+def _show_narration(game: Game, view) -> None:
+    """显示本轮叙事：流式已显示的内容不再重复打印（去重）。"""
+    streamed = game.last_streamed.strip()
+    game.last_streamed = ""
+    if view.narration and not (streamed and streamed in view.narration):
+        print("\n" + view.narration)
+    elif streamed:
+        print()  # 流式已显示完毕，补一个换行
+
+
+def _crash_save(game: Game, reason: str) -> None:
+    """崩溃兜底：保存进度 + 错误日志，优雅退出而非裸 traceback。"""
+    print(f"\n[!] 游戏中断：{reason}")
+    try:
+        save_game(game.state, "saves/crash.json")
+        print(
+            "已保存进度 → saves/crash.json（数值与剧情状态已保留；重新运行后 /load 可继续，"
+            "但对话历史会重置）"
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        Path("saves").mkdir(exist_ok=True)
+        with open("saves/error.log", "a", encoding="utf-8") as f:
+            f.write(reason + "\n" + traceback.format_exc() + "\n" + "-" * 60 + "\n")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _repl(game: Game) -> int:
     print(f"===== 《{game.pack.world.name}》 =====")
+    if game.pack.world.opening:
+        print("\n" + game.pack.world.opening)  # 开场背景介绍（修复"上来就是选项"）
     print(
-        "命令：/help 帮助 · /status 状态 · /actions 今日行动 · /save [/load] 存档读档 "
+        "\n命令：/help 帮助 · /status 状态 · /actions 今日行动 · /save [/load] 存档读档 "
         "· /new 重新开始 · /end 结束今天 · /quit 退出"
     )
-    view = game.start()
-    while True:
-        if view.choice_prompt is not None:
-            print(f"\n【关键抉择】{view.choice_prompt.prompt}")
-            for i, text in enumerate(view.choices, 1):
-                print(f"  {i}. {text}")
-            n = _ask_number(len(view.choices))
-            view = game.pick(n - 1)
-            continue
+    try:
+        view = game.start()
+        while True:
+            if view.choice_prompt is not None:
+                if view.briefing:  # 关键抉择前的剧情背景
+                    print(f"\n【剧情】{view.briefing}")
+                print(f"\n【关键抉择】{view.choice_prompt.prompt}")
+                for i, text in enumerate(view.choices, 1):
+                    print(f"  {i}. {text}")
+                n = _ask_number(len(view.choices))
+                print("（生成中…）")
+                view = game.pick(n - 1)
+                continue
 
-        if view.ending is not None:
-            print(f"\n『{view.ending.title}』")
-            print(view.ending.text)
-            print("（游戏结束。输入 /load 读档重来、/new 重新开始，或 /quit 退出）")
+            if view.ending is not None:
+                print(f"\n『{view.ending.title}』")
+                print(view.ending.text)
+                print("（游戏结束。输入 /load 读档重来、/new 重新开始，或 /quit 退出）")
+                while True:
+                    raw = input("> ").strip()
+                    if raw.startswith("/load"):
+                        path = raw.partition(" ")[2].strip() or DEFAULT_SAVE
+                        try:
+                            game.state = load_game(path)
+                        except (FileNotFoundError, ValueError) as e:
+                            print(f"[✗] 读档失败: {e}")
+                            continue
+                        game.history = []
+                        game.ending = None
+                        print(f"已读档 ← {path}")
+                        view = _action_phase(game)
+                        break
+                    if raw.startswith("/new"):
+                        game.state = GameState.from_pack(game.pack)
+                        game.history = []
+                        game.ending = None
+                        game.last_choices = []
+                        print("重新开始。")
+                        view = game.start()
+                        break
+                    if raw.startswith("/quit"):
+                        return 0
+                    print("结局后仅支持 /load、/new 或 /quit")
+                continue
+
+            _show_narration(game, view)
+            print("\n你可以：")
+            for i, c in enumerate(view.choices, 1):
+                print(f"  {i}. {c}")
+            print(
+                f"（输入 1~{len(view.choices)} 选一项；选 {len(view.choices)} 或直接输入文字 = 自由行动；"
+                "命令以 / 开头）"
+            )
             while True:
                 raw = input("> ").strip()
-                if raw.startswith("/load"):
-                    path = raw.partition(" ")[2].strip() or DEFAULT_SAVE
-                    try:
-                        game.state = load_game(path)
-                    except (FileNotFoundError, ValueError) as e:
-                        print(f"[✗] 读档失败: {e}")
-                        continue
-                    game.history = []
-                    game.ending = None
-                    print(f"已读档 ← {path}")
-                    view = _action_phase(game)
-                    break
-                if raw.startswith("/new"):
-                    game.state = GameState.from_pack(game.pack)
-                    game.history = []
-                    game.ending = None
-                    game.last_choices = []
-                    print("重新开始。")
-                    view = game.start()
-                    break
-                if raw.startswith("/quit"):
-                    return 0
-                print("结局后仅支持 /load、/new 或 /quit")
-            continue
-
-        if view.narration:
-            print("\n" + view.narration)
-        print("\n你可以：")
-        for i, c in enumerate(view.choices, 1):
-            print(f"  {i}. {c}")
-        print(
-            f"（输入 1~{len(view.choices)} 选一项；选 {len(view.choices)} 或直接输入文字 = 自由行动；"
-            "命令以 / 开头）"
-        )
-        while True:
-            raw = input("> ").strip()
-            if not raw:
-                continue
-            if raw.startswith("/"):
-                marker = _handle_command(game, raw)
-                if marker == "action":
-                    view = _action_phase(game)
-                    break
-                if marker == "new":
-                    view = game.start()  # 已重置状态，重新开场
-                    break
-                if marker == "quit":
-                    return 0
-                continue
-            if raw.isdigit():
-                idx = int(raw)
-                if 1 <= idx < len(view.choices):
-                    view = game.say(view.choices[idx - 1])
-                    break
-                if idx == len(view.choices):  # 自由输入入口
-                    text = input("说些什么 > ").strip()
-                    if not text:
-                        continue
-                    view = game.say(text)
-                    break
-                print(f"请输入 1~{len(view.choices)} 的数字")
-                continue
-            view = game.say(raw)
-            break
+                if not raw:
+                    continue
+                if raw.startswith("/"):
+                    marker = _handle_command(game, raw)
+                    if marker == "action":
+                        view = _action_phase(game)
+                        break
+                    if marker == "new":
+                        view = game.start()  # 已重置状态，重新开场
+                        break
+                    if marker == "quit":
+                        return 0
+                    continue
+                if raw.isdigit():
+                    idx = int(raw)
+                    if 1 <= idx < len(view.choices):
+                        print("（生成中…）")
+                        view = game.say(view.choices[idx - 1])
+                        break
+                    if idx == len(view.choices):  # 自由输入入口
+                        text = input("说些什么 > ").strip()
+                        if not text:
+                            continue
+                        print("（生成中…）")
+                        view = game.say(text)
+                        break
+                    print(f"请输入 1~{len(view.choices)} 的数字")
+                    continue
+                print("（生成中…）")
+                view = game.say(raw)
+                break
+    except EOFError:
+        print("\n（再见）")
+        return 0
+    except KeyboardInterrupt:
+        print("\n（再见）")
+        return 0
+    except LLMTurnError as e:
+        _crash_save(game, f"生成失败（协议熔断）: {e}")
+        return 1
+    except Exception as e:  # noqa: BLE001
+        _crash_save(game, f"{type(e).__name__}: {e}")
+        return 1
 
 
 def _action_phase(game: Game):
@@ -169,6 +234,7 @@ def _action_phase(game: Game):
     for i, a in enumerate(actions, 1):
         print(f"  {i}. {a.label}")
     n = _ask_number(len(actions))
+    print("（生成中…）")
     return game.act(actions[n - 1].id)
 
 
