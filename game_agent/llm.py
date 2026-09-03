@@ -22,7 +22,7 @@ from .config import Settings
 from .stats import StatChangeError
 from .worldpack import ScheduleSpec
 
-MAX_OUTPUT_TOKENS = 1024
+MAX_OUTPUT_TOKENS = 2048  # 含思考链预算：重回合（抉择后叙事）需要余量，截断会导致无工具调用
 MAX_TURN_ITERATIONS = 3  # 初始 1 次 + 协议失败重试 2 次（design.md §10.1 C6）
 
 
@@ -205,14 +205,19 @@ class LLMClient:
                 stream=False,
             )
             msg = resp.choices[0].message
+            finish = getattr(resp.choices[0], "finish_reason", None)
             msgs.append(_assistant_to_dict(msg))
 
             tool_calls = getattr(msg, "tool_calls", None)
             if not tool_calls:
+                reason = (
+                    f"未调用任何工具（finish_reason={finish}）。"
+                    if finish == "length"
+                    else "未调用任何工具。"
+                )
                 msgs.append(
                     _protocol_fail(
-                        "未调用任何工具。必须调用 submit_narration 结束本轮"
-                        "（数值变化用 change_stat）。"
+                        reason + "必须调用 submit_narration 结束本轮（数值变化用 change_stat）。"
                     )
                 )
                 continue

@@ -25,13 +25,38 @@ from game_agent.worldpack import load_worldpack
 SAVE_DIR = Path("saves")
 DAY_BUDGET = 12
 
-# together 策略的贴心话（轮换使用，保持多样）
-KIND_WORDS = [
-    "（温和地）沈姑娘，今日得见，心下甚安。这几日可还顺遂？",
-    "（认真地说）那日诗会之后，在下常想起姑娘说的话，获益良多。",
-    "（轻声）长安虽大，能说上话的人却不多。能与姑娘相识，是在下的运气。",
-    "（关切地）见你眉间似有倦色，可是府中事务劳神？若有在下帮得上忙的，但说无妨。",
+# 分阶段台词（避免"未发生的诗会""复读机式客套"——上一轮负结果的教训）
+EARLY_WORDS = [
+    "（诚恳地）在下初来长安，人地两疏。姑娘若不嫌冒昧，可否为在下说说——这长安城里，习武之人该如何谋个正经出路？",
+    "（认真地说）姑娘那日说『路见不平是侠者本分』，在下深以为然。今日登门，是想当面谢过姑娘的指点。",
+    "（关切地）见姑娘眉间似有倦色，可是府中事务劳神？若有在下帮得上忙的，但说无妨。",
+    "（温和地）今日路过东市，见有新鲜的果子，便带了些来。也不知合不合姑娘口味。",
 ]
+AFTER_POEM_WORDS = [
+    "（认真地说）那夜诗会，姑娘说『想说什么，便说什么』。在下如今才明白，有些话只对一个人说得出口。",
+    "（望着她）『错将明月认还家』——在下的家，倒像是这几日与姑娘说话时的光景。",
+    "（轻声）诗会那夜，满场灯火，都不及姑娘在灯下看我的那一眼。",
+]
+HEART_WORDS = [
+    "（郑重地）在下身无长物，却有一身胆气。姑娘若信得过，把难处说与在下——我们一起想法子。",
+    "（坚定地）这些日子与姑娘相处，在下心中所想，姑娘应当明白。若有难处，不必一人扛着。",
+    "（认真地）只要姑娘不弃，天涯海角，在下都愿陪姑娘走一遭。",
+]
+
+
+def _pick_word(state: GameState, mem: dict) -> str:
+    """按剧情阶段选台词，同池内轮换不重复。"""
+    if state.flags.get("poetry_top3"):
+        pool, key = AFTER_POEM_WORDS, "poem"
+    elif state.day >= 6:
+        pool, key = HEART_WORDS, "heart"
+    else:
+        pool, key = EARLY_WORDS, "early"
+    if mem.get("key") == key:
+        mem["idx"] = (mem["idx"] + 1) % len(pool)
+    else:
+        mem["key"], mem["idx"] = key, 0
+    return pool[mem["idx"]]
 
 
 def _log(lines: list[str], *parts) -> None:
@@ -66,7 +91,8 @@ def main() -> int:
             view = game.pick(0)  # 挺身而出
             _log(transcript, "【解围】", view.narration)
 
-        just_acted = False
+        mem: dict = {}
+        dialogue_left = 0
         while state.day <= DAY_BUDGET and view.ending is None:
             # 关键选择（N2 诗会等）
             if view.choice_prompt is not None:
@@ -85,20 +111,21 @@ def main() -> int:
                 action = "visit_shen" if args.strategy == "together" else "cultivate"
                 view = game.act(action)
                 _log(transcript, f"【第 {state.day} 天·行动】", view.narration)
-                just_acted = True
+                if args.strategy == "together":
+                    # 第 5 天起每天 2 轮对话（诗会后感情升温期）
+                    dialogue_left = 1 if state.day < 5 else 2
                 continue
 
-            # 对话回合（together 每日 1 轮；wanderer 不对话）
-            if just_acted and args.strategy == "together":
-                kind = KIND_WORDS[state.day % len(KIND_WORDS)]
+            # 对话回合（together 专属；wanderer 不对话）
+            if dialogue_left > 0:
+                kind = _pick_word(state, mem)
                 view = game.say(kind)
                 _log(transcript, f"【第 {state.day} 天·对话】{kind}", view.narration)
-                just_acted = False
+                dialogue_left -= 1
                 continue
 
             # 结束今天
             game.end_day()
-            just_acted = False
             _log(transcript, f"—— 第 {state.day} 天 ——",
                  f"[状态] 好感 {state.affections} · 属性 {state.stats}")
 
