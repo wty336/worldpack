@@ -17,6 +17,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from .conditions import ConditionError, validate_condition
+
 
 class WorldPackError(Exception):
     """世界包加载/校验错误（面向世界包作者的友好报错）。"""
@@ -30,6 +32,7 @@ class WorldPackError(Exception):
 class WorldSpec(BaseModel):
     name: str
     era: str
+    start_scene: str = ""  # 开局场景（引擎启动时写入 state.scene）
     core_rules: list[str] = Field(default_factory=list)
     style_guide: list[str] = Field(default_factory=list)
     forbidden: list[str] = Field(default_factory=list)
@@ -246,21 +249,37 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     declared_stats = set(schedule.stats)
     action_ids = {a.id for a in schedule.actions}
 
-    # 1) 收集全部引用
+    # 1) 收集全部引用 + 校验条件结构（when/completion 语法错误在加载期暴露）
+    def _check_cond(cond: dict[str, Any], where: str) -> None:
+        try:
+            validate_condition(cond, where)
+        except ConditionError as e:
+            raise WorldPackError(str(e)) from e
+
     flag_refs: set[str] = set()
     aff_refs: set[str] = set()
+    stat_refs: set[str] = set()
     for node in mainline.nodes:
-        _collect_refs(node.model_dump(), "flags", flag_refs)
+        dumped = node.model_dump()
+        _collect_refs(dumped, "flags", flag_refs)
+        _collect_refs(dumped, "stat", stat_refs)
+        _check_cond(node.when, f"主线节点 '{node.id}' 的 when")
+        _check_cond(node.completion, f"主线节点 '{node.id}' 的 completion")
     for ev in events.events:
         dumped = ev.model_dump()
         _collect_refs(dumped, "flags", flag_refs)
         _collect_refs(dumped, "affection", aff_refs)
         _collect_refs(dumped, "affections", aff_refs)
+        _collect_refs(dumped, "stat", stat_refs)
+        if ev.trigger.when is not None:
+            _check_cond(ev.trigger.when, f"事件 '{ev.id}' 的 trigger.when")
     for ending in endings.endings:
         dumped = ending.model_dump()
         _collect_refs(dumped, "flags", flag_refs)
         _collect_refs(dumped, "affection", aff_refs)
         _collect_refs(dumped, "affections", aff_refs)
+        _collect_refs(dumped, "stat", stat_refs)
+        _check_cond(ending.when, f"结局 '{ending.id}' 的 when")
 
     # 2) 逐项比对，报错带具体名字与出处文件
     missing_flags = flag_refs - declared_flags
@@ -272,6 +291,11 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     if missing_aff:
         raise WorldPackError(
             f"引用了未声明的好感对象: {sorted(missing_aff)}——请在 schedule.yaml 的 affections 中声明"
+        )
+    missing_stats = stat_refs - declared_stats
+    if missing_stats:
+        raise WorldPackError(
+            f"引用了未声明的属性: {sorted(missing_stats)}——请在 schedule.yaml 的 stats 中声明"
         )
     for aff_id in declared_affections:
         if aff_id not in npcs:

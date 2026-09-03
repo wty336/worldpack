@@ -1,5 +1,6 @@
 name: 江湖旧梦
 era: 架空古代·长安城
+start_scene: 长安城·东市
 
 core_rules:
   - 玩家是初入江湖的游侠，因缘际会来到长安

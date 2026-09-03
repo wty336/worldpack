@@ -35,7 +35,7 @@ uv run pytest
 
 ## 当前状态
 
-M1 开发中：W1 项目骨架 ✅ · W2 世界包 ✅ · W3+ 进行中（见 docs/plan-m1.md）
+M1 开发中：W1 骨架 ✅ · W2 世界包 ✅ · W3 状态/数值/条件 ✅ · W4 上下文+LLM 协议 进行中（见 docs/plan-m1.md）
 
 ## 许可
 
