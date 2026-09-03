@@ -105,7 +105,10 @@ def test_stat_rejection_fed_back():
 
     client, _ = _client([_resp(_msg(tool_calls=[CHANGE])), _resp(_msg(tool_calls=[SUBMIT]))])
     result = client.run_turn([{"role": "user", "content": "hi"}], rejecting)
-    assert "数值越界" in result.messages[-2]["content"]  # tool 错误回传
+    # 拒绝原因以结构化 tool 错误回传（任意位置），模型据此收尾
+    assert any(
+        m["role"] == "tool" and "数值越界" in m["content"] for m in result.messages
+    )
     assert result.stat_changes[0]["result"].startswith("[引擎拒绝]")
 
 
@@ -138,3 +141,22 @@ def test_tool_schema_enums_injected_from_pack():
     change = tools[0]["function"]["parameters"]["properties"]
     assert set(change["target"]["enum"]) == {"player", "shen_qingqiu"}
     assert set(change["stat"]["enum"]) == {"charm", "martial", "silver", "affection"}
+
+
+def test_tool_message_pairing_invariant():
+    """协议不变量：历史中每条带 tool_calls 的 assistant 消息，
+    其后必须紧跟覆盖全部 tool_call_id 的 tool 结果（否则下一次请求被 API 拒绝）。"""
+    client, apply = _client([_resp(_msg(tool_calls=[CHANGE, SUBMIT]))])
+    result = client.run_turn([{"role": "user", "content": "hi"}], apply)
+    msgs = result.messages
+    i = 0
+    while i < len(msgs):
+        m = msgs[i]
+        if m["role"] == "assistant" and m.get("tool_calls"):
+            ids = {tc["id"] for tc in m["tool_calls"]}
+            j = i + 1
+            while j < len(msgs) and msgs[j]["role"] == "tool":
+                ids.discard(msgs[j]["tool_call_id"])
+                j += 1
+            assert not ids, f"tool_call_id 缺配对结果: {ids}"
+        i += 1

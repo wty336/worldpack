@@ -237,8 +237,12 @@ class LLMClient:
                     err = _validate_narration(args)
                     if err is not None:
                         msgs.append(_tool_result(tc.id, f"[协议错误] {err}"))
-                    elif narration_args is None:
-                        narration_args = args
+                    else:
+                        # 必须回配对的 tool 结果（否则带 tool_calls 的 assistant 消息
+                        # 缺配对结果，下一次请求会被 API 拒绝）
+                        msgs.append(_tool_result(tc.id, "已接收本轮叙事。"))
+                        if narration_args is None:
+                            narration_args = args
                 else:
                     msgs.append(_tool_result(tc.id, f"[协议错误] 未知工具 '{name}'"))
 
