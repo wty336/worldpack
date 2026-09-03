@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 环境与密钥
+.venv/
+.env
+
+# 测试与工具缓存
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# 游戏存档（本地产物，不入库）
+saves/
+
+# IDE
+.idea/
+.vscode/

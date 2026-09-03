@@ -1,0 +1,40 @@
+# 主线大纲：节点链（见 design.md §6）
+nodes:
+  - id: n1_first_meeting
+    title: 初遇
+    when: {all: []}          # 恒真：开场即触发
+    goal: 与沈清秋结识
+    completion:
+      flags: {met_shen: true}
+    on_enter:
+      scene: 长安城·沈府门前
+      briefing: |
+        沈清秋在沈府门前被纨绔子弟纠缠，你出手相助（可文可武），由此与她结识。
+        本节点目标：与沈清秋结识（完成信号 flag: met_shen）。
+        你可以直接出面解围，也可以另寻方式相助；结识后本节点即完成。
+    critical_choices: []
+    free_scope: 结识方式自由发挥；完成后进入日常阶段，等待诗会节点触发。
+
+  - id: n2_poetry_festival
+    title: 七夕诗会
+    when:
+      all:
+        - {day: {gte: 5}}
+        - {flags: {met_shen: true}}
+    goal: 参加七夕诗会并进入前三名
+    completion:
+      flags: {poetry_top3: true}
+    on_enter:
+      scene: 长安城·曲江池畔
+      briefing: |
+        七夕之夜，曲江池畔诗会，才子云集。你与沈清秋同游。
+        诗会上，众人起哄推举你上台应战。
+        本节点目标：在诗会上进入前三名（完成信号 flag: poetry_top3）。
+        注意：若婉拒登台，沈清秋将代为出战。
+    critical_choices:
+      - id: join_poetry
+        prompt: 诗会上，众人起哄推举你上台应战。是否登台？
+        options:
+          - {text: 欣然登台，赋诗一首, effects: {flags: {poetry_join: true}}}
+          - {text: 婉拒，把机会让给沈清秋, effects: {flags: {poetry_join: false}}}
+    free_scope: 诗会期间的对话、作诗内容由剧情自由生成；是否进入前三名由剧情走向决定。

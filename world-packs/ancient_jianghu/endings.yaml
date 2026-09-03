@@ -1,0 +1,28 @@
+# 结局条件（见 design.md §6.3）——代码每轮自动判定
+endings:
+  - id: ending_together
+    title: 长相守
+    kind: auto
+    when:
+      all:
+        - {affection: {shen_qingqiu: {gte: 60}}}
+        - {flags: {poetry_top3: true}}
+    text: |
+      诗会夺魁，长安扬名。
+      而比名声更珍贵的，是灯下沈清秋望向你时，眼底那一点化不开的温柔。
+      ——结局达成：长相守
+
+  - id: ending_wanderer
+    title: 江湖独行
+    kind: auto
+    when:
+      all:
+        - {day: {gte: 10}}
+        - not:
+            all:
+              - {affection: {shen_qingqiu: {gte: 60}}}
+              - {flags: {poetry_top3: true}}
+    text: |
+      第十日清晨，你背起行囊，悄然离开了长安。
+      江湖路远，来日方长。
+      ——结局达成：江湖独行
