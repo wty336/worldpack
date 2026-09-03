@@ -165,3 +165,43 @@ def test_save_load_roundtrip(tmp_path: Path):
     save_game(state, path)
     loaded = load_game(path)
     assert loaded == state
+
+
+# ---------------------------------------------------------------------------
+# W-B / W-C：时间触发事件 + 节点完成自动存档
+# ---------------------------------------------------------------------------
+
+
+def test_time_event_triggers_on_end_day():
+    from game_agent.worldpack import EventSpec, EventTrigger
+
+    pack, state, game = _game(
+        [resp(msg(tool_calls=[SUBMIT]))], mutate=_n1_done, rng=_NeverRng()
+    )
+    ev = EventSpec(
+        id="e_day2",
+        title="第2天信使",
+        trigger=EventTrigger(kind="time", when={"day": {"gte": 2}}),
+        priority="normal",
+        effects={"stats": {"silver": 5}},
+        once=True,
+        script="有信使送来一封书信。",
+    )
+    pack.events.events.append(ev)
+    game.end_day()  # 第 1 → 2 天，时间事件触发
+    assert state.stats["silver"] == 55.0
+    assert "e_day2" in state.triggered_events
+    # 事件消息已入历史，下一回合叙事可见
+    assert any("【事件】第2天信使" in m["content"] for m in game.history)
+
+
+def test_autosave_on_node_completion(tmp_path: Path):
+    """W-C：主线节点完成 → 自动存档到 autosave 路径。"""
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT]))])
+    game.autosave_path = tmp_path / "auto.json"
+    game.start()
+    game.pick(0)  # N1 完成 → 触发自动存档
+    assert (tmp_path / "auto.json").exists()
+    loaded = load_game(tmp_path / "auto.json")
+    assert loaded == state
+    assert loaded.completed_nodes == ["n1_first_meeting"]

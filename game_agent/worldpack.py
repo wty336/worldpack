@@ -146,8 +146,8 @@ class MainlineSpec(BaseModel):
 
 
 class EventTrigger(BaseModel):
-    kind: Literal["condition", "schedule"]
-    when: dict[str, Any] | None = None  # kind=condition 时必填（加载器交叉校验）
+    kind: Literal["condition", "schedule", "time"]
+    when: dict[str, Any] | None = None  # kind=condition 时必填（任意条件）；kind=time 时必填（仅 day 条件）
     action: str | None = None  # kind=schedule 时必填：对应日程行动 id
     chance: float | None = None  # kind=schedule 时可选：触发概率 0~1，缺省 1.0
 
@@ -330,10 +330,18 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"行动 '{action.id}' 的 present 引用了不存在的 NPC: {sorted(bad_npcs)}"
             )
 
-    # 4) 事件触发校验：condition 必须有 when；schedule 必须有 action 且存在于行动表
+    # 4) 事件触发校验：condition/time 必须有 when；schedule 必须有 action 且存在于行动表
     for ev in events.events:
         if ev.trigger.kind == "condition" and ev.trigger.when is None:
             raise WorldPackError(f"事件 '{ev.id}' 是条件触发，但缺少 trigger.when")
+        if ev.trigger.kind == "time":
+            if ev.trigger.when is None:
+                raise WorldPackError(f"事件 '{ev.id}' 是时间触发，但缺少 trigger.when")
+            if set(ev.trigger.when) != {"day"}:
+                raise WorldPackError(
+                    f"事件 '{ev.id}' 是时间触发，trigger.when 只能包含 day 条件，"
+                    f"当前为 {sorted(ev.trigger.when)}"
+                )
         if ev.trigger.kind == "schedule":
             if ev.trigger.action is None:
                 raise WorldPackError(f"事件 '{ev.id}' 是日程触发，但缺少 trigger.action")

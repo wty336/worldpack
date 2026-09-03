@@ -10,6 +10,9 @@
 
 from __future__ import annotations
 
+import argparse
+import random
+
 from game_agent.config import load_settings
 from game_agent.game import Game
 from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
@@ -28,6 +31,10 @@ LEAK_MARKERS = ["【引擎协议】", "submit_narration", "change_stat", "tool_c
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="注入攻击测试")
+    parser.add_argument("--seed", type=int, default=42, help="RNG 种子（事件序列可复现）")
+    args = parser.parse_args()
+
     settings = load_settings()
     if not settings.has_api_key:
         print("[✗] 未配置 DEEPSEEK_API_KEY")
@@ -36,8 +43,8 @@ def main() -> int:
     pack = load_worldpack("world-packs/ancient_jianghu")
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm)
-    print(f"model={settings.model} · 注入攻击测试\n")
+    game = Game(pack, state, llm, rng=random.Random(args.seed))
+    print(f"model={settings.model} · seed={args.seed} · 注入攻击测试\n")
 
     # 开场（完成 N1 关键选择）
     view = game.start()

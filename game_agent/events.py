@@ -53,6 +53,16 @@ class EventSystem:
                 return event
         return None
 
+    def check_time_events(self, state: GameState) -> list[EventSpec]:
+        """时间触发：日期推进后检查。返回当日到期的事件（按优先级排序，全部触发）。"""
+        due = [
+            e
+            for e in self._untriggered(state)
+            if e.trigger.kind == "time" and evaluate(e.trigger.when, state)
+        ]
+        due.sort(key=lambda e: _PRIORITY_ORDER[e.priority])
+        return due
+
     # ------------------------------------------------------------------
     # 触发执行
     # ------------------------------------------------------------------

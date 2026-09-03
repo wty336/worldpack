@@ -19,6 +19,7 @@ from .worldpack import WorldPackError, load_worldpack
 
 DEFAULT_WORLDPACK = "world-packs/ancient_jianghu"
 DEFAULT_SAVE = "saves/save.json"
+AUTOSAVE = "saves/autosave.json"  # W-C：节点完成自动存档
 
 
 def _cmd_check_worldpack(args: argparse.Namespace) -> int:
@@ -65,7 +66,8 @@ def _cmd_play(args: argparse.Namespace) -> int:
         return 1
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm)
+    # W-C：节点完成自动存档（引擎侧钩子）
+    game = Game(pack, state, llm, autosave_path=AUTOSAVE)
     return _repl(game)
 
 
@@ -73,7 +75,7 @@ def _repl(game: Game) -> int:
     print(f"===== 《{game.pack.world.name}》 =====")
     print(
         "命令：/help 帮助 · /status 状态 · /actions 今日行动 · /save [/load] 存档读档 "
-        "· /end 结束今天 · /quit 退出"
+        "· /new 重新开始 · /end 结束今天 · /quit 退出"
     )
     view = game.start()
     while True:
@@ -88,7 +90,7 @@ def _repl(game: Game) -> int:
         if view.ending is not None:
             print(f"\n『{view.ending.title}』")
             print(view.ending.text)
-            print("（游戏结束。输入 /load 读档重来，或 /quit 退出）")
+            print("（游戏结束。输入 /load 读档重来、/new 重新开始，或 /quit 退出）")
             while True:
                 raw = input("> ").strip()
                 if raw.startswith("/load"):
@@ -103,9 +105,17 @@ def _repl(game: Game) -> int:
                     print(f"已读档 ← {path}")
                     view = _action_phase(game)
                     break
+                if raw.startswith("/new"):
+                    game.state = GameState.from_pack(game.pack)
+                    game.history = []
+                    game.ending = None
+                    game.last_choices = []
+                    print("重新开始。")
+                    view = game.start()
+                    break
                 if raw.startswith("/quit"):
                     return 0
-                print("结局后仅支持 /load 或 /quit")
+                print("结局后仅支持 /load、/new 或 /quit")
             continue
 
         if view.narration:
@@ -125,6 +135,9 @@ def _repl(game: Game) -> int:
                 marker = _handle_command(game, raw)
                 if marker == "action":
                     view = _action_phase(game)
+                    break
+                if marker == "new":
+                    view = game.start()  # 已重置状态，重新开场
                     break
                 if marker == "quit":
                     return 0
@@ -166,7 +179,7 @@ def _handle_command(game: Game, raw: str) -> str | None:
     if cmd == "/help":
         print(
             "命令：/help · /status 状态 · /actions 今日行动 · /save [路径] · "
-            "/load [路径] · /end 结束今天 · /quit 退出\n"
+            "/load [路径] · /new 重新开始 · /end 结束今天 · /quit 退出\n"
             "日常输入：数字 = 选择选项；直接打字 = 自由行动"
         )
     elif cmd == "/status":
@@ -191,6 +204,13 @@ def _handle_command(game: Game, raw: str) -> str | None:
         game.ending = None
         print(f"已读档 ← {path}")
         return "action"
+    elif cmd == "/new":
+        game.state = GameState.from_pack(game.pack)
+        game.history = []
+        game.ending = None
+        game.last_choices = []
+        print("重新开始。")
+        return "new"
     elif cmd == "/end":
         game.end_day()
         print(f"—— 第 {game.state.day} 天 ——")

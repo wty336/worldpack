@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 from pathlib import Path
 
 from game_agent.audit import audit_stats
@@ -69,6 +70,7 @@ def _log(lines: list[str], *parts) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="真机通关验收")
     parser.add_argument("--strategy", choices=["together", "wanderer"], default="together")
+    parser.add_argument("--seed", type=int, default=42, help="RNG 种子（事件触发序列可复现）")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -79,9 +81,9 @@ def main() -> int:
     pack = load_worldpack("world-packs/ancient_jianghu")
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm)
+    game = Game(pack, state, llm, rng=random.Random(args.seed))
     transcript: list[str] = []
-    print(f"model={settings.model} · 策略={args.strategy} · 《{pack.world.name}》\n")
+    print(f"model={settings.model} · 策略={args.strategy} · seed={args.seed} · 《{pack.world.name}》\n")
 
     try:
         # 开场：N1 关键抉择
@@ -145,13 +147,25 @@ def main() -> int:
             _log(transcript, f"[✓] 数值零偏差审计通过（{len(state.stat_log)} 条记录）")
             status = 0
 
-        # 落盘
+        # 落盘（存档 + run_meta 可复现元数据）
         SAVE_DIR.mkdir(exist_ok=True)
-        save_game(state, SAVE_DIR / f"playthrough-{args.strategy}.json")
+        save_path = SAVE_DIR / f"playthrough-{args.strategy}.json"
+        save_game(state, save_path)
+        data = json.loads(save_path.read_text(encoding="utf-8"))
+        data["run_meta"] = {
+            "seed": args.seed,
+            "strategy": args.strategy,
+            "model": settings.model,
+        }
+        save_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         (SAVE_DIR / f"playthrough-{args.strategy}.txt").write_text(
             "\n\n".join(transcript), encoding="utf-8"
         )
-        print(f"\n已保存 → {SAVE_DIR}/playthrough-{args.strategy}.{{json,txt}}")
+        print(
+            f"\n已保存 → {SAVE_DIR}/playthrough-{args.strategy}.{{json,txt}}（seed={args.seed}）"
+        )
         return status
     except LLMTurnError as e:
         print(f"[✗] 协议熔断: {e}")

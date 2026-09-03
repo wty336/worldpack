@@ -112,3 +112,24 @@ def test_completion_flag_unreachable_raises(tmp_path: Path):
     mainline.write_text(text, encoding="utf-8")
     with pytest.raises(WorldPackError, match="没有任何代码路径"):
         load_worldpack(tmp_path / "pack")
+
+
+def test_time_event_with_non_day_condition_raises(tmp_path: Path):
+    """W-B：时间触发事件的 when 只能包含 day 条件（加载期拒绝）。"""
+    shutil.copytree(PACK_PATH, tmp_path / "pack")
+    events = tmp_path / "pack" / "events.yaml"
+    text = events.read_text(encoding="utf-8").replace("kind: condition", "kind: time")
+    events.write_text(text, encoding="utf-8")
+    # ev_moon_chat 的 when 是 affection 条件 → time 事件不允许
+    with pytest.raises(WorldPackError, match="只能包含 day"):
+        load_worldpack(tmp_path / "pack")
+
+
+def test_time_event_without_when_raises(tmp_path: Path):
+    """W-B：时间触发事件缺少 when 必须报错。"""
+    shutil.copytree(PACK_PATH, tmp_path / "pack")
+    events = tmp_path / "pack" / "events.yaml"
+    text = events.read_text(encoding="utf-8").replace("kind: schedule", "kind: time")
+    events.write_text(text, encoding="utf-8")
+    with pytest.raises(WorldPackError, match="缺少 trigger.when"):
+        load_worldpack(tmp_path / "pack")

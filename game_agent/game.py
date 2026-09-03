@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
 from .context import ContextBuilder
 from .events import EventSystem
 from .llm import LLMClient
+from .save import save_game
 from .schedule import ScheduleSystem
 from .state import GameState
 from .stats import StatsSystem
@@ -41,6 +43,7 @@ class Game:
         state: GameState,
         llm: LLMClient,
         rng: random.Random | None = None,
+        autosave_path: str | Path | None = None,
     ):
         self.pack = pack
         self.state = state
@@ -53,6 +56,7 @@ class Game:
         self.history: list[dict] = []
         self.ending: EndingSpec | None = None
         self.last_choices: list[str] = []
+        self.autosave_path = autosave_path  # 非 None 时，节点完成自动存档
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -86,6 +90,9 @@ class Game:
 
     def end_day(self) -> str:
         self.schedule.end_day(self.state)
+        # 时间触发事件：日期推进后检查，消息并入历史（下一个叙事回合生效）
+        for ev in self.events.check_time_events(self.state):
+            self.history.append(self.events.trigger(self.state, ev))
         return f"—— 第 {self.state.day} 天 ——"
 
     # ------------------------------------------------------------------
@@ -146,6 +153,9 @@ class Game:
         self.history = result.messages
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
+        # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子）
+        if outcome.node_completed is not None and self.autosave_path is not None:
+            save_game(self.state, self.autosave_path)
         return TurnView(
             narration=result.narration,
             choices=filter_choices(self.pack, result.choices),
