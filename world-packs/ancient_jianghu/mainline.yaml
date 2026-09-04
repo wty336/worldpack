@@ -38,6 +38,7 @@ nodes:
         诗会上，众人起哄推举你上台应战。
         本节点目标：诗会决出结果（完成信号 flag: poetry_resolved）。
         登台夺魁可进入前三（poetry_top3）；婉拒则沈清秋代战，你无缘前三。
+         （若此前的日常对话中已谈及诗会之约，请衔接此前的情节续写，不要当作全新场景重写。）
     critical_choices:
       - id: poetry_choice
         prompt: 诗会上，众人起哄推举你上台应战。你如何抉择？

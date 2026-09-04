@@ -206,3 +206,34 @@ def test_autosave_on_node_completion(tmp_path: Path):
     loaded = load_game(tmp_path / "auto.json")
     assert loaded == state
     assert loaded.completed_nodes == ["n1_first_meeting"]
+
+
+def test_repetition_detection_injects_steering():
+    """试玩反馈 #3/#4：相邻回合叙事高度重复 → 注入反重复提示（下一轮生效）。"""
+    pack, state, game = _game(
+        [resp(msg(tool_calls=[SUBMIT])), resp(msg(tool_calls=[SUBMIT]))],
+        mutate=_n1_done,
+    )
+    game.say("聊点什么")
+    game.say("再聊点什么")  # 两轮叙事完全相同（假客户端）→ 相似度 100%
+    assert any("反重复提示" in m["content"] for m in game.history if m["role"] == "user")
+
+
+def test_no_repetition_hint_when_narrations_differ():
+    """叙事不重复时不注入提示（防误伤）。"""
+    other = tool_call(
+        "s9",
+        "submit_narration",
+        {
+            "narration": "完全不同的另一段叙事，情节推进到了新的场景。",
+            "choices": ["继续", "离开", "询问"],
+            "plot_signal": "normal",
+        },
+    )
+    pack, state, game = _game(
+        [resp(msg(tool_calls=[SUBMIT])), resp(msg(tool_calls=[other]))],
+        mutate=_n1_done,
+    )
+    game.say("聊点什么")
+    game.say("再聊点什么")
+    assert not any("反重复提示" in m["content"] for m in game.history)

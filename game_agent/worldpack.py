@@ -33,6 +33,8 @@ class WorldSpec(BaseModel):
     name: str
     era: str
     start_scene: str = ""  # 开局场景（引擎启动时写入 state.scene）
+    player_role: str = ""  # 玩家的身份（常驻状态栏，给玩家与模型稳定的"我是谁"）
+    player_goal: str = ""  # 玩家的长期目标（常驻状态栏，防剧情漂移）
     core_rules: list[str] = Field(default_factory=list)
     style_guide: list[str] = Field(default_factory=list)
     forbidden: list[str] = Field(default_factory=list)

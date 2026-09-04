@@ -32,6 +32,8 @@ def test_load_ancient_jianghu():
     """真实世界包《江湖旧梦》应加载成功且字段完整。"""
     pack = load_worldpack(PACK_PATH)
     assert pack.world.name == "江湖旧梦"
+    assert pack.world.player_role and "游侠" in pack.world.player_role
+    assert pack.world.player_goal and "查明师父旧事" in pack.world.player_goal
     assert set(pack.schedule.stats) == {"charm", "martial", "silver"}
     assert set(pack.schedule.affections) == {"shen_qingqiu"}
     assert "shen_qingqiu" in pack.npcs

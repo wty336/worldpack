@@ -91,6 +91,15 @@ class ContextBuilder:
         present = "、".join(present_names) if present_names else "无"
         lines.append(f"<scene>当前地点：{state.scene} · 时间：第 {state.day} 天 · 在场：{present}</scene>")
 
+        # 身份与目标常驻（给玩家与模型稳定的"我是谁、为了什么"锚点，防剧情漂移）
+        identity_parts = []
+        if self.pack.world.player_role:
+            identity_parts.append(f"你的身份：{self.pack.world.player_role}")
+        if self.pack.world.player_goal:
+            identity_parts.append(f"你的目标：{self.pack.world.player_goal}")
+        if identity_parts:
+            lines.append("<identity>" + " · ".join(identity_parts) + "</identity>")
+
         # 状态栏（代码提炼的显式状态，章 2）
         lines.append("<agent_status>")
         stats_str = " · ".join(

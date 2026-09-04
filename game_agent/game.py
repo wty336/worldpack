@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import difflib
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,9 @@ from .worldpack import ActionSpec, CriticalChoice, EndingSpec, WorldPack
 
 class GameError(Exception):
     """游戏规则错误（如关键抉择期间尝试自由输入）。"""
+
+
+REPETITION_THRESHOLD = 0.6  # 相邻回合叙事相似度阈值：超过则注入反重复提示（试玩反馈 #3/#4）
 
 
 @dataclass
@@ -61,6 +65,7 @@ class Game:
         self.autosave_path = autosave_path  # 非 None 时，节点完成自动存档
         self.on_text = on_text  # 流式显示回调（CLI 注入）
         self.last_streamed: str = ""  # 本回合已流式显示的文本（供 CLI 去重）
+        self.last_narration: str = ""  # 上一轮叙事（重复检测参照）
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -146,11 +151,32 @@ class Game:
         last = views[-1]
         self.ending = last.ending
         self.last_choices = last.choices
+        if narration:
+            self._check_repetition(narration)
         return TurnView(
             narration=narration or None,
             choices=last.choices,
             ending=last.ending,
         )
+
+    def _check_repetition(self, narration: str) -> None:
+        """相邻回合相似度检测：模型复读已写过的段落时注入反重复提示（下一轮生效）。"""
+        if not self.last_narration:
+            self.last_narration = narration
+            return
+        ratio = difflib.SequenceMatcher(None, self.last_narration, narration).ratio()
+        self.last_narration = narration
+        if ratio >= REPETITION_THRESHOLD:
+            self.history.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"[反重复提示] 本轮叙事与上一轮高度重复（相似度 {ratio:.0%}）。"
+                        "请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、"
+                        "人物关系的新变化。"
+                    ),
+                }
+            )
 
     def _llm_round(self) -> TurnView:
         messages = self.builder.build_messages(

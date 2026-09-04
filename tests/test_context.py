@@ -81,3 +81,11 @@ def test_secrets_not_leaked():
     pack, state, b = _builder_and_state()
     assert "顾长歌" not in b.status_text(state)
     assert "顾长歌" not in b.system_message["content"]
+
+
+def test_identity_and_goal_in_status():
+    """试玩反馈 #1：身份与目标常驻状态栏，给玩家与模型稳定的锚点。"""
+    pack, state, b = _builder_and_state()
+    text = b.status_text(state)
+    assert "你的身份" in text and "游侠" in text
+    assert "你的目标" in text and "查明师父旧事" in text
