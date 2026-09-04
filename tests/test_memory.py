@@ -65,11 +65,11 @@ def test_player_facts_eviction_keeps_newest():
     pack, state, mem = _sys()
     for i in range(PLAYER_FACTS_LIMIT + 2):
         state.turn_count = i
-        mem.add(state, "player", f"事实 {i}")
+        mem.add(state, "player", f"编号{i:02d}项事实")  # 零填充避免包含关系误判去重
     assert len(state.player_facts) == PLAYER_FACTS_LIMIT
     facts = [m.fact for m in state.player_facts]
-    assert "事实 0" not in facts and "事实 1" not in facts  # 最早两条被淘汰
-    assert f"事实 {PLAYER_FACTS_LIMIT + 1}" in facts  # 最新的保留
+    assert "编号00项事实" not in facts and "编号01项事实" not in facts  # 最早两条被淘汰
+    assert f"编号{PLAYER_FACTS_LIMIT + 1:02d}项事实" in facts  # 最新的保留
 
 
 def test_serialization_roundtrip_with_memories():
