@@ -39,6 +39,15 @@ class StatChangeRecord:
     after: float
 
 
+@dataclass(frozen=True)
+class MemoryEntry:
+    """一条显式记忆（M2a）：事实 + 植入时间（来源追踪 + 时间衰减淘汰依据）。"""
+
+    fact: str
+    day: int
+    round: int  # 植入时的叙事回合序号
+
+
 @dataclass
 class GameState:
     pack_name: str
@@ -58,6 +67,9 @@ class GameState:
     choice_log: list[ChoiceRecord] = field(default_factory=list)
     stat_log: list[StatChangeRecord] = field(default_factory=list)
     triggered_events: list[str] = field(default_factory=list)
+    turn_count: int = 0  # 叙事回合总数（记忆来源追踪）
+    player_facts: list[MemoryEntry] = field(default_factory=list)  # 玩家长期关键事实（状态栏常驻）
+    npc_memories: dict[str, list[MemoryEntry]] = field(default_factory=dict)  # NPC 对玩家的记忆
 
     # ---- 构造 ----
 
@@ -101,6 +113,11 @@ class GameState:
             "choice_log": [vars(c) for c in self.choice_log],
             "stat_log": [vars(r) for r in self.stat_log],
             "triggered_events": list(self.triggered_events),
+            "turn_count": self.turn_count,
+            "player_facts": [vars(m) for m in self.player_facts],
+            "npc_memories": {
+                k: [vars(m) for m in v] for k, v in self.npc_memories.items()
+            },
         }
 
     @classmethod
@@ -126,4 +143,10 @@ class GameState:
             choice_log=[ChoiceRecord(**c) for c in d.get("choice_log", [])],
             stat_log=[StatChangeRecord(**r) for r in d.get("stat_log", [])],
             triggered_events=list(d.get("triggered_events", [])),
+            turn_count=d.get("turn_count", 0),
+            player_facts=[MemoryEntry(**m) for m in d.get("player_facts", [])],
+            npc_memories={
+                k: [MemoryEntry(**m) for m in v]
+                for k, v in d.get("npc_memories", {}).items()
+            },
         )

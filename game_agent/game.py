@@ -15,6 +15,7 @@ from pathlib import Path
 from .context import ContextBuilder
 from .events import EventSystem
 from .llm import LLMClient
+from .memory import MemorySystem
 from .save import save_game
 from .schedule import ScheduleSystem
 from .state import GameState
@@ -58,6 +59,7 @@ class Game:
         self.story = StorylineEngine(pack, self.stats)
         self.events = EventSystem(pack, self.stats, rng)
         self.schedule = ScheduleSystem(pack, self.stats)
+        self.memory = MemorySystem(pack)  # M2a 记忆显式化
         self.builder = ContextBuilder.from_pack(pack)
         self.history: list[dict] = []
         self.ending: EndingSpec | None = None
@@ -182,7 +184,10 @@ class Game:
         messages = self.builder.build_messages(
             self.state, self.history, self.story.active_node(self.state)
         )
-        result = self.llm.run_turn(messages, self._apply_change, on_text=self.on_text)
+        self.state.turn_count += 1  # 记忆来源追踪（M2a）
+        result = self.llm.run_turn(
+            messages, self._apply_change, on_text=self.on_text, remember=self._remember
+        )
         self.history = result.messages
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
@@ -199,3 +204,7 @@ class Game:
         return self.stats.apply_change(
             self.state, args["target"], args["stat"], args["delta"], args["reason"]
         ).message
+
+    def _remember(self, args: dict) -> str:
+        """remember 工具回调：模型提议 → MemorySystem 校验写入（M2a）。"""
+        return self.memory.add(self.state, args["target"], args["fact"])

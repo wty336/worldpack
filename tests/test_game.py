@@ -168,6 +168,19 @@ def test_save_load_roundtrip(tmp_path: Path):
     assert loaded == state
 
 
+def test_remember_writes_memories_and_status():
+    """M2a：remember 工具经 Game 写入 player_facts，事实出现在状态栏，回合计数推进。"""
+    REM = tool_call("m1", "remember", {"target": "player", "fact": "我的剑名『听雨』"})
+    pack, state, game = _game(
+        [resp(msg(tool_calls=[REM, SUBMIT]))], mutate=_n1_done, rng=_NeverRng()
+    )
+    view = game.say("我这柄剑名唤听雨")
+    assert view.narration == "测试叙事"
+    assert state.player_facts and state.player_facts[0].fact == "我的剑名『听雨』"
+    assert state.turn_count >= 1
+    assert "剑名『听雨』" in game.status_text()
+
+
 def test_save_load_preserves_history(tmp_path: Path):
     """存档含对话历史：读档后 NPC 不失忆（试玩发现的存读档缺口）。"""
     pack, state, game = _game([resp(msg(tool_calls=[SUBMIT]))])

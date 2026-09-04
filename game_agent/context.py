@@ -120,6 +120,12 @@ class ContextBuilder:
         else:
             lines.append("剧情进度：日常阶段")
             lines.append("当前主线目标：自由探索，等待主线事件发生")
+        # 玩家长期关键事实常驻（M2a：基线中被强化的信息才存活——常驻注入即"强化"的机制化）
+        if state.player_facts:
+            lines.append(
+                "关键事实：\n"
+                + "\n".join(f"- {m.fact}" for m in state.player_facts)
+            )
         for line in extra or []:
             lines.append(line)
         lines.append("</agent_status>")
@@ -130,7 +136,18 @@ class ContextBuilder:
             lines.append("<在场角色>")
             for npc in present_npcs:
                 lines.append(self._npc_card(npc, state.affections.get(npc.id, 0.0)))
+                lines.append(self._npc_memories(npc.id, state))
             lines.append("</在场角色>")
+        return "\n".join(lines)
+
+    def _npc_memories(self, npc_id: str, state: GameState) -> str:
+        """该 NPC 对玩家的显式记忆（M2a：出场才注入，替代"全量历史重读"）。"""
+        entries = state.npc_memories.get(npc_id, [])
+        if not entries:
+            return ""
+        lines = ["对该玩家的记忆："]
+        for m in entries:
+            lines.append(f"- （第 {m.day} 天）{m.fact}")
         return "\n".join(lines)
 
     def _tone(self, npc_id: str, affection: float) -> str:

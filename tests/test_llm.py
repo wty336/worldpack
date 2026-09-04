@@ -7,6 +7,7 @@ import pytest
 from fakes import FakeClient, msg, resp, tool_call
 
 from game_agent.llm import LLMClient, LLMTurnError, build_tools
+from game_agent.memory import MemoryError
 from game_agent.stats import StatChangeError
 from game_agent.worldpack import load_worldpack
 from pathlib import Path
@@ -138,9 +139,62 @@ def test_tool_schema_enums_injected_from_pack():
     """工具 schema 的枚举值来自世界包（属性/NPC 精确注入，章 4 ACI）。"""
     pack = load_worldpack(PACK_PATH)
     tools = build_tools(pack.schedule)
-    change = tools[0]["function"]["parameters"]["properties"]
+    assert len(tools) == 3  # change_stat / submit_narration / remember（M2a）
+    by_name = {t["function"]["name"]: t for t in tools}
+    change = by_name["change_stat"]["function"]["parameters"]["properties"]
     assert set(change["target"]["enum"]) == {"player", "shen_qingqiu"}
     assert set(change["stat"]["enum"]) == {"charm", "martial", "silver", "affection"}
+    remember = by_name["remember"]["function"]["parameters"]["properties"]
+    assert set(remember["target"]["enum"]) == {"player", "shen_qingqiu"}
+
+
+REMEMBER = _tool_call(
+    "c3", "remember", {"target": "player", "fact": "我的剑名『听雨』"}
+)
+
+
+def test_remember_tool_handled():
+    """M2a：remember 工具 → 引擎回调执行 → TurnResult.memories 收集。"""
+    seen = {}
+
+    def remember(args):
+        seen.update(args)
+        return "[记忆已写入] 玩家事实：我的剑名『听雨』"
+
+    client = LLMClient(
+        FakeClient([_resp(_msg(tool_calls=[REMEMBER, SUBMIT]))]),
+        model="fake",
+        tools=build_tools(load_worldpack(PACK_PATH).schedule),
+    )
+    result = client.run_turn(
+        [{"role": "user", "content": "hi"}], lambda a: "ok", remember=remember
+    )
+    assert seen == {"target": "player", "fact": "我的剑名『听雨』"}
+    assert len(result.memories) == 1
+    assert "已写入" in result.memories[0]["result"]
+
+
+def test_remember_without_callback_is_protocol_error():
+    """未启用记忆时 remember 调用 → 结构化协议错误，不崩溃。"""
+    client, apply = _client([_resp(_msg(tool_calls=[REMEMBER, SUBMIT]))])
+    result = client.run_turn([{"role": "user", "content": "hi"}], apply)
+    assert result.memories == []
+    assert any(
+        m["role"] == "tool" and "未启用记忆" in m["content"] for m in result.messages
+    )
+
+
+def test_remember_rejection_fed_back():
+    """引擎拒绝（MemoryError）→ 结构化错误回传。"""
+
+    def rejecting(args):
+        raise MemoryError("fact 过长（200 字，上限 120）")
+
+    client, _ = _client([_resp(_msg(tool_calls=[REMEMBER, SUBMIT]))])
+    result = client.run_turn(
+        [{"role": "user", "content": "hi"}], lambda a: "ok", remember=rejecting
+    )
+    assert result.memories[0]["result"].startswith("[引擎拒绝]")
 
 
 def test_clean_narration_strips_tool_xml():

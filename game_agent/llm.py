@@ -21,6 +21,7 @@ from typing import Any, Callable
 from openai import OpenAI
 
 from .config import Settings
+from .memory import MemoryError
 from .stats import StatChangeError
 from .worldpack import ScheduleSpec
 
@@ -38,6 +39,7 @@ class TurnResult:
     choices: list[str]
     plot_signal: str
     stat_changes: list[dict] = field(default_factory=list)  # 已执行的变更提议（含结果）
+    memories: list[dict] = field(default_factory=list)  # 已写入的记忆提议（含结果，M2a）
     iterations: int = 1
     messages: list[dict] = field(default_factory=list)  # 更新后的轨迹，供引擎续用
 
@@ -104,6 +106,32 @@ def build_tools(schedule: ScheduleSpec) -> list[dict]:
                         },
                     },
                     "required": ["narration", "choices", "plot_signal"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "remember",
+                "description": (
+                    "记录一条值得长期记住的关键事实（可选，只在出现重要事实时调用）。"
+                    "玩家的长期信息（身世/剑名/承诺/约定/喜好等）记到 target='player'；"
+                    "某个 NPC 对玩家的关键记忆记到 target=该 NPC 的 id。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "enum": ["player", *npc_ids],
+                            "description": "记忆归属：player 或 NPC id",
+                        },
+                        "fact": {
+                            "type": "string",
+                            "description": "一句话事实，≤120 字，如「玩家承诺中秋前备齐聘银五十两」",
+                        },
+                    },
+                    "required": ["target", "fact"],
                 },
             },
         },
@@ -199,15 +227,19 @@ class LLMClient:
         apply_change: Callable[[dict], str],
         max_iters: int = MAX_TURN_ITERATIONS,
         on_text: Callable[[str], None] | None = None,
+        remember: Callable[[dict], str] | None = None,
     ) -> TurnResult:
         """执行一轮：组装 → 生成 → 执行工具 → 校验 → 返回 TurnResult。
 
         apply_change(args) 由引擎注入：内部走 StatsSystem 契约；抛 StatChangeError
         时这里转为结构化 tool 错误回传。
+        remember(args) 由引擎注入（M2a 记忆显式化）：内部走 MemorySystem 契约；
+        抛 MemoryError 时转为结构化 tool 错误回传。
         on_text：提供时启用流式输出，内容增量实时回调（玩家边等边看）。
         """
         msgs = [dict(m) for m in messages]
         stat_changes: list[dict] = []
+        memories: list[dict] = []
 
         for i in range(1, max_iters + 1):
             kwargs: dict[str, Any] = dict(
@@ -293,7 +325,8 @@ class LLMClient:
                 )
                 msgs.append(
                     _protocol_fail(
-                        reason + "必须调用 submit_narration 结束本轮（数值变化用 change_stat）。"
+                        reason + "必须调用 submit_narration 结束本轮"
+                        "（数值变化用 change_stat，记忆用 remember）。"
                     )
                 )
                 continue
@@ -314,6 +347,16 @@ class LLMClient:
                         result_msg = f"[引擎拒绝] {e}"
                     msgs.append(_tool_result(tc.id, result_msg))
                     stat_changes.append({**args, "result": result_msg})
+                elif name == "remember":
+                    if remember is None:
+                        msgs.append(_tool_result(tc.id, "[协议错误] 引擎未启用记忆功能"))
+                    else:
+                        try:
+                            result_msg = remember(args)
+                        except MemoryError as e:
+                            result_msg = f"[引擎拒绝] {e}"
+                        msgs.append(_tool_result(tc.id, result_msg))
+                        memories.append({**args, "result": result_msg})
                 elif name == "submit_narration":
                     err = _validate_narration(args)
                     if err is not None:
@@ -333,6 +376,7 @@ class LLMClient:
                     choices=list(narration_args["choices"]),
                     plot_signal=narration_args["plot_signal"],
                     stat_changes=stat_changes,
+                    memories=memories,
                     iterations=i,
                     messages=msgs,
                 )

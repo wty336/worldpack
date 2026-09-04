@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from game_agent.context import ContextBuilder
-from game_agent.state import GameState
+from game_agent.state import GameState, MemoryEntry
 from game_agent.worldpack import load_worldpack
 
 PACK_PATH = Path(__file__).resolve().parent.parent / "world-packs" / "ancient_jianghu"
@@ -89,3 +89,36 @@ def test_identity_and_goal_in_status():
     text = b.status_text(state)
     assert "你的身份" in text and "游侠" in text
     assert "你的目标" in text and "查明师父旧事" in text
+
+
+def test_player_facts_in_status_bar():
+    """M2a：玩家长期事实常驻状态栏（基线 f2/f3 存活机制的复刻）。"""
+    pack, state, b = _builder_and_state()
+    state.player_facts = [
+        MemoryEntry(fact="我的剑名『听雨』", day=1, round=2),
+        MemoryEntry(fact="与沈清秋约定暗号『七月』", day=2, round=5),
+    ]
+    text = b.status_text(state)
+    assert "关键事实" in text
+    assert "剑名『听雨』" in text and "暗号『七月』" in text
+
+
+def test_npc_memories_only_when_present():
+    """M2a：NPC 记忆只在出场时注入（渐进式披露）。"""
+    pack, state, b = _builder_and_state()
+    state.npc_memories["shen_qingqiu"] = [
+        MemoryEntry(fact="玩家当街为她解围", day=1, round=3)
+    ]
+    state.present_npcs = []
+    assert "对该玩家的记忆" not in b.status_text(state)
+    state.present_npcs = ["shen_qingqiu"]
+    text = b.status_text(state)
+    assert "对该玩家的记忆" in text
+    assert "第 1 天" in text and "为她解围" in text
+
+
+def test_memories_not_in_static_prefix():
+    """记忆是动态状态，绝不进静态前缀（KV Cache 铁律：前缀字节级冻结）。"""
+    pack, state, b = _builder_and_state()
+    state.player_facts = [MemoryEntry(fact="我的剑名『听雨』", day=1, round=2)]
+    assert "听雨" not in b.system_message["content"]

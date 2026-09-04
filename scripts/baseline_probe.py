@@ -26,7 +26,6 @@ from game_agent.worldpack import load_worldpack
 
 SAVE_DIR = Path("saves")
 PROBE_MAX_TOKENS = 500  # 探针提问输出预算：推理模型思考链占预算，120 会答空（上一轮教训）
-CKPT_PATH = SAVE_DIR / "baseline-checkpoint.json"  # 断点续跑检查点
 
 # 事实集：(id, 类别, 植入回合, 植入台词, 提问, 期望关键词)
 FACTS = [
@@ -124,12 +123,14 @@ def _probe(game: Game, llm: LLMClient, model: str, turn: int) -> dict:
     return results
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="长会话记忆腐化基线")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-turns", type=int, default=120)
-    parser.add_argument("--resume", action="store_true", help="从检查点断点续跑（saves/baseline-checkpoint.json）")
-    args = parser.parse_args()
+    parser.add_argument("--resume", action="store_true", help="从检查点断点续跑（saves/<out-prefix>-checkpoint.json）")
+    parser.add_argument("--out-prefix", default="baseline", help="报告/检查点文件名前缀（memory_regression 用 'memory-regression'）")
+    args = parser.parse_args(argv)
+    ckpt_path = SAVE_DIR / f"{args.out_prefix}-checkpoint.json"
 
     settings = load_settings()
     if not settings.has_api_key:
@@ -162,9 +163,9 @@ def main() -> int:
     resumed = False
 
     # 断点续跑：加载检查点（状态 + 历史 + rng + 已有检查点结果）
-    if args.resume and CKPT_PATH.exists():
+    if args.resume and ckpt_path.exists():
         try:
-            ckpt = json.loads(CKPT_PATH.read_text(encoding="utf-8"))
+            ckpt = json.loads(ckpt_path.read_text(encoding="utf-8"))
             if ckpt.get("meta", {}).get("seed") != args.seed:
                 print(f"[✗] 检查点 seed（{ckpt['meta']['seed']}）与当前（{args.seed}）不一致，无法续跑")
                 return 1
@@ -196,7 +197,7 @@ def main() -> int:
             "rng_state": list(rng.getstate()),
             "checkpoints": report["checkpoints"],
         }
-        CKPT_PATH.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        ckpt_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
     try:
         if not resumed:
@@ -259,11 +260,11 @@ def main() -> int:
 
     # 落盘
     SAVE_DIR.mkdir(exist_ok=True)
-    out_json = SAVE_DIR / "baseline-report.json"
+    out_json = SAVE_DIR / f"{args.out_prefix}-report.json"
     out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    out_md = SAVE_DIR / "baseline-report.md"
+    out_md = SAVE_DIR / f"{args.out_prefix}-report.md"
     lines = [
-        "# 长会话记忆腐化基线报告",
+        f"# 长会话记忆腐化报告（{args.out_prefix}）",
         "",
         f"- 模型：{settings.model} · seed：{args.seed} · 实际回合：{report['stopped_at_turn'] or turn}",
         f"- 协议重试：{report['protocol_retries']} · 熔断：{len(report['meltdowns'])}",
