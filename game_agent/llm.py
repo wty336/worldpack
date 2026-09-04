@@ -115,8 +115,9 @@ def build_tools(schedule: ScheduleSpec) -> list[dict]:
                 "name": "remember",
                 "description": (
                     "记录一条值得长期记住的关键事实（可选，只在出现重要事实时调用）。"
-                    "玩家的长期信息（身世/剑名/承诺/约定/喜好等）记到 target='player'；"
+                    "玩家的长期信息（身世/剑名/师承/喜好/承诺/约定等）记到 target='player'；"
                     "某个 NPC 对玩家的关键记忆记到 target=该 NPC 的 id。"
+                    "例：『玩家的剑名是听雨』『玩家答应帮老樵夫送柴』"
                 ),
                 "parameters": {
                     "type": "object",

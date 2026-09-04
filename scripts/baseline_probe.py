@@ -80,8 +80,12 @@ def _plant_line(turn: int) -> str | None:
     return None
 
 
-def _probe(game: Game, llm: LLMClient, model: str, turn: int) -> dict:
-    """独立调用：逐条提问当前已植入的事实（不进剧情历史）。"""
+def _probe(game: Game, llm: LLMClient, model: str, turn: int, with_status: bool = False) -> dict:
+    """独立调用：逐条提问当前已植入的事实（不进剧情历史）。
+
+    with_status=True：提问上下文经 build_messages 组装（含状态栏关键事实区块）
+    ——测的是真实游戏机制；False：只给纯历史（M1.5 基线协议，测历史本身的保持力）。
+    """
     results: dict[str, dict] = {}
     due = [f for f in FACTS if f[2] <= turn]
     for fid, _cat, _pt, _line, question, keywords in due:
@@ -89,7 +93,10 @@ def _probe(game: Game, llm: LLMClient, model: str, turn: int) -> dict:
         mode: str | None = None
         for use_tools in (False, True):
             try:
-                msgs = [game.builder.system_message, *game.history]
+                if with_status:
+                    msgs = game.builder.build_messages(game.state, game.history, None)
+                else:
+                    msgs = [game.builder.system_message, *game.history]
                 prompt = f"[记忆检查] {question}"
                 if use_tools:
                     prompt += "（请直接以文字回答，不要调用任何工具。）"
@@ -129,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-turns", type=int, default=120)
     parser.add_argument("--resume", action="store_true", help="从检查点断点续跑（saves/<out-prefix>-checkpoint.json）")
     parser.add_argument("--out-prefix", default="baseline", help="报告/检查点文件名前缀（memory_regression 用 'memory-regression'）")
+    parser.add_argument("--question-with-status", action="store_true",
+                        help="提问经状态栏组装（含关键事实区块，测真实游戏机制；默认只给纯历史）")
     args = parser.parse_args(argv)
     ckpt_path = SAVE_DIR / f"{args.out_prefix}-checkpoint.json"
 
@@ -211,7 +220,9 @@ def main(argv: list[str] | None = None) -> int:
             turn += 1
             if turn in CHECKPOINTS:
                 print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
-                report["checkpoints"][str(turn)] = _probe(game, llm, settings.model, turn)
+                report["checkpoints"][str(turn)] = _probe(
+                    game, llm, settings.model, turn, with_status=args.question_with_status
+                )
                 report["stopped_at_turn"] = turn
                 save_checkpoint()
             # 两轮对话
@@ -223,7 +234,9 @@ def main(argv: list[str] | None = None) -> int:
                 view = game.say(line)
                 if turn in CHECKPOINTS:
                     print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
-                    report["checkpoints"][str(turn)] = _probe(game, llm, settings.model, turn)
+                    report["checkpoints"][str(turn)] = _probe(
+                        game, llm, settings.model, turn, with_status=args.question_with_status
+                    )
                     report["stopped_at_turn"] = turn
                     save_checkpoint()
             game.end_day()

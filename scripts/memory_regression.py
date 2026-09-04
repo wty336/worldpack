@@ -17,4 +17,5 @@ if __name__ == "__main__":
     import sys
 
     argv = [a for a in sys.argv[1:] if not a.startswith("--out-prefix")]
-    raise SystemExit(probe_main(["--out-prefix", "memory-regression", *argv]))
+    # 经状态栏提问：测真实游戏机制（记忆显式化后，事实经状态栏/NPC 记忆注入）
+    raise SystemExit(probe_main(["--out-prefix", "memory-regression", "--question-with-status", *argv]))
