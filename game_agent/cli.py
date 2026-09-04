@@ -68,7 +68,7 @@ def _cmd_play(args: argparse.Namespace) -> int:
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
     # W-C：节点完成自动存档（引擎侧钩子）
-    game = Game(pack, state, llm, autosave_path=AUTOSAVE)
+    game = Game(pack, state, llm, autosave_path=AUTOSAVE, extract_every=2)
     # 流式显示：内容增量实时输出（修复"等很久才有反应"的体验）
     game.on_text = _make_stream_display(game)
     return _repl(game)

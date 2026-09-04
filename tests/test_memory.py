@@ -79,3 +79,30 @@ def test_serialization_roundtrip_with_memories():
     mem.add(state, "shen_qingqiu", "玩家曾为她解围")
     state2 = GameState.from_dict(state.to_dict())
     assert state2 == state
+
+
+# ---------------------------------------------------------------------------
+# 迭代 4：确定性提取兜底
+# ---------------------------------------------------------------------------
+
+
+def test_parse_facts_strips_numbering_and_noise():
+    from game_agent.memory import parse_facts
+
+    output = (
+        "1. 我的剑名『听雨』\n"
+        "2、我来自江南\n"
+        "无\n"
+        "- 我答应帮老樵夫送柴\n"
+        "\n"
+        "   \n"
+    )
+    facts = parse_facts(output)
+    assert facts == ["我的剑名『听雨』", "我来自江南", "我答应帮老樵夫送柴"]
+
+
+def test_parse_facts_caps_at_five():
+    from game_agent.memory import parse_facts
+
+    output = "\n".join(f"事实{i}" for i in range(1, 9))
+    assert len(parse_facts(output)) == 5

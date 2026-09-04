@@ -222,6 +222,13 @@ class LLMClient:
         self.model = model
         self.tools = tools
 
+    def complete(self, messages: list[dict], max_tokens: int = 400) -> str:
+        """无工具纯文本补全（M2a 事实提取器等侧信道用）。"""
+        resp = self._client.chat.completions.create(
+            model=self.model, messages=messages, max_tokens=max_tokens, stream=False
+        )
+        return resp.choices[0].message.content or ""
+
     def run_turn(
         self,
         messages: list[dict],

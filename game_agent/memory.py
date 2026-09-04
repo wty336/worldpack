@@ -13,11 +13,36 @@
 
 from __future__ import annotations
 
+import re
+
 from .state import GameState, MemoryEntry
 from .worldpack import WorldPack
 
 PLAYER_FACTS_LIMIT = 8  # 玩家事实常驻上限（状态栏区块，不宜过长）
 FACT_MAX_LEN = 120
+
+# 确定性提取兜底（M2a 迭代 4）：不依赖模型主动 remember，引擎强制提炼
+EXTRACT_SYSTEM = (
+    "你是事实提炼器。从给定的游戏回合内容中，提炼关于「玩家」的长期事实"
+    "（身份、来历、名字、剑名、师承、喜好、承诺、约定、托付等）。"
+    "只输出事实，每条一行，不要编号、不要解释；没有值得长期记住的事实就只输出「无」。"
+    "日常琐事（吃了什么、天气如何）不算事实。"
+)
+EXTRACT_MAX_FACTS = 5
+
+
+def parse_facts(output: str) -> list[str]:
+    """解析提炼输出为事实列表（容忍编号/项目符号/空行/「无」）。"""
+    facts: list[str] = []
+    for line in output.splitlines():
+        line = re.sub(r"^\s*[\d一二三四五]+[.、)）]\s*", "", line).strip()
+        line = line.lstrip("-*·•").strip()
+        if not line or line in ("无", "没有"):
+            continue
+        facts.append(line)
+        if len(facts) >= EXTRACT_MAX_FACTS:
+            break
+    return facts
 
 
 class MemoryError(Exception):

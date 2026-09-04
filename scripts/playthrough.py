@@ -81,7 +81,7 @@ def main() -> int:
     pack = load_worldpack("world-packs/ancient_jianghu")
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm, rng=random.Random(args.seed))
+    game = Game(pack, state, llm, rng=random.Random(args.seed), extract_every=2)
     transcript: list[str] = []
     print(f"model={settings.model} · 策略={args.strategy} · seed={args.seed} · 《{pack.world.name}》\n")
 

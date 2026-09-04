@@ -15,7 +15,7 @@ from pathlib import Path
 from .context import ContextBuilder
 from .events import EventSystem
 from .llm import LLMClient
-from .memory import MemorySystem
+from .memory import EXTRACT_SYSTEM, MemoryError, MemorySystem, parse_facts
 from .save import save_game
 from .schedule import ScheduleSystem
 from .state import GameState
@@ -51,6 +51,7 @@ class Game:
         rng: random.Random | None = None,
         autosave_path: str | Path | None = None,
         on_text=None,
+        extract_every: int = 0,  # M2a 迭代4：>0 时每 N 回合确定性提取玩家事实（0=关闭）
     ):
         self.pack = pack
         self.state = state
@@ -68,6 +69,7 @@ class Game:
         self.on_text = on_text  # 流式显示回调（CLI 注入）
         self.last_streamed: str = ""  # 本回合已流式显示的文本（供 CLI 去重）
         self.last_narration: str = ""  # 上一轮叙事（重复检测参照）
+        self.extract_every = extract_every  # M2a 迭代4：确定性提取间隔（0=关闭）
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -194,6 +196,9 @@ class Game:
         # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子；含对话历史）
         if outcome.node_completed is not None and self.autosave_path is not None:
             save_game(self.state, self.autosave_path, self.history)
+        # M2a 迭代4：确定性提取兜底（弥补 remember 主动性的覆盖缺口）
+        if self.extract_every > 0 and self.state.turn_count % self.extract_every == 0:
+            self._extract_facts()
         return TurnView(
             narration=result.narration,
             choices=filter_choices(self.pack, result.choices),
@@ -208,3 +213,42 @@ class Game:
     def _remember(self, args: dict) -> str:
         """remember 工具回调：模型提议 → MemorySystem 校验写入（M2a）。"""
         return self.memory.add(self.state, args["target"], args["fact"])
+
+    # ------------------------------------------------------------------
+    # M2a 迭代4：确定性提取兜底
+    # ------------------------------------------------------------------
+
+    def _extract_facts(self) -> None:
+        """从最近回合内容强制提炼玩家长期事实（侧信道：失败静默降级，不影响主线）。"""
+        recent = self._recent_text()
+        if not recent.strip():
+            return
+        try:
+            output = self.llm.complete(
+                [
+                    {"role": "system", "content": EXTRACT_SYSTEM},
+                    {"role": "user", "content": recent},
+                ],
+                max_tokens=400,
+            )
+        except Exception:  # noqa: BLE001
+            return  # 提取失败不影响叙事主线
+        for fact in parse_facts(output):
+            try:
+                self.memory.add(self.state, "player", fact)
+            except MemoryError:
+                continue  # 超长/非法事实直接丢弃
+
+    def _recent_text(self) -> str:
+        """最近 8 条历史中的玩家发言与叙事（跳过引擎元消息【…】）。"""
+        lines: list[str] = []
+        for m in self.history[-8:]:
+            role = m.get("role")
+            content = (m.get("content") or "").strip()
+            if not content or content.startswith("【"):
+                continue
+            if role == "user":
+                lines.append(f"玩家：{content}")
+            elif role == "assistant":
+                lines.append(f"叙事：{content}")
+        return "\n".join(lines)

@@ -181,6 +181,26 @@ def test_remember_writes_memories_and_status():
     assert "剑名『听雨』" in game.status_text()
 
 
+def test_extraction_adds_player_facts_every_n_turns():
+    """M2a 迭代4：确定性提取兜底——不依赖模型主动 remember，每 N 回合强制提炼。"""
+    EXTRACT = resp(msg(content="1. 我的剑名『听雨』\n2. 我来自江南\n"))
+    pack, state, game = _game(
+        [
+            resp(msg(tool_calls=[SUBMIT])),  # 回合 1 叙事（无提取）
+            resp(msg(tool_calls=[SUBMIT])),  # 回合 2 叙事
+            EXTRACT,  # 回合 2 结束后的提取调用
+        ],
+        mutate=_n1_done,
+        rng=_NeverRng(),
+    )
+    game.extract_every = 2
+    game.say("第一句")
+    game.say("第二句")
+    facts = [m.fact for m in state.player_facts]
+    assert any("听雨" in f for f in facts)
+    assert any("江南" in f for f in facts)
+
+
 def test_save_load_preserves_history(tmp_path: Path):
     """存档含对话历史：读档后 NPC 不失忆（试玩发现的存读档缺口）。"""
     pack, state, game = _game([resp(msg(tool_calls=[SUBMIT]))])

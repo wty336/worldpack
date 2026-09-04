@@ -138,7 +138,7 @@ RECALL_QUESTION = (
     "请回忆并列出你目前记录的全部关键事实（玩家事实与各 NPC 对玩家的记忆），"
     "逐条分行列出，不要遗漏。"
 )
-RECALL_MAX_TOKENS = 2000
+RECALL_MAX_TOKENS = 4000  # 召回列表较长，2000 会截断（迭代 3 回合 80 的 67% 即截断所致）
 
 
 def _recalled(fact: str, answer: str) -> bool:
@@ -229,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     rng = random.Random(args.seed)
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm, rng=rng)
+    game = Game(pack, state, llm, rng=rng, extract_every=2)
     print(f"model={settings.model} · seed={args.seed} · 目标 {args.max_turns} 回合 · 《{pack.world.name}》\n")
 
     report = {
