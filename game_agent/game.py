@@ -186,9 +186,9 @@ class Game:
         self.history = result.messages
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
-        # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子）
+        # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子；含对话历史）
         if outcome.node_completed is not None and self.autosave_path is not None:
-            save_game(self.state, self.autosave_path)
+            save_game(self.state, self.autosave_path, self.history)
         return TurnView(
             narration=result.narration,
             choices=filter_choices(self.pack, result.choices),

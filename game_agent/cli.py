@@ -14,7 +14,7 @@ from pathlib import Path
 from .config import load_settings
 from .game import Game
 from .llm import LLMClient, LLMTurnError, build_tools, make_client
-from .save import load_game, save_game
+from .save import load_game, load_history, save_game
 from .state import GameState
 from .worldpack import WorldPackError, load_worldpack
 
@@ -101,10 +101,10 @@ def _crash_save(game: Game, reason: str) -> None:
     """崩溃兜底：保存进度 + 错误日志，优雅退出而非裸 traceback。"""
     print(f"\n[!] 游戏中断：{reason}")
     try:
-        save_game(game.state, "saves/crash.json")
+        save_game(game.state, "saves/crash.json", game.history)
         print(
-            "已保存进度 → saves/crash.json（数值与剧情状态已保留；重新运行后 /load 可继续，"
-            "但对话历史会重置）"
+            "已保存进度 → saves/crash.json（数值、剧情状态与对话历史均已保留；"
+            "重新运行后 /load 可无缝继续）"
         )
     except Exception:  # noqa: BLE001
         pass
@@ -148,12 +148,12 @@ def _repl(game: Game) -> int:
                         path = raw.partition(" ")[2].strip() or DEFAULT_SAVE
                         try:
                             game.state = load_game(path)
+                            game.history = load_history(path)  # 恢复对话历史，NPC 不失忆
                         except (FileNotFoundError, ValueError) as e:
                             print(f"[✗] 读档失败: {e}")
                             continue
-                        game.history = []
                         game.ending = None
-                        print(f"已读档 ← {path}")
+                        print(f"已读档 ← {path}（含对话历史）")
                         view = _action_phase(game)
                         break
                     if raw.startswith("/new"):
@@ -257,18 +257,18 @@ def _handle_command(game: Game, raw: str) -> str | None:
             print(f"  {i}. {a.label}")
     elif cmd == "/save":
         path = arg.strip() or DEFAULT_SAVE
-        save_game(game.state, path)
-        print(f"已存档 → {path}")
+        save_game(game.state, path, game.history)
+        print(f"已存档 → {path}（数值、剧情状态与对话历史）")
     elif cmd == "/load":
         path = arg.strip() or DEFAULT_SAVE
         try:
             game.state = load_game(path)
+            game.history = load_history(path)  # 恢复对话历史，NPC 不失忆
         except (FileNotFoundError, ValueError) as e:
             print(f"[✗] 读档失败: {e}")
             return None
-        game.history = []
         game.ending = None
-        print(f"已读档 ← {path}")
+        print(f"已读档 ← {path}（含对话历史）")
         return "action"
     elif cmd == "/new":
         game.state = GameState.from_pack(game.pack)

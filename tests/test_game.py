@@ -10,7 +10,7 @@ from fakes import FakeClient, msg, resp, tool_call
 
 from game_agent.game import Game, GameError
 from game_agent.llm import LLMClient, build_tools
-from game_agent.save import load_game, save_game
+from game_agent.save import load_game, load_history, save_game
 from game_agent.schedule import ScheduleError
 from game_agent.state import GameState
 from game_agent.storyline import FREE_INPUT_OPTION
@@ -166,6 +166,24 @@ def test_save_load_roundtrip(tmp_path: Path):
     save_game(state, path)
     loaded = load_game(path)
     assert loaded == state
+
+
+def test_save_load_preserves_history(tmp_path: Path):
+    """存档含对话历史：读档后 NPC 不失忆（试玩发现的存读档缺口）。"""
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT]))])
+    game.start()
+    game.pick(0)
+    path = tmp_path / "save.json"
+    save_game(state, path, game.history)
+    # 历史包含节点任务卡与叙事消息
+    history = load_history(path)
+    assert any(m["role"] == "assistant" for m in history)
+    assert history == game.history
+    # 旧版存档（无 history）读历史返回空列表，读状态正常
+    legacy = tmp_path / "legacy.json"
+    save_game(state, legacy)
+    assert load_history(legacy) == []
+    assert load_game(legacy) == state
 
 
 # ---------------------------------------------------------------------------
