@@ -18,7 +18,7 @@ import re
 from .state import GameState, MemoryEntry
 from .worldpack import WorldPack
 
-PLAYER_FACTS_LIMIT = 8  # 玩家事实常驻上限（状态栏区块，不宜过长）
+PLAYER_FACTS_LIMIT = 24  # 玩家事实常驻上限（迭代5：8 会被提取流倒腾清空，24 才能留住早期事实）
 FACT_MAX_LEN = 120
 
 # 确定性提取兜底（M2a 迭代 4）：不依赖模型主动 remember，引擎强制提炼
@@ -26,7 +26,8 @@ EXTRACT_SYSTEM = (
     "你是事实提炼器。从给定的游戏回合内容中，提炼关于「玩家」的长期事实"
     "（身份、来历、名字、剑名、师承、喜好、承诺、约定、托付等）。"
     "只输出事实，每条一行，不要编号、不要解释；没有值得长期记住的事实就只输出「无」。"
-    "日常琐事（吃了什么、天气如何）不算事实。"
+    "日常琐事（吃了什么、天气如何）不算事实；剧情进展的瞬时状态也不算。"
+    "「已有事实」中已经存在的（含近义改写）不要重复输出。"
 )
 EXTRACT_MAX_FACTS = 5
 

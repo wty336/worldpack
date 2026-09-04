@@ -223,11 +223,13 @@ class Game:
         recent = self._recent_text()
         if not recent.strip():
             return
+        existing = "；".join(m.fact for m in self.state.player_facts)
+        user_content = f"已有事实：{existing}\n\n<回合内容>\n{recent}\n</回合内容>"
         try:
             output = self.llm.complete(
                 [
                     {"role": "system", "content": EXTRACT_SYSTEM},
-                    {"role": "user", "content": recent},
+                    {"role": "user", "content": user_content},
                 ],
                 max_tokens=400,
             )
