@@ -25,6 +25,8 @@ from game_agent.state import GameState
 from game_agent.worldpack import load_worldpack
 
 SAVE_DIR = Path("saves")
+PROBE_MAX_TOKENS = 500  # 探针提问输出预算：推理模型思考链占预算，120 会答空（上一轮教训）
+CKPT_PATH = SAVE_DIR / "baseline-checkpoint.json"  # 断点续跑检查点
 
 # 事实集：(id, 类别, 植入回合, 植入台词, 提问, 期望关键词)
 FACTS = [
@@ -84,37 +86,29 @@ def _probe(game: Game, llm: LLMClient, model: str, turn: int) -> dict:
     results: dict[str, dict] = {}
     due = [f for f in FACTS if f[2] <= turn]
     for fid, _cat, _pt, _line, question, keywords in due:
-        messages = [
-            game.builder.system_message,
-            *game.history,
-            {"role": "user", "content": f"[记忆检查] {question}"},
-        ]
         answer: str | None = None
+        mode: str | None = None
         for use_tools in (False, True):
             try:
-                kwargs = dict(model=model, messages=messages, max_tokens=120, stream=False)
+                msgs = [game.builder.system_message, *game.history]
+                prompt = f"[记忆检查] {question}"
                 if use_tools:
-                    kwargs.update(
-                        dict(
-                            tools=llm.tools,
-                            tool_choice="auto",
-                            max_tokens=200,
-                            messages=[
-                                game.builder.system_message,
-                                *game.history,
-                                {
-                                    "role": "user",
-                                    "content": f"[记忆检查] {question}"
-                                    "（请直接以文字回答，不要调用任何工具。）",
-                                },
-                            ],
-                        )
-                    )
+                    prompt += "（请直接以文字回答，不要调用任何工具。）"
+                kwargs = dict(
+                    model=model,
+                    messages=[*msgs, {"role": "user", "content": prompt}],
+                    max_tokens=PROBE_MAX_TOKENS,
+                    stream=False,
+                )
+                if use_tools:
+                    kwargs.update(dict(tools=llm.tools, tool_choice="auto"))
                 resp = llm._client.chat.completions.create(**kwargs)
                 msg = resp.choices[0].message
+                mode = "with_tools" if use_tools else "no_tools"
                 if getattr(msg, "tool_calls", None):
                     results[fid] = {
                         "correct": False,
+                        "mode": mode,
                         "answer": f"[tool_calls: {[tc.function.name for tc in msg.tool_calls]}]",
                     }
                     break
@@ -123,10 +117,10 @@ def _probe(game: Game, llm: LLMClient, model: str, turn: int) -> dict:
             except Exception as e:  # noqa: BLE001
                 last_err = f"{type(e).__name__}"
         if answer is None:
-            results[fid] = {"correct": False, "answer": f"[error: {last_err}]"}
+            results[fid] = {"correct": False, "mode": mode, "answer": f"[error: {last_err}]"}
         else:
             correct = any(k in answer for k in keywords)
-            results[fid] = {"correct": correct, "answer": answer.strip()[:100]}
+            results[fid] = {"correct": correct, "mode": mode, "answer": answer.strip()[:100]}
     return results
 
 
@@ -134,6 +128,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="长会话记忆腐化基线")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-turns", type=int, default=120)
+    parser.add_argument("--resume", action="store_true", help="从检查点断点续跑（saves/baseline-checkpoint.json）")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -142,9 +137,10 @@ def main() -> int:
         return 1
 
     pack = load_worldpack("world-packs/baseline_probe")
+    rng = random.Random(args.seed)
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm, rng=random.Random(args.seed))
+    game = Game(pack, state, llm, rng=rng)
     print(f"model={settings.model} · seed={args.seed} · 目标 {args.max_turns} 回合 · 《{pack.world.name}》\n")
 
     report = {
@@ -163,9 +159,51 @@ def main() -> int:
 
     turn = 0
     day = 1
+    resumed = False
+
+    # 断点续跑：加载检查点（状态 + 历史 + rng + 已有检查点结果）
+    if args.resume and CKPT_PATH.exists():
+        try:
+            ckpt = json.loads(CKPT_PATH.read_text(encoding="utf-8"))
+            if ckpt.get("meta", {}).get("seed") != args.seed:
+                print(f"[✗] 检查点 seed（{ckpt['meta']['seed']}）与当前（{args.seed}）不一致，无法续跑")
+                return 1
+            game.state = GameState.from_dict(ckpt["state"])
+            game.history = ckpt["history"]
+            rng.setstate(tuple(ckpt["rng_state"]))
+            turn = ckpt["turn"]
+            day = ckpt["day"]
+            report["checkpoints"] = ckpt["checkpoints"]
+            # 检查点可能落在"行动点耗尽"时刻（行动后/对话后）：先结束当天，
+            # 保证续跑从行动点充足的新一天开始（否则循环第一句 act 会抛行动点不足）
+            if game.state.action_points_left == 0:
+                game.end_day()
+                day += 1
+            resumed = True
+            print(f"[✓] 断点续跑：从回合 {turn} 继续（{len(report['checkpoints'])} 个检查点已保留）")
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"[✗] 检查点损坏，无法续跑: {e}")
+            return 1
+
+    def save_checkpoint() -> None:
+        SAVE_DIR.mkdir(exist_ok=True)
+        data = {
+            "meta": {"seed": args.seed, "model": settings.model},
+            "turn": turn,
+            "day": day,
+            "state": game.state.to_dict(),
+            "history": game.history,
+            "rng_state": list(rng.getstate()),
+            "checkpoints": report["checkpoints"],
+        }
+        CKPT_PATH.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
     try:
-        view = game.start()
-        turn += 1
+        if not resumed:
+            view = game.start()
+            turn += 1
+        else:
+            view = None  # 续跑不重复开场；直接进入下一回合
         while turn < args.max_turns:
             # 日程行动
             view = game.act("visit_shen")
@@ -174,6 +212,7 @@ def main() -> int:
                 print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
                 report["checkpoints"][str(turn)] = _probe(game, llm, settings.model, turn)
                 report["stopped_at_turn"] = turn
+                save_checkpoint()
             # 两轮对话
             for _ in range(2):
                 if turn >= args.max_turns:
@@ -185,16 +224,25 @@ def main() -> int:
                     print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
                     report["checkpoints"][str(turn)] = _probe(game, llm, settings.model, turn)
                     report["stopped_at_turn"] = turn
+                    save_checkpoint()
             game.end_day()
             day += 1
             if turn % 10 == 0:
-                print(f"[进度] 回合 {turn}/{args.max_turns} · 好感 {state.affections['shen_qingqiu']:.0f}")
+                print(
+                    f"[进度] 回合 {turn}/{args.max_turns} · "
+                    f"好感 {game.state.affections['shen_qingqiu']:.0f}"
+                )
+                save_checkpoint()
     except LLMTurnError as e:
         report["meltdowns"].append({"turn": turn, "error": str(e)})
         print(f"[✗] 协议熔断于回合 {turn}: {e}")
     except Exception as e:  # noqa: BLE001
         report["meltdowns"].append({"turn": turn, "error": f"{type(e).__name__}: {e}"})
         print(f"[✗] 异常于回合 {turn}: {type(e).__name__}: {e}")
+        save_checkpoint()  # 异常也落检查点，可续跑
+
+    if report["stopped_at_turn"] is None:
+        report["stopped_at_turn"] = turn
 
     # 汇总
     summary = {}
