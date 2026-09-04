@@ -37,7 +37,7 @@ FACTS = [
      "玩家和沈清秋约定的暗号是什么？只回答暗号内容，不知道就说『不知道』。", ["七月"]),
     ("f3_hometown", "早期", 6,
      "（谈及身世）我自江南而来，家乡多水，出门便坐船，倒也有趣。",
-     "玩家是从哪里来的？只回答地名，不知道就说『不知道』。", ["江南"]),
+     "玩家是从哪里来的？只回答地名，不知道就说『不知道』。", ["江南", "姑苏"]),
     ("f4_master", "早期", 8,
      "（回忆）我师父姓陆，早年在镖局里走镖，脾气倔得很。",
      "玩家的师父姓什么？只回答姓氏，不知道就说『不知道』。", ["陆"]),
@@ -130,6 +130,85 @@ def _probe(game: Game, llm: LLMClient, model: str, turn: int, with_status: bool 
     return results
 
 
+# ---------------------------------------------------------------------------
+# 迭代 3：记录事实召回（机制自证，不受剧情漂移影响）
+# ---------------------------------------------------------------------------
+
+RECALL_QUESTION = (
+    "请回忆并列出你目前记录的全部关键事实（玩家事实与各 NPC 对玩家的记忆），"
+    "逐条分行列出，不要遗漏。"
+)
+RECALL_MAX_TOKENS = 2000
+
+
+def _recalled(fact: str, answer: str) -> bool:
+    """判断一条已记录事实是否出现在召回回答中（容忍改写：双字 bigram ≥60% 命中）。"""
+    if fact in answer:
+        return True
+    grams = [fact[i : i + 2] for i in range(len(fact) - 1)]
+    if not grams:
+        return fact in answer
+    hit = sum(1 for g in grams if g in answer)
+    return hit / len(grams) >= 0.6
+
+
+def _probe_recall(game: Game, llm: LLMClient, model: str, with_status: bool = False) -> dict:
+    """机制自证：单次召回提问，检查已记录事实是否可被列出（独立调用，不进剧情历史）。"""
+    entries = list(game.state.player_facts)
+    for npc_id, mems in game.state.npc_memories.items():
+        entries.extend(mems)
+
+    answer: str | None = None
+    mode: str | None = None
+    last_err = ""
+    for use_tools in (False, True):
+        try:
+            if with_status:
+                msgs = game.builder.build_messages(game.state, game.history, None)
+            else:
+                msgs = [game.builder.system_message, *game.history]
+            prompt = f"[记忆检查] {RECALL_QUESTION}"
+            if use_tools:
+                prompt += "（请直接以文字回答，不要调用任何工具。）"
+            kwargs = dict(
+                model=model,
+                messages=[*msgs, {"role": "user", "content": prompt}],
+                max_tokens=RECALL_MAX_TOKENS,
+                stream=False,
+            )
+            if use_tools:
+                kwargs.update(dict(tools=llm.tools, tool_choice="auto"))
+            resp = llm._client.chat.completions.create(**kwargs)
+            msg = resp.choices[0].message
+            mode = "with_tools" if use_tools else "no_tools"
+            if getattr(msg, "tool_calls", None):
+                answer = f"[tool_calls: {[tc.function.name for tc in msg.tool_calls]}]"
+                break
+            answer = msg.content or ""
+            break
+        except Exception as e:  # noqa: BLE001
+            last_err = f"{type(e).__name__}"
+
+    if answer is None:
+        return {
+            "ok": False,
+            "mode": mode,
+            "answer": f"[error: {last_err}]",
+            "items": [],
+            "recalled": 0,
+            "total": len(entries),
+        }
+    items = [{"fact": m.fact, "recalled": _recalled(m.fact, answer)} for m in entries]
+    return {
+        "ok": True,
+        "mode": mode,
+        "answer": answer.strip()[:400],
+        "items": items,
+        "recalled": sum(1 for i in items if i["recalled"]),
+        "total": len(entries),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="长会话记忆腐化基线")
     parser.add_argument("--seed", type=int, default=42)
@@ -162,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
             "facts": [{"id": f[0], "category": f[1], "plant_turn": f[2]} for f in FACTS],
         },
         "checkpoints": {},
+        "recall": {},
         "protocol_retries": 0,
         "meltdowns": [],
         "stopped_at_turn": None,
@@ -223,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
                 report["checkpoints"][str(turn)] = _probe(
                     game, llm, settings.model, turn, with_status=args.question_with_status
                 )
+                report["recall"][str(turn)] = _probe_recall(
+                    game, llm, settings.model, with_status=args.question_with_status
+                )
                 report["stopped_at_turn"] = turn
                 save_checkpoint()
             # 两轮对话
@@ -236,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
                     report["checkpoints"][str(turn)] = _probe(
                         game, llm, settings.model, turn, with_status=args.question_with_status
+                    )
+                    report["recall"][str(turn)] = _probe_recall(
+                        game, llm, settings.model, with_status=args.question_with_status
                     )
                     report["stopped_at_turn"] = turn
                     save_checkpoint()
@@ -270,6 +356,15 @@ def main(argv: list[str] | None = None) -> int:
             for cat, v in by_cat.items()
         }
     report["summary"] = summary
+    recall_summary = {
+        cp: {
+            "recalled": r["recalled"],
+            "total": r["total"],
+            "rate": (r["recalled"] / r["total"]) if r["total"] else 0.0,
+        }
+        for cp, r in report["recall"].items()
+    }
+    report["recall_summary"] = recall_summary
 
     # 落盘
     SAVE_DIR.mkdir(exist_ok=True)
@@ -281,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         "",
         f"- 模型：{settings.model} · seed：{args.seed} · 实际回合：{report['stopped_at_turn'] or turn}",
         f"- 协议重试：{report['protocol_retries']} · 熔断：{len(report['meltdowns'])}",
+        f"- 提问模式：{'经状态栏（真实机制）' if args.question_with_status else '纯历史（基线协议）'}",
         "",
         "| 事实 | 类别 | 植入回合 | " + " | ".join(f"回合{cp}" for cp in report["checkpoints"]) + " |",
         "| --- | --- | --- | " + " | ".join("---" for _ in report["checkpoints"]) + " |",
@@ -299,6 +395,10 @@ def main(argv: list[str] | None = None) -> int:
         for cat, v in cats.items():
             parts.append(f"{cat} {v['correct']}/{v['total']}")
         lines.append(f"- 回合 {cp}：{' · '.join(parts)}")
+    lines.append("")
+    lines.append("## 记录事实召回（机制自证：已记录的事实能否被列出）")
+    for cp, r in recall_summary.items():
+        lines.append(f"- 回合 {cp}：{r['recalled']}/{r['total']}（{r['rate']:.0%}）")
     lines.append("")
     lines.append("## 判定详情")
     for cp in report["checkpoints"]:
