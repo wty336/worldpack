@@ -12,8 +12,20 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from .compression import (
+    COMPRESS_SYSTEM,
+    SUMMARY_MARK,
+    SUMMARY_MAX_TARGET,
+    ensure_pairing,
+    find_turn_cut,
+    history_text,
+    history_tokens,
+    locate_summary,
+    rebuild_history,
+)
 from .context import ContextBuilder
 from .events import EventSystem
+from .judge import JudgeSystem
 from .llm import LLMClient
 from .memory import EXTRACT_SYSTEM, MemoryError, MemorySystem, parse_facts
 from .save import save_game
@@ -52,6 +64,9 @@ class Game:
         autosave_path: str | Path | None = None,
         on_text=None,
         extract_every: int = 0,  # M2a 迭代4：>0 时每 N 回合确定性提取玩家事实（0=关闭）
+        compress_threshold: int = 0,  # M2b：历史 token 估算超此阈值时批量压缩（0=关闭）
+        keep_turns: int = 6,  # M2b：压缩时保留的近窗回合数
+        judge_every: int = 0,  # M2b：>0 时每 N 回合做一次语义校验（0=关闭）
     ):
         self.pack = pack
         self.state = state
@@ -70,6 +85,10 @@ class Game:
         self.last_streamed: str = ""  # 本回合已流式显示的文本（供 CLI 去重）
         self.last_narration: str = ""  # 上一轮叙事（重复检测参照）
         self.extract_every = extract_every  # M2a 迭代4：确定性提取间隔（0=关闭）
+        self.compress_threshold = compress_threshold  # M2b 压缩阈值
+        self.keep_turns = keep_turns  # M2b 压缩近窗
+        self.judge_every = judge_every  # M2b 语义校验间隔（0=关闭）
+        self.judge = JudgeSystem(llm)  # M2b
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -183,6 +202,9 @@ class Game:
             )
 
     def _llm_round(self) -> TurnView:
+        # M2b 压缩：接近阈值时批量压缩（只碰历史，不碰静态前缀与事实区块）
+        if self.compress_threshold > 0 and history_tokens(self.history) > self.compress_threshold:
+            self._compress_history()
         messages = self.builder.build_messages(
             self.state, self.history, self.story.active_node(self.state)
         )
@@ -190,7 +212,9 @@ class Game:
         result = self.llm.run_turn(
             messages, self._apply_change, on_text=self.on_text, remember=self._remember
         )
-        self.history = result.messages
+        # run_turn 返回的消息含 system 前缀；历史只保留对话部分，
+        # 否则下轮 build_messages 会把 system 重复注入（压缩测试抓到的潜伏 bug）
+        self.history = [m for m in result.messages if m.get("role") != "system"]
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
         # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子；含对话历史）
@@ -199,6 +223,9 @@ class Game:
         # M2a 迭代4：确定性提取兜底（弥补 remember 主动性的覆盖缺口）
         if self.extract_every > 0 and self.state.turn_count % self.extract_every == 0:
             self._extract_facts()
+        # M2b 语义校验：每 N 回合检查最新叙事，失败注入下轮修正提示
+        if self.judge_every > 0 and self.state.turn_count % self.judge_every == 0:
+            self._judge_turn(result.narration)
         return TurnView(
             narration=result.narration,
             choices=filter_choices(self.pack, result.choices),
@@ -254,3 +281,65 @@ class Game:
             elif role == "assistant":
                 lines.append(f"叙事：{content}")
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # M2b：压缩 + 语义校验
+    # ------------------------------------------------------------------
+
+    def _compress_history(self) -> None:
+        """增量压缩：总结上次摘要之后的新增部分，与旧摘要合并，保留近窗。"""
+        cut = find_turn_cut(self.history, self.keep_turns)
+        if cut <= 0:
+            return
+        summary_idx = locate_summary(self.history)
+        old_start = summary_idx + 1 if summary_idx >= 0 else 0
+        new_part = self.history[old_start:cut]
+        if not new_part:
+            return  # 上次压缩后新增不足，跳过
+        existing = (
+            str(self.history[summary_idx].get("content") or "").replace(SUMMARY_MARK, "").strip()
+            if summary_idx >= 0
+            else ""
+        )
+        try:
+            merged = self.llm.complete(
+                [
+                    {
+                        "role": "system",
+                        "content": COMPRESS_SYSTEM.format(target=SUMMARY_MAX_TARGET),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"<旧摘要>\n{existing}\n</旧摘要>\n\n<新增历史>\n"
+                        f"{history_text(new_part)}\n</新增历史>",
+                    },
+                ],
+                max_tokens=2000,
+            )
+        except Exception:  # noqa: BLE001
+            return  # 压缩失败静默降级：保留原历史，下回合重试
+        if not merged.strip():
+            return
+        rebuilt = rebuild_history(self.history, summary_idx, merged.strip(), cut)
+        if not ensure_pairing(rebuilt):
+            return  # 兜底：重建后配对不变量不成立则放弃本次压缩
+        self.history = rebuilt
+
+    def _judge_turn(self, narration: str) -> None:
+        """语义校验：失败则注入下轮修正提示（侧信道，失败静默）。"""
+        if not narration:
+            return
+        materials = self.builder.status_text(
+            self.state, self.story.active_node(self.state)
+        )
+        ok, verdict = self.judge.check(narration, materials)
+        if not ok and verdict:
+            self.history.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"【校验反馈】上一轮叙事存在质量问题：{verdict}\n"
+                        "请在后续叙事中自然修正，避免重复此类问题。"
+                    ),
+                }
+            )

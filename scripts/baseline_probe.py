@@ -19,6 +19,7 @@ import random
 from pathlib import Path
 
 from game_agent.config import load_settings
+from game_agent.compression import history_tokens, locate_summary
 from game_agent.game import Game
 from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
 from game_agent.state import GameState
@@ -61,7 +62,7 @@ FACTS = [
      "玩家约沈清秋去哪里？只回答地点，不知道就说『不知道』。", ["大慈恩寺"]),
 ]
 
-CHECKPOINTS = [40, 80, 120]
+DEFAULT_CHECKPOINTS = [40, 80, 120]
 
 GENERIC_LINES = [
     "（闲谈）今日天气不错，我晨起在院中练了趟剑。",
@@ -217,7 +218,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-prefix", default="baseline", help="报告/检查点文件名前缀（memory_regression 用 'memory-regression'）")
     parser.add_argument("--question-with-status", action="store_true",
                         help="提问经状态栏组装（含关键事实区块，测真实游戏机制；默认只给纯历史）")
+    parser.add_argument("--checkpoints", default="40,80,120", help="逗号分隔的检查点回合")
+    parser.add_argument("--compress-threshold", type=int, default=0, help="M2b：历史 token 估算压缩阈值（0=关闭）")
+    parser.add_argument("--keep-turns", type=int, default=6, help="M2b：压缩保留的近窗回合数")
+    parser.add_argument("--judge-every", type=int, default=0, help="M2b：每 N 回合语义校验（0=关闭）")
     args = parser.parse_args(argv)
+    checkpoints = [int(x) for x in args.checkpoints.split(",") if x.strip()]
     ckpt_path = SAVE_DIR / f"{args.out_prefix}-checkpoint.json"
 
     settings = load_settings()
@@ -229,7 +235,12 @@ def main(argv: list[str] | None = None) -> int:
     rng = random.Random(args.seed)
     state = GameState.from_pack(pack)
     llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
-    game = Game(pack, state, llm, rng=rng, extract_every=2)
+    game = Game(
+        pack, state, llm, rng=rng, extract_every=2,
+        compress_threshold=args.compress_threshold,
+        keep_turns=args.keep_turns,
+        judge_every=args.judge_every,
+    )
     print(f"model={settings.model} · seed={args.seed} · 目标 {args.max_turns} 回合 · 《{pack.world.name}》\n")
 
     report = {
@@ -237,11 +248,15 @@ def main(argv: list[str] | None = None) -> int:
             "seed": args.seed,
             "model": settings.model,
             "max_turns": args.max_turns,
-            "checkpoints": list(CHECKPOINTS),
+            "checkpoints": list(checkpoints),
             "facts": [{"id": f[0], "category": f[1], "plant_turn": f[2]} for f in FACTS],
+            "compress_threshold": args.compress_threshold,
+            "keep_turns": args.keep_turns,
+            "judge_every": args.judge_every,
         },
         "checkpoints": {},
         "recall": {},
+        "cost_curve": {},  # M2b：每 20 回合取样（历史 token 估算/消息数/摘要长度）
         "protocol_retries": 0,
         "meltdowns": [],
         "stopped_at_turn": None,
@@ -298,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             # 日程行动
             view = game.act("visit_shen")
             turn += 1
-            if turn in CHECKPOINTS:
+            if turn in checkpoints:
                 print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
                 report["checkpoints"][str(turn)] = _probe(
                     game, llm, settings.model, turn, with_status=args.question_with_status
@@ -315,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
                 turn += 1
                 line = _plant_line(turn) or GENERIC_LINES[(turn + day) % len(GENERIC_LINES)]
                 view = game.say(line)
-                if turn in CHECKPOINTS:
+                if turn in checkpoints:
                     print(f"[检查点] 回合 {turn} · 提问 {len([f for f in FACTS if f[2] <= turn])} 条事实……")
                     report["checkpoints"][str(turn)] = _probe(
                         game, llm, settings.model, turn, with_status=args.question_with_status
@@ -327,6 +342,18 @@ def main(argv: list[str] | None = None) -> int:
                     save_checkpoint()
             game.end_day()
             day += 1
+            if turn % 20 == 0:
+                # M2b 成本曲线取样：压缩生效则历史 token 估算不再线性增长
+                summary_idx = locate_summary(game.history)
+                report["cost_curve"][str(turn)] = {
+                    "history_tokens": history_tokens(game.history),
+                    "message_count": len(game.history),
+                    "summary_chars": (
+                        len(str(game.history[summary_idx].get("content") or ""))
+                        if summary_idx >= 0
+                        else 0
+                    ),
+                }
             if turn % 10 == 0:
                 print(
                     f"[进度] 回合 {turn}/{args.max_turns} · "
@@ -400,6 +427,14 @@ def main(argv: list[str] | None = None) -> int:
     for cp, r in recall_summary.items():
         lines.append(f"- 回合 {cp}：{r['recalled']}/{r['total']}（{r['rate']:.0%}）")
     lines.append("")
+    if report["cost_curve"]:
+        lines.append("## 成本曲线（M2b：压缩生效则历史 token 估算不再线性增长）")
+        for turn_, c in report["cost_curve"].items():
+            lines.append(
+                f"- 回合 {turn_}：历史 ≈ {c['history_tokens']} token · "
+                f"{c['message_count']} 条消息 · 摘要 {c['summary_chars']} 字"
+            )
+        lines.append("")
     lines.append("## 判定详情")
     for cp in report["checkpoints"]:
         lines.append(f"\n### 回合 {cp}")
