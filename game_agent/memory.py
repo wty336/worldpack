@@ -33,12 +33,13 @@ EXTRACT_MAX_FACTS = 5
 
 
 def parse_facts(output: str) -> list[str]:
-    """解析提炼输出为事实列表（容忍编号/项目符号/空行/「无」）。"""
+    """解析提炼输出为事实列表（容忍编号/项目符号/空行/「无」哨兵及其标点变体）。"""
     facts: list[str] = []
     for line in output.splitlines():
         line = re.sub(r"^\s*[\d一二三四五]+[.、)）]\s*", "", line).strip()
         line = line.lstrip("-*·•").strip()
-        if not line or line in ("无", "没有"):
+        core = line.rstrip("。.！!，,；;：: ")
+        if not core or core == "无" or core == "没有":
             continue
         facts.append(line)
         if len(facts) >= EXTRACT_MAX_FACTS:

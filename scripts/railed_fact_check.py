@@ -64,7 +64,10 @@ def main() -> int:
         print(f"从存档复查（第 {state.day} 天）\n")
     else:
         state = GameState.from_pack(pack)
-        game = Game(pack, state, llm, rng=random.Random(args.seed), extract_every=2)
+        game = Game(
+            pack, state, llm, rng=random.Random(args.seed),
+            extract_every=2, compress_threshold=30000, judge_every=5,  # M2a/M2b 长局引擎
+        )
         print(f"model={settings.model} · seed={args.seed} · 《{pack.world.name}》（带主线轨道）\n")
         try:
             view = game.start()

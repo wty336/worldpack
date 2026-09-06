@@ -93,12 +93,15 @@ def test_parse_facts_strips_numbering_and_noise():
         "1. 我的剑名『听雨』\n"
         "2、我来自江南\n"
         "无\n"
+        "无。\n"  # 哨兵带句号也必须被过滤（300 轮运行抓到的幽灵事实）
+        "没有\n"
         "- 我答应帮老樵夫送柴\n"
         "\n"
         "   \n"
     )
     facts = parse_facts(output)
     assert facts == ["我的剑名『听雨』", "我来自江南", "我答应帮老樵夫送柴"]
+    assert all("无" not in f or len(f) > 1 for f in facts)
 
 
 def test_parse_facts_caps_at_five():
