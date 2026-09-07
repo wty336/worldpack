@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -32,6 +34,7 @@ from .usage import UsageTracker
 from .worldpack import WorldPackError, load_worldpack
 
 DEFAULT_PACK = "world-packs/ancient_jianghu"
+SAVE_ROOT = Path("saves").resolve()  # A-1：存档根目录（路径穿越防御）
 
 app = FastAPI(title="game-agent web", docs_url=None, redoc_url=None)
 
@@ -92,7 +95,22 @@ class TurnRequest(BaseModel):
 
 
 class SaveRequest(BaseModel):
-    path: str = "saves/web.json"
+    path: str = "web.json"  # A-1：仅接受 saves/ 内的裸文件名
+
+
+def _safe_save_path(raw: str) -> Path:
+    """A-1（审查修复 C1）：存档路径约束——**严格拒绝**一切非裸文件名。
+
+    客户端可控的 path 直传文件 API 是任意路径读写洞（../ 覆写 .env/世界包等）。
+    规则：path 必须是 saves/ 根下的 .json 裸文件名（不含目录成分/盘符）。
+    """
+    name = Path(raw).name
+    if raw != name or not re.fullmatch(r"[\w\-.]{1,128}\.json", name):
+        raise HTTPException(400, "非法存档路径：仅允许 saves/ 内的 .json 文件名")
+    p = (SAVE_ROOT / name).resolve()
+    if not p.is_relative_to(SAVE_ROOT):  # 防御纵深
+        raise HTTPException(400, "非法存档路径")
+    return p
 
 
 # ---------------------------------------------------------------------------
@@ -172,20 +190,22 @@ def api_turn(sid: str, req: TurnRequest) -> StreamingResponse:
 @app.post("/api/{sid}/save")
 def api_save(sid: str, req: SaveRequest) -> dict:
     game = _ensure_game(sid)
-    save_game(game.state, req.path, game.history)
-    return {"ok": True, "path": req.path}
+    path = _safe_save_path(req.path)  # A-1：约束后的存档路径
+    save_game(game.state, path, game.history)
+    return {"ok": True, "path": str(path)}
 
 
 @app.post("/api/{sid}/load")
 def api_load(sid: str, req: SaveRequest) -> dict:
     game = _ensure_game(sid)
+    path = _safe_save_path(req.path)  # A-1：约束后的存档路径
     try:
-        game.state = load_game(req.path)
-        game.history = load_history(req.path)
+        game.state = load_game(path)
+        game.history = load_history(path)
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(400, f"读档失败: {e}")
     game.ending = None
-    return {"ok": True, "path": req.path, "status": game.status_text()}
+    return {"ok": True, "path": str(path), "status": game.status_text()}
 
 
 # ---------------------------------------------------------------------------
@@ -305,8 +325,8 @@ async function refreshStatus() {
     statusEl.appendChild(b);
   });
 }
-async function doSave() { const r = await fetch("/api/" + sid + "/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "saves/web.json" }) }); alert((await r.json()).ok ? "已存档" : "失败"); }
-async function doLoad() { const r = await fetch("/api/" + sid + "/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "saves/web.json" }) }); const d = await r.json(); if (d.ok) { story.textContent = "（已读档）"; promptEl.textContent = ""; choicesEl.innerHTML = ""; statusEl.textContent = d.status; } else alert("读档失败"); }
+async function doSave() { const r = await fetch("/api/" + sid + "/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); alert((await r.json()).ok ? "已存档" : "失败"); }
+async function doLoad() { const r = await fetch("/api/" + sid + "/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); const d = await r.json(); if (d.ok) { story.textContent = "（已读档）"; promptEl.textContent = ""; choicesEl.innerHTML = ""; statusEl.textContent = d.status; } else alert("读档失败"); }
 start();
 </script>
 </body>

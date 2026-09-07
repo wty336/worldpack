@@ -132,12 +132,32 @@ def test_full_flow_new_pick_say_save_load(tmp_path):
         assert events[-1][0] == "done"
         assert json.loads(events[-1][1])["narration"] == "测试叙事"
 
-        # 存档 → 读档
-        save_path = str(tmp_path / "web.json")
-        r = client.post(f"/api/{sid}/save", json={"path": save_path})
+        # 存档 → 读档（A-1：路径被约束到 saves/ 根 + .json 白名单）
+        r = client.post(f"/api/{sid}/save", json={"path": "web-test-save.json"})
         assert r.json()["ok"] is True
-        r = client.post(f"/api/{sid}/load", json={"path": save_path})
+        r = client.post(f"/api/{sid}/load", json={"path": "web-test-save.json"})
         assert r.json()["ok"] is True and "status" in r.json()
+        (web_module.SAVE_ROOT / "web-test-save.json").unlink(missing_ok=True)  # 清理
+
+
+def test_save_path_traversal_rejected():
+    """A-1（C1）：任意路径读写洞——目录成分/绝对路径/非 .json 后缀一律 400。"""
+    with TestClient(web_module.app) as client:
+        sid = "trav-session"
+        _seed_fake_session(sid)
+        for bad in ("../../.env", "..\\..\\pyproject.toml", "sub/dir/x.json",
+                    "C:/evil.json", "x.txt", "x", "saves/../.env"):
+            r = client.post(f"/api/{sid}/save", json={"path": bad})
+            assert r.status_code == 400, f"应拒绝 {bad!r}，实际 {r.status_code}"
+            r = client.post(f"/api/{sid}/load", json={"path": bad})
+            assert r.status_code == 400, f"应拒绝 {bad!r}，实际 {r.status_code}"
+        # 直接函数级验证：严格拒绝一切目录成分（剥除式会静默改名，故取拒绝）
+        import pytest
+
+        for bad in ("a/b/c.json", "C:/tmp/evil.json"):
+            with pytest.raises(Exception):
+                web_module._safe_save_path(bad)
+        assert web_module._safe_save_path("ok-name.json") == web_module.SAVE_ROOT / "ok-name.json"
 
 
 def test_turn_errors_are_reported_via_sse():

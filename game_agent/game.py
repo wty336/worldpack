@@ -224,6 +224,7 @@ class Game:
             self.history.append(
                 {
                     "role": "user",
+                    "name": "engine",  # A-2：引擎元消息，排除出检索上下文
                     "content": (
                         f"[反重复提示] 本轮叙事与上一轮高度重复（相似度 {ratio:.0%}）。"
                         "请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、"
@@ -361,12 +362,12 @@ class Game:
                 continue  # 超长/非法事实直接丢弃
 
     def _recent_text(self) -> str:
-        """最近 8 条历史中的玩家发言与叙事（跳过引擎元消息【…】）。"""
+        """最近 8 条历史中的玩家发言与叙事（跳过引擎元消息：name=engine 或 【 前缀）。"""
         lines: list[str] = []
         for m in self.history[-8:]:
             role = m.get("role")
             content = (m.get("content") or "").strip()
-            if not content or content.startswith("【"):
+            if not content or m.get("name") == "engine" or content.startswith("【"):
                 continue
             if role == "user":
                 lines.append(f"玩家：{content}")
@@ -430,6 +431,7 @@ class Game:
             self.history.append(
                 {
                     "role": "user",
+                    "name": "engine",  # A-2：引擎元消息，排除出检索上下文
                     "content": (
                         f"【校验反馈】上一轮叙事存在质量问题：{verdict}\n"
                         "请在后续叙事中自然修正，避免重复此类问题。"

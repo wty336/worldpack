@@ -111,6 +111,7 @@ class StorylineEngine:
             msgs.append(
                 {
                     "role": "user",
+                    "name": "engine",  # A-2：节点任务卡是引擎元消息
                     "content": f"【主线节点】{node.title}\n{node.on_enter.briefing}",
                 }
             )
@@ -199,7 +200,11 @@ class StorylineEngine:
                 state.scene = self.pack.world.start_scene
                 state.present_npcs = []
                 outcome.messages.append(
-                    {"role": "user", "content": f"【节点完成】主线节点「{node.title}」目标达成。"}
+                    {
+                        "role": "user",
+                        "name": "engine",  # A-2：节点完成是引擎元消息
+                        "content": f"【节点完成】主线节点「{node.title}」目标达成。",
+                    }
                 )
             else:
                 outcome.messages.extend(self._stuck_messages(state, node))
@@ -215,6 +220,7 @@ class StorylineEngine:
             msgs.append(
                 {
                     "role": "user",
+                    "name": "engine",  # A-2：引擎元消息
                     "content": (
                         f"【命运事件】剧情的关键时刻到了。请在本轮叙事中直接推动主线目标"
                         f"「{node.goal}」达成——该发生的转折就在此刻发生。达成后按需调用 "
@@ -228,6 +234,7 @@ class StorylineEngine:
             msgs.append(
                 {
                     "role": "user",
+                    "name": "engine",  # A-2：引擎元消息
                     "content": (
                         f"【推进提示】当前主线节点「{node.title}」尚未完成，目标：{node.goal}。"
                         f"请在本轮叙事中向目标推进（推动关键情节发生），不要停留在日常寒暄。"

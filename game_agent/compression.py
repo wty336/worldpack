@@ -88,7 +88,11 @@ def rebuild_history(
 ) -> list[dict]:
     """用新摘要重建历史：[旧前缀] + [摘要] + [切点之后的近窗]。"""
     prefix = history[:summary_idx] if summary_idx > 0 else []
-    summary_msg = {"role": "user", "content": f"{SUMMARY_MARK}\n{new_summary}"}
+    summary_msg = {
+        "role": "user",
+        "name": "engine",  # A-2：剧情摘要是引擎元消息，排除出检索上下文
+        "content": f"{SUMMARY_MARK}\n{new_summary}",
+    }
     return [*prefix, summary_msg, *history[cut:]]
 
 

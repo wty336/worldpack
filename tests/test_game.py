@@ -87,6 +87,20 @@ def test_start_prompt_pack_driven_and_content_free():
     assert game._start_prompt() == "（游戏开始）"
 
 
+def test_recent_text_excludes_engine_messages():
+    """A-2（M5）：提取素材只含玩家发言与叙事，引擎元消息（name=engine）被排除。"""
+    pack, state, game = _game([])
+    game.history = [
+        {"role": "user", "name": "engine", "content": "<agent_status>状态栏快照</agent_status>"},
+        {"role": "user", "content": "玩家真实发言"},
+        {"role": "assistant", "content": "叙事内容"},
+        {"role": "user", "name": "engine", "content": "【校验反馈】质量问题"},
+    ]
+    text = game._recent_text()
+    assert "玩家真实发言" in text and "叙事内容" in text
+    assert "状态栏" not in text and "校验反馈" not in text
+
+
 def test_start_kickoff_reaches_llm_for_open_world():
     """F1：无初始节点时起手提示进入历史驱动 LLM，且不含任何内容层文案（换包不穿帮）。"""
     pack = load_worldpack(

@@ -18,6 +18,7 @@
 - [P2 执行报告](docs/p2-report.md)——批次 3：D 系列玩法数值深度（行动检定/消费闭环/收益曲线，已完成）
 - [P1 执行报告](docs/p1-report.md)——批次 2：A 系列记忆升级 + C 系列模型分层与成本记账（已完成）
 - [P3 执行报告](docs/p3-report.md)——批次 4：B1 Lorebook + E3 世界包脚手架 + F5 Web 前端（已完成，路线图收官）
+- [审查修复计划](docs/review-fix-plan.md)——四批次代码审查发现（1 Critical / 7 Major / 6 Minor）与分批修复方案
 
 ## 目录结构
 

@@ -60,10 +60,10 @@ def main() -> int:
         check("行动列表可用", any(a["id"] == "cultivate" for a in acts),
               f"{len(acts)} 个行动")
 
-        # 6. 存档 → 读档
-        r = client.post(f"/api/{sid}/save", json={"path": "saves/web-smoke.json"})
+        # 6. 存档 → 读档（A-1：仅接受 saves/ 内裸文件名）
+        r = client.post(f"/api/{sid}/save", json={"path": "web-smoke.json"})
         check("存档", r.json().get("ok") is True)
-        r = client.post(f"/api/{sid}/load", json={"path": "saves/web-smoke.json"})
+        r = client.post(f"/api/{sid}/load", json={"path": "web-smoke.json"})
         check("读档", r.json().get("ok") is True and "status" in r.json())
 
     print("\n[✓] F5 冒烟通过" if ok else "\n[✗] F5 冒烟失败")

@@ -28,8 +28,17 @@ ENGINE_RULES = """你是一款文字互动养成游戏的叙述引擎。
 
 
 def _recent_player_text(history: list[dict], n: int = 2) -> str:
-    """最近 n 条 user 消息文本（A1 检索相关性上下文）。"""
-    user_msgs = [(m.get("content") or "").strip() for m in history if m.get("role") == "user"]
+    """最近 n 条**真实玩家输入**消息文本（A1 检索相关性上下文）。
+
+    A-2（审查修复 M5）：只取无 `name` 标记的 user 消息——引擎生成的 user 消息
+    （状态栏快照/【…】元消息/剧情摘要）统一带 `name="engine"`，被排除在外，
+    防止检索上下文被上轮状态栏与注入内容自我强化污染。
+    """
+    user_msgs = [
+        (m.get("content") or "").strip()
+        for m in history
+        if m.get("role") == "user" and not m.get("name")
+    ]
     return "\n".join(m for m in user_msgs[-n:] if m)
 
 
@@ -111,7 +120,11 @@ class ContextBuilder:
         msgs.extend(history)
         recent = _recent_player_text(history)
         msgs.append(
-            {"role": "user", "content": self.status_text(state, node, extra_status, recent)}
+            {
+                "role": "user",
+                "name": "engine",  # A-2：状态栏快照是引擎元消息，排除出检索上下文
+                "content": self.status_text(state, node, extra_status, recent),
+            }
         )
         return msgs
 

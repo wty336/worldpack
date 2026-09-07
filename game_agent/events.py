@@ -74,5 +74,6 @@ class EventSystem:
         note_str = "；".join(notes) if notes else "无"
         return {
             "role": "user",
+            "name": "engine",  # A-2：事件脚本是引擎元消息，排除出检索上下文
             "content": f"【事件】{event.title}\n{event.script}\n（事件效果：{note_str}）",
         }

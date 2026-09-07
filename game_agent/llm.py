@@ -192,6 +192,7 @@ def _tool_result(tool_call_id: str, content: str) -> dict:
 def _protocol_fail(reason: str) -> dict:
     return {
         "role": "user",
+        "name": "engine",  # A-2：协议重试提示是引擎元消息
         "content": f"[引擎提示] 你上一轮输出不符合协议：{reason}\n请重新生成本轮叙事。",
     }
 

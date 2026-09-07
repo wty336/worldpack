@@ -109,17 +109,18 @@ def main() -> int:
             ],
             max_tokens=CHECK_MAX_TOKENS,
         )
-        # M2a #4 测量加固：散文式/空回答时追问（最多 2 次），压制叙事本能（只回短语）
+        # M2a #4 测量加固：未答对时追问「重读材料」（最多 2 次）——
+        # 被测机制是「事实是否在材料中可被找到」，不是答题模型首答的惰性。
         for _retry in range(2):
-            if len(answer.strip()) <= 60 and answer.strip():
+            if any(k in answer for k in kws):
                 break
             answer = game.llm.complete(
                 [
                     {"role": "user", "content": f"{materials}\n\n[记忆检查] {question}"},
                     {
                         "role": "user",
-                        "content": "上一条回答不符合要求。请只回答问题的答案本身"
-                        "（短语即可，不超过 10 个字），不要叙述、不要解释。",
+                        "content": "上一条回答未给出答案。请**仔细重读材料中的『关键事实』区块**，"
+                        "只回答问题的答案本身（短语即可，不超过 10 个字），不要叙述。",
                     },
                 ],
                 max_tokens=CHECK_MAX_TOKENS,

@@ -18,6 +18,32 @@ def _builder_and_state():
     return pack, state, ContextBuilder.from_pack(pack)
 
 
+def test_recent_player_text_excludes_engine_messages():
+    """A-2（M5）：检索上下文只含真实玩家输入，引擎元消息（name=engine）被排除。"""
+    from game_agent.context import _recent_player_text
+
+    history = [
+        {"role": "user", "name": "engine", "content": "<agent_status>…状态栏快照…</agent_status>"},
+        {"role": "user", "content": "（玩家）我想去东市看看"},
+        {"role": "assistant", "content": "叙事内容"},
+        {"role": "user", "name": "engine", "content": "【校验反馈】上一轮叙事存在质量问题"},
+        {"role": "user", "content": "（玩家）胡商都有什么新鲜货"},
+    ]
+    recent = _recent_player_text(history, n=2)
+    assert recent == "（玩家）我想去东市看看\n（玩家）胡商都有什么新鲜货"
+    assert "状态栏" not in recent and "校验反馈" not in recent
+
+
+def test_status_snapshot_tagged_as_engine():
+    """A-2（M5）：状态栏快照带 name=engine，历史回放时可被过滤。"""
+    pack, state, b = _builder_and_state()
+    msgs = b.build_messages(state, [{"role": "user", "content": "玩家发言"}])
+    status_msg = msgs[-1]
+    assert status_msg["role"] == "user"
+    assert status_msg.get("name") == "engine"
+    assert "<agent_status>" in status_msg["content"]
+
+
 def test_system_prefix_stable():
     """静态前缀字节级冻结：不同轮次组装，system 消息必须完全一致（KV Cache 铁律 1）。"""
     pack, state, b = _builder_and_state()
