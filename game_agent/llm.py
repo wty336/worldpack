@@ -222,11 +222,19 @@ class LLMClient:
         self.model = model
         self.tools = tools
 
-    def complete(self, messages: list[dict], max_tokens: int = 400) -> str:
-        """无工具纯文本补全（M2a 事实提取器等侧信道用）。"""
-        resp = self._client.chat.completions.create(
+    def complete(
+        self, messages: list[dict], max_tokens: int = 400, temperature: float | None = None
+    ) -> str:
+        """无工具纯文本补全（M2a 事实提取器等侧信道用）。
+
+        temperature 缺省走提供商默认值；判定类调用（如 Judge）传 0 以获得稳定结论。
+        """
+        kwargs: dict[str, Any] = dict(
             model=self.model, messages=messages, max_tokens=max_tokens, stream=False
         )
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        resp = self._client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content or ""
 
     def run_turn(

@@ -95,8 +95,15 @@ class Game:
     # ------------------------------------------------------------------
 
     def start(self) -> TurnView:
-        """开场：触发初始节点并生成开场叙事。"""
-        return self._narrate("（游戏开始）你踏入了长安城。")
+        """开场：触发初始节点并生成开场叙事。起手提示由世界包 opening 驱动——
+        opening 全文已注入静态前缀，这里只发中性起手信号（F1：引擎层不得含内容文案）。
+        """
+        return self._narrate(self._start_prompt())
+
+    def _start_prompt(self) -> str:
+        if self.pack.world.opening:
+            return "（游戏开始）请根据开场设定开始叙事。"
+        return "（游戏开始）"
 
     def act(self, action_id: str) -> TurnView:
         """执行日程行动：结算 → 日程事件检查 → 叙事。"""

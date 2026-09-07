@@ -75,6 +75,30 @@ def test_pick_applies_effects_then_narrates():
     assert view.choices[-1] == FREE_INPUT_OPTION  # 日常选项恒带自由输入
 
 
+def test_start_prompt_pack_driven_and_content_free():
+    """F1：起手提示由世界包 opening 驱动（有则中性指令，无则兜底），引擎零内容文案。"""
+    pack, state, game = _game([])
+    assert game._start_prompt() == "（游戏开始）请根据开场设定开始叙事。"
+    assert "长安城" not in game._start_prompt()
+    pack.world.opening = ""  # 世界包未提供开场设定 → 中性兜底
+    assert game._start_prompt() == "（游戏开始）"
+
+
+def test_start_kickoff_reaches_llm_for_open_world():
+    """F1：无初始节点时起手提示进入历史驱动 LLM，且不含任何内容层文案（换包不穿帮）。"""
+    pack = load_worldpack(
+        Path(__file__).resolve().parent.parent / "world-packs" / "baseline_probe"
+    )
+    state = GameState.from_pack(pack)
+    llm = LLMClient(FakeClient([resp(msg(tool_calls=[SUBMIT]))]), "fake", build_tools(pack.schedule))
+    game = Game(pack, state, llm)
+    view = game.start()
+    assert view.narration == "测试叙事"
+    assert game.history[0]["role"] == "user"
+    assert game.history[0]["content"] == "（游戏开始）请根据开场设定开始叙事。"
+    assert "长安城" not in game.history[0]["content"]
+
+
 def test_say_when_locked_raises():
     """关键抉择期间自由输入被拒（W5 验收项的引擎级落点）。"""
     pack, state, game = _game([])

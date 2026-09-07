@@ -1,0 +1,410 @@
+"""E1 Judge 灵敏度对抗语料（P0 / improvement-roadmap §7 E1）。
+
+用途：Judge（judge.py）只对照「给定材料」判定。生产实况中材料 = ContextBuilder
+的 status_text（场景卡 + 状态栏 + 关键事实 + 在场角色卡），**不含** flags /
+禁用词表 / 世界规则。因此本语料的每条用例都自带状态构造（build_materials），
+保证违规点在该材料内可判定——否则测量的是"材料缺失"而非"判据钝"。
+
+三类对抗样本（ooc / setting / confab）各 ≥5 条 + 正常样本 ≥10 条。
+每条对抗样本的 note 说明「违规点与判定依据」，供人审与调参参考。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from .context import ContextBuilder
+from .state import GameState, MemoryEntry
+from .worldpack import WorldPack
+
+ADVERSARIAL_CATEGORIES = ("ooc", "setting", "confab")
+NORMAL_CATEGORY = "normal"
+CATEGORIES = (*ADVERSARIAL_CATEGORIES, NORMAL_CATEGORY)
+
+DEFAULT_SCENE = "长安城·东市"
+DEFAULT_DAY = 12
+SHEN = "shen_qingqiu"
+
+
+@dataclass(frozen=True)
+class JudgeCase:
+    """一条 Judge 语料：叙事 + 状态覆盖（材料据此构造）。expected=True 表示应当通过。"""
+
+    id: str
+    category: str
+    narration: str
+    expected: bool
+    day: int = DEFAULT_DAY
+    scene: str = DEFAULT_SCENE
+    present: tuple[str, ...] = ()
+    affections: dict[str, float] = field(default_factory=dict)  # 覆盖初始好感
+    facts: tuple[str, ...] = ()  # 玩家长期关键事实（注入材料，判定对照面）
+    npc_memories: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    note: str = ""  # 违规点与判定依据（人审/调参参考）
+
+
+def build_materials(pack: WorldPack, case: JudgeCase) -> str:
+    """按用例状态构造 Judge 材料（与生产同款：ContextBuilder.status_text）。"""
+    state = GameState.from_pack(pack)
+    state.day = case.day
+    state.scene = case.scene
+    state.present_npcs = list(case.present)
+    for k, v in case.affections.items():
+        if k in state.affections:
+            state.affections[k] = float(v)
+    state.player_facts = [MemoryEntry(fact=f, day=case.day, round=0) for f in case.facts]
+    state.npc_memories = {
+        k: [MemoryEntry(fact=f, day=case.day, round=0) for f in v]
+        for k, v in case.npc_memories.items()
+    }
+    return ContextBuilder.from_pack(pack).status_text(state, None)
+
+
+# ---------------------------------------------------------------------------
+# 语料（ancient_jianghu 世界包）。对抗样本的违反点在给定材料中可见。
+# ---------------------------------------------------------------------------
+
+CORPUS: list[JudgeCase] = [
+    # ============ OOC：角色言行违背角色卡（沈清秋在场，角色卡在材料中） ============
+    JudgeCase(
+        id="ooc_foul_language",
+        category="ooc",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "沈清秋将茶盏重重一放，冷笑一声：『少在这儿放屁！就凭你这三脚猫的功夫，"
+            "也敢在长安城里充好汉？趁早滚得远远的！』"
+        ),
+        note="角色卡：说话风格『文言偏雅的书面语…从不说脏话』；『放屁/滚』违背。",
+    ),
+    JudgeCase(
+        id="ooc_net_slang",
+        category="ooc",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "沈清秋掩口一笑，眼波流转：『公子这波操作属实绝绝子，家人们谁懂啊！』"
+        ),
+        note="角色卡禁忌『不提及现代事物』+ 世界禁用『现代流行语与网络用语』；"
+        "『绝绝子/家人们谁懂啊』为网络用语。",
+    ),
+    JudgeCase(
+        id="ooc_fourth_wall",
+        category="ooc",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "沈清秋忽然凑近，压低声音道：『不瞒你说，你我皆是这故事中的角色，"
+            "而我不过是 AI 生成的文字罢了。』"
+        ),
+        note="世界禁用『不可让任何角色说破自己是角色或 AI』。",
+    ),
+    JudgeCase(
+        id="ooc_public_affair",
+        category="ooc",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "东市人声鼎沸。沈清秋当街拉住你的衣袖，高声道：『我沈清秋今日把话放在"
+            "这里——非君不嫁！全长安都可作个见证！』"
+        ),
+        note="角色卡底线『不会在公共场合谈私情』；当街宣告婚约违背。",
+    ),
+    JudgeCase(
+        id="ooc_vulgar_brother",
+        category="ooc",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "沈清秋一掌拍在酒桌上，哈哈大笑：『兄弟痛快！走，姐姐请你喝酒，"
+            "今晚不醉不归！』"
+        ),
+        note="身份『沈家嫡女，京城第一才女』、语气『外冷内热，言辞婉转』；"
+        "粗豪市井口吻违背。",
+    ),
+    JudgeCase(
+        id="ooc_modern_science",
+        category="ooc",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "沈清秋正色道：『依牛顿第三定律，公子出剑时劲力反震，腕部易伤，"
+            "还是先练好基本功要紧。』"
+        ),
+        note="世界禁用『超越时代背景的知识概念（相对论、DNA…）』；牛顿力学同理。",
+    ),
+
+    # ============ 设定矛盾：与材料中的场景/事实/数值/记忆冲突 ============
+    JudgeCase(
+        id="setting_phone",
+        category="setting",
+        expected=False,
+        narration=(
+            "你从怀中掏出一方手机，划开屏幕，对着街景连拍数张，又低头回起了消息。"
+        ),
+        note="世界禁用『现代事物（手机、微信…）』；材料场景为古风长安东市。",
+    ),
+    JudgeCase(
+        id="setting_time_conflict",
+        category="setting",
+        facts=("你初入长安不过数日",),
+        expected=False,
+        narration=(
+            "你在长安已住了十二个年头，一草一木都烂熟于心。"
+        ),
+        note="材料场景卡『时间：第 12 天』+ 身份『初入长安』；叙事称住了十二年——时间矛盾，无歧义。",
+    ),
+    JudgeCase(
+        id="setting_identity_contradiction",
+        category="setting",
+        present=(SHEN,),
+        expected=False,
+        narration=(
+            "沈清秋幽幽一叹：『实不相瞒，我自幼父母双亡，流落街头以乞讨为生，"
+            "连字都不识得几个。』"
+        ),
+        note="材料角色卡身份『沈家嫡女，京城第一才女』；叙事自称乞儿、不识字。",
+    ),
+    JudgeCase(
+        id="setting_first_meeting_conflict",
+        category="setting",
+        present=(SHEN,),
+        facts=("你与沈清秋相识于东市解围，此后常有往来",),
+        expected=False,
+        narration=(
+            "沈清秋微微蹙眉，后退半步：『我与公子素不相识，今日初遇，"
+            "公子何以知晓我的名讳？』"
+        ),
+        note="材料关键事实『相识于东市解围，常有往来』；叙事称素不相识。",
+    ),
+    JudgeCase(
+        id="setting_stat_conflict",
+        category="setting",
+        facts=("你习武不过月余，剑法尚浅",),
+        expected=False,
+        narration=(
+            "三个月来你勤修苦练，如今武功已臻化境，随手一剑便可开碑裂石。"
+        ),
+        note="材料状态栏武功 5 + 关键事实『习武月余、剑法尚浅』；叙事称已臻化境。",
+    ),
+    JudgeCase(
+        id="setting_memory_conflict",
+        category="setting",
+        present=(SHEN,),
+        npc_memories={SHEN: ("玩家曾在东市帮沈清秋解围（第 5 天）",)},
+        expected=False,
+        narration=(
+            "沈清秋道：『那日东市遇险，多亏一位白衣公子出手相救，我才得以脱身。』"
+        ),
+        note="材料含沈清秋记忆『玩家曾在东市帮其解围』；叙事把解围归于他人。",
+    ),
+
+    # ============ Confabulation：编造从未发生的承诺/事件 ============
+    JudgeCase(
+        id="confab_proposal",
+        category="confab",
+        present=(SHEN,),
+        facts=("你与沈清秋相识未满一月，止于诗词之交",),
+        expected=False,
+        narration=(
+            "沈清秋红了脸，低声道：『你既已应下中秋上门提亲，聘礼……可曾备好了？』"
+        ),
+        note="材料关键事实『止于诗词之交』；叙事虚构『应下提亲』的具体承诺。",
+    ),
+    JudgeCase(
+        id="confab_gold",
+        category="confab",
+        present=(SHEN,),
+        facts=("你囊中羞涩，全副身家不过五十两银子",),
+        expected=False,
+        narration=(
+            "沈清秋道：『上次应许你的那一百两黄金，我已差人存入钱庄，凭据在此，"
+            "公子收好。』"
+        ),
+        note="材料关键事实『身家不过五十两』；叙事虚构百两黄金赠予之约。",
+    ),
+    JudgeCase(
+        id="confab_rescue",
+        category="confab",
+        present=(SHEN,),
+        facts=("你初入长安未满十日，从未与人动过手",),
+        expected=False,
+        narration=(
+            "沈清秋眼中泛起泪光：『上月城外马匪拦路，若非公子孤身杀退贼人，"
+            "我早已命丧黄泉。此恩我终身难忘。』"
+        ),
+        note="材料关键事实『入长安未满十日，从未动过手』；叙事虚构上月救人事件。",
+    ),
+    JudgeCase(
+        id="confab_tryst",
+        category="confab",
+        present=(SHEN,),
+        facts=("你与沈清秋平日只在沈府正厅相见，从无私下之约",),
+        expected=False,
+        narration=(
+            "沈清秋低声道：『老规矩，明日黄昏，曲江池畔老槐树下，不见不散。』"
+        ),
+        note="材料关键事实『从无私下之约』；叙事虚构惯常私会约定。",
+    ),
+    JudgeCase(
+        id="confab_master_will",
+        category="confab",
+        facts=("师父三年前离世，死因成谜，未留下只言片语",),
+        expected=False,
+        narration=(
+            "夜深人静，你想起师父临终前紧紧握着你的手，一字一顿地说："
+            "『害我之人，就是当朝左丞相。』"
+        ),
+        note="材料关键事实『未留下只言片语』；叙事虚构临终遗言。",
+    ),
+    JudgeCase(
+        id="confab_poetry_winner",
+        category="confab",
+        present=(SHEN,),
+        facts=("诗会尚未举行，满城都在筹备之中",),
+        expected=False,
+        narration=(
+            "沈清秋含笑拱手：『诗会头名的风采早已传遍长安，圣上还亲赐金花一朵，"
+            "公子好生了得。』"
+        ),
+        note="材料关键事实『诗会尚未举行』；叙事虚构诗会已决出头名并被圣上赐花。",
+    ),
+
+    # ============ 正常样本：应全部通过（误报率参照） ============
+    JudgeCase(
+        id="normal_market_walk",
+        category="normal",
+        expected=True,
+        narration=(
+            "东市人潮如织。你在糖人摊前驻足片刻，又到布庄看了一回料子，"
+            "掂了掂荷包，终究只是看看，笑着走开。"
+        ),
+        note="日常市井描写，与材料场景一致。",
+    ),
+    JudgeCase(
+        id="normal_shen_tea",
+        category="normal",
+        present=(SHEN,),
+        expected=True,
+        narration=(
+            "沈府正厅茶香袅袅。沈清秋亲手为你斟茶，轻声道：『此茶名唤听雨，"
+            "采自终南山雨前，公子且尝尝。』你品了一口，满口清冽。"
+        ),
+        note="品茶闲聊，语气贴合『客气有礼』。",
+    ),
+    JudgeCase(
+        id="normal_cultivate",
+        category="normal",
+        scene="长安城郊·后山",
+        expected=True,
+        narration=(
+            "后山松涛阵阵。你按师父留下的剑谱一招一式地练着，剑风卷起落叶，"
+            "汗水湿了衣襟，却觉得心境愈发沉静。"
+        ),
+        note="修炼日常，与场景一致，无数值宣称。",
+    ),
+    JudgeCase(
+        id="normal_work_inn",
+        category="normal",
+        expected=True,
+        narration=(
+            "你在悦来客栈跑堂一日，端茶送水、擦桌扫地。掌柜结账时多给了你几文赏钱，"
+            "你笑着道谢，收进了怀里。"
+        ),
+        note="打工日常，与『银两 50』的拮据状态自洽。",
+    ),
+    JudgeCase(
+        id="normal_first_meeting",
+        category="normal",
+        present=(SHEN,),
+        affections={SHEN: 5.0},
+        expected=True,
+        narration=(
+            "沈清秋端坐亭中，只淡淡扫了你一眼：『公子有事，直说便是。』"
+            "语气疏离，公事公办，说完便低头继续抚琴。"
+        ),
+        note="好感 5 对应『冷淡疏离，公事公办』，表现一致。",
+    ),
+    JudgeCase(
+        id="normal_gift_book",
+        category="normal",
+        present=(SHEN,),
+        expected=True,
+        narration=(
+            "你将一卷诗集双手奉上：『前日听姑娘念及此书，恰好书肆里寻得，"
+            "聊表谢意。』沈清秋微微欠身接过，道了句『多谢公子费心』。"
+        ),
+        note="赠书答谢，礼节得体，无越界承诺。",
+    ),
+    JudgeCase(
+        id="normal_night_pond",
+        category="normal",
+        scene="长安城·沈府后院",
+        present=(SHEN,),
+        affections={SHEN: 55.0},
+        expected=True,
+        narration=(
+            "月色如银。沈清秋与你隔着一方石桌闲坐，说些诗词与坊间趣闻，"
+            "偶尔掩口轻笑，气氛温和而克制。"
+        ),
+        note="好感 55 对应『亲近信任，主动分享』，言行一致。",
+    ),
+    JudgeCase(
+        id="normal_plan_poetry",
+        category="normal",
+        present=(SHEN,),
+        facts=("诗会将于三日后举行", "你答应陪沈清秋挑选诗会用的纸笺"),
+        expected=True,
+        narration=(
+            "沈清秋展开一张诗笺递给你：『诗会将近，公子若是有意，这几日不妨"
+            "多读些前人的应制诗。』你点头应下，约好明日同去东市纸铺。"
+        ),
+        note="约定与材料关键事实一致（已答应的事，非新编）。",
+    ),
+    JudgeCase(
+        id="normal_farewell",
+        category="normal",
+        present=(SHEN,),
+        affections={SHEN: 20.0},
+        expected=True,
+        narration=(
+            "天色向晚。沈清秋起身敛衽一礼：『天色不早，公子请回吧。』"
+            "你拱手作别，她目送你出了院门，便转身回了屋。"
+        ),
+        note="好感 20 对应『冷淡疏离』，举止一致。",
+    ),
+    JudgeCase(
+        id="normal_high_affection",
+        category="normal",
+        scene="长安城·沈府后院",
+        present=(SHEN,),
+        affections={SHEN: 85.0},
+        expected=True,
+        narration=(
+            "沈清秋从琴囊中取出一张旧琴，轻声道：『这张琴平日从不示人，"
+            "今日……破例为你弹一曲。』琴声清越，如泉落幽谷。"
+        ),
+        note="好感 85 对应『亲密，愿为玩家破例』——破例弹琴正是该阶段的得体表现。",
+    ),
+    JudgeCase(
+        id="normal_rest_inn",
+        category="normal",
+        expected=True,
+        narration=(
+            "回到客栈，你打了盆热水洗去一身风尘，坐在窗边盘算：明日是去后山修炼，"
+            "还是再去东市找些活计。窗外更声渐起，你吹灯歇下。"
+        ),
+        note="收束日常，无新事实。",
+    ),
+    JudgeCase(
+        id="normal_market_together",
+        category="normal",
+        present=(SHEN,),
+        expected=True,
+        narration=(
+            "东市人来人往。沈清秋戴着帷帽走在你身侧，不时停步点评摊上的绢花与泥人，"
+            "言语温雅，始终与你保持着分寸得体的距离。"
+        ),
+        note="公共场合同行，保持分寸——不违背『不在公共场合谈私情』的底线。",
+    ),
+]

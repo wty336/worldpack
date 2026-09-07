@@ -20,6 +20,7 @@ JUDGE_SYSTEM = (
 )
 
 JUDGE_MAX_TOKENS = 500  # 规则：任何 LLM 调用预算 ≥ 500（M2a 复盘 #3）
+JUDGE_TEMPERATURE = 0.0  # E1（P0）：判定类调用固定温度 0，保证质量门禁结果可复现
 
 
 def parse_verdict(output: str) -> tuple[bool, str]:
@@ -47,6 +48,7 @@ class JudgeSystem:
                     },
                 ],
                 max_tokens=JUDGE_MAX_TOKENS,
+                temperature=JUDGE_TEMPERATURE,
             )
         except Exception:  # noqa: BLE001
             return True, ""
