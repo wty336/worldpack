@@ -40,10 +40,13 @@ def _game(responses, mutate=None, rng=None):
 
 
 class _NeverRng:
-    """恒不触发日程概率事件（random() 恒 0.9 > 0.3）。"""
+    """恒不触发日程概率事件（random() 恒 0.9 > 0.3）；uniform 用于 D 系列检定/收益曲线。"""
 
     def random(self):
         return 0.9
+
+    def uniform(self, a, b):
+        return a + (b - a) * self.random()
 
 
 def _n1_done(s: GameState) -> None:
@@ -120,7 +123,8 @@ def test_act_applies_effects_and_narrates():
         [resp(msg(tool_calls=[SUBMIT]))], mutate=_n1_done, rng=_NeverRng()
     )
     view = game.act("cultivate")
-    assert state.stats["martial"] == 8.0  # 5 + 3（后山奇遇未触发）
+    # 修炼收益曲线：base 4 + uniform(-1,1)（rng 0.9 → +0.8）→ 4.8；武功 5 → 9.8
+    assert state.stats["martial"] == 9.8
     assert state.action_points_left == 0
     assert view.narration == "测试叙事"
 

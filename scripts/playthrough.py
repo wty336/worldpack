@@ -113,7 +113,12 @@ def main() -> int:
 
             # 日程行动
             if state.action_points_left > 0:
-                action = "visit_shen" if args.strategy == "together" else "cultivate"
+                if args.strategy == "together":
+                    # D2 消费闭环（P2）：银两充足 → 备礼探访（-20 银两，好感 +2~+6）；
+                    # 不足 → 打工攒钱。赚钱 → 消费 → 好感 → 事件/结局的完整数值循环。
+                    action = "gift_visit" if state.stats["silver"] >= 20 else "work"
+                else:
+                    action = "cultivate"
                 view = game.act(action)
                 _log(transcript, f"【第 {state.day} 天·行动】", view.narration)
                 if args.strategy == "together":

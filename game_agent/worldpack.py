@@ -60,16 +60,54 @@ class AffectionSpec(BaseModel):
     initial: float
 
 
+class EffectSpec(BaseModel):
+    """D3（P2）：带随机/衰减的收益曲线（design.md §5.3）。
+
+    - spread：均匀随机 ±spread（0 = 固定值）；
+    - decay_every/decay_step：按执行前属性值边际递减——每 decay_every 点属性，
+      收益幅度减 decay_step，最低 0（无负循环）。0 表示关闭。
+    最终收益 = clamp(base - floor(当前属性/decay_every)*decay_step, 0, ∞) ± spread，
+    并按符号截断（正收益不小于 0）。
+    """
+
+    base: float
+    spread: float = 0.0
+    decay_every: float = 0.0
+    decay_step: float = 0.0
+
+
+EffectValue = float | EffectSpec  # 普通数字 = 确定性作者定义；dict = 随机收益曲线
+
+
 class ActionEffects(BaseModel):
-    stats: dict[str, float] = Field(default_factory=dict)
-    affections: dict[str, float] = Field(default_factory=dict)
+    stats: dict[str, EffectValue] = Field(default_factory=dict)
+    affections: dict[str, EffectValue] = Field(default_factory=dict)
+
+
+class ActionCheck(BaseModel):
+    """D1（P2）：日程行动检定（design.md §5.3）。
+
+    roll = stat + uniform(-noise, +noise)：
+      roll ≥ difficulty + margin → 大成功（critical_effects）
+      roll ≥ difficulty        → 成功（effects）
+      否则                     → 失败（failure_effects）
+    """
+
+    stat: str
+    difficulty: float = 0
+    margin: float = 10
+    noise: float = 10
 
 
 class ActionSpec(BaseModel):
     id: str
     label: str
     cost: int = 1
-    effects: ActionEffects = Field(default_factory=ActionEffects)
+    requires: dict[str, Any] | None = None  # D2（P2）：执行门槛，复用条件 DSL（evaluate）
+    check: ActionCheck | None = None  # D1（P2）：可选检定
+    effects: ActionEffects = Field(default_factory=ActionEffects)  # 成功档（无检定时的基准）
+    critical_effects: ActionEffects | None = None  # 大成功档（缺省回落 effects）
+    failure_effects: ActionEffects | None = None  # 失败档（缺省回落 effects）
     scene: str = ""  # 行动发生的地点（执行后写入 state.scene）
     present: list[str] = Field(default_factory=list)  # 行动时在场的 NPC id
 
@@ -241,6 +279,20 @@ def _collect_refs(node: Any, key_name: str, out: set[str]) -> None:
             _collect_refs(item, key_name, out)
 
 
+def _validate_effect_values(action_id: str, label: str, effects: ActionEffects) -> None:
+    """校验收益曲线参数（spread/decay 非负）。"""
+    for where, values in (("stats", effects.stats), ("affections", effects.affections)):
+        for name, value in values.items():
+            if not isinstance(value, EffectSpec):
+                continue
+            for field_name in ("spread", "decay_every", "decay_step"):
+                if getattr(value, field_name) < 0:
+                    raise WorldPackError(
+                        f"行动 '{action_id}' 的 {label}.{where}.{name} 的 "
+                        f"'{field_name}' 不能为负（当前 {getattr(value, field_name):g}）"
+                    )
+
+
 def _cross_check(pack_parts: dict[str, Any]) -> None:
     """跨文件交叉校验：引用的 flag/好感/NPC/行动必须已在 schedule 中声明。"""
     schedule: ScheduleSpec = pack_parts["schedule"]
@@ -314,18 +366,54 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"好感对象 '{aff_id}' 缺少对应角色卡 npcs/{aff_id}.yaml"
             )
 
-    # 3) 日程行动的 effects 只能引用已声明属性/好感；present 只能引用已声明 NPC
+    # 3) 日程行动：检定属性声明、requires 条件与引用、效果引用、present NPC
     for action in schedule.actions:
-        bad_stats = set(action.effects.stats) - declared_stats
-        if bad_stats:
+        if action.check is not None and action.check.stat not in declared_stats:
             raise WorldPackError(
-                f"行动 '{action.id}' 的效果引用了未声明的属性: {sorted(bad_stats)}"
+                f"行动 '{action.id}' 的检定 check.stat 引用了未声明的属性 '{action.check.stat}'"
             )
-        bad_aff = set(action.effects.affections) - declared_affections
-        if bad_aff:
-            raise WorldPackError(
-                f"行动 '{action.id}' 的效果引用了未声明的好感对象: {sorted(bad_aff)}"
-            )
+        if action.requires is not None:
+            try:
+                validate_condition(action.requires, f"行动 '{action.id}' 的 requires")
+            except ConditionError as e:
+                raise WorldPackError(str(e)) from e
+            req_flags, req_stats, req_affs = set(), set(), set()
+            _collect_refs(action.requires, "flags", req_flags)
+            _collect_refs(action.requires, "stat", req_stats)
+            _collect_refs(action.requires, "affection", req_affs)
+            if req_flags - declared_flags:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 requires 引用了未声明的 flag: "
+                    f"{sorted(req_flags - declared_flags)}"
+                )
+            if req_stats - declared_stats:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 requires 引用了未声明的属性: "
+                    f"{sorted(req_stats - declared_stats)}"
+                )
+            if req_affs - declared_affections:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 requires 引用了未声明的好感对象: "
+                    f"{sorted(req_affs - declared_affections)}"
+                )
+        for label, effects in (
+            ("effects", action.effects),
+            ("critical_effects", action.critical_effects),
+            ("failure_effects", action.failure_effects),
+        ):
+            if effects is None:
+                continue
+            _validate_effect_values(action.id, label, effects)
+            bad_stats = set(effects.stats) - declared_stats
+            if bad_stats:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 {label} 引用了未声明的属性: {sorted(bad_stats)}"
+                )
+            bad_aff = set(effects.affections) - declared_affections
+            if bad_aff:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 {label} 引用了未声明的好感对象: {sorted(bad_aff)}"
+                )
         bad_npcs = set(action.present) - set(npcs)
         if bad_npcs:
             raise WorldPackError(
@@ -367,7 +455,13 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     for ev in events.events:
         _collect_refs(ev.effects, "flags", writable_flags)
     for action in schedule.actions:
-        _collect_refs(action.effects.model_dump(), "flags", writable_flags)
+        for label, effects in (
+            ("effects", action.effects),
+            ("critical_effects", action.critical_effects),
+            ("failure_effects", action.failure_effects),
+        ):
+            if effects is not None:
+                _collect_refs(effects.model_dump(), "flags", writable_flags)
     for node in mainline.nodes:
         completion_flags: set[str] = set()
         _collect_refs(node.completion, "flags", completion_flags)

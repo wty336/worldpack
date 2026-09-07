@@ -39,7 +39,7 @@ def test_load_ancient_jianghu():
     assert "shen_qingqiu" in pack.npcs
     assert pack.npcs["shen_qingqiu"].name == "沈清秋"
     assert len(pack.mainline.nodes) == 2
-    assert len(pack.events.events) == 2
+    assert len(pack.events.events) == 3
     assert len(pack.endings.endings) == 2
     # 好感阶段区间升序且覆盖 0~100
     stages = pack.npcs["shen_qingqiu"].affection_stages

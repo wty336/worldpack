@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import pytest
@@ -14,11 +15,21 @@ from game_agent.worldpack import load_worldpack
 PACK_PATH = Path(__file__).resolve().parent.parent / "world-packs" / "ancient_jianghu"
 
 
+class _FixedRng:
+    """random() 恒 0.5 → uniform(a,b) 取中点：收益曲线取基准值、检定掷值 = 属性值。"""
+
+    def random(self):
+        return 0.5
+
+    def uniform(self, a, b):
+        return a + (b - a) * self.random()
+
+
 def _sys():
     pack = load_worldpack(PACK_PATH)
     stats = StatsSystem(pack.schedule)
     state = GameState.from_pack(pack)
-    return pack, state, ScheduleSystem(pack, stats)
+    return pack, state, ScheduleSystem(pack, stats, rng=_FixedRng())
 
 
 def test_initial_action_points():
@@ -28,12 +39,14 @@ def test_initial_action_points():
 
 def test_execute_action_applies_effects_and_consumes_points():
     _, state, sched = _sys()
-    notes = sched.execute_action(state, "cultivate")
-    assert state.stats["martial"] == 8.0  # 5 + 3
+    outcome = sched.execute_action(state, "cultivate")
+    # 修炼收益曲线（base 4, spread 1）+ 固定 rng（中点）→ 4.0；武功 5 → 9.0
+    assert state.stats["martial"] == 9.0
     assert state.action_points_left == 0
     assert state.scene == "长安城郊·后山"  # 行动声明场景
     assert state.present_npcs == []
-    assert "武功" in notes[0]
+    assert outcome.check is None  # 修炼无检定
+    assert "武功" in outcome.notes[0]
 
 
 def test_execute_without_points_raises():

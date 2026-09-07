@@ -74,7 +74,7 @@ class Game:
         self.stats = StatsSystem(pack.schedule)
         self.story = StorylineEngine(pack, self.stats)
         self.events = EventSystem(pack, self.stats, rng)
-        self.schedule = ScheduleSystem(pack, self.stats)
+        self.schedule = ScheduleSystem(pack, self.stats, rng)  # D 系列：检定/收益曲线共用 rng
         self.memory = MemorySystem(pack)  # M2a 记忆显式化
         self.builder = ContextBuilder.from_pack(pack)
         self.history: list[dict] = []
@@ -106,14 +106,24 @@ class Game:
         return "（游戏开始）"
 
     def act(self, action_id: str) -> TurnView:
-        """执行日程行动：结算 → 日程事件检查 → 叙事。"""
+        """执行日程行动：结算（门槛/检定/效果）→ 日程事件检查 → 叙事。"""
         action = self.schedule.action_by_id(action_id)
-        self.schedule.execute_action(self.state, action_id)
-        prompt = f"（玩家选择日程行动：{action.label}）"
+        outcome = self.schedule.execute_action(self.state, action_id)
+        lines = [f"（玩家选择日程行动：{action.label}）"]
+        if outcome.check is not None:
+            c = outcome.check
+            stat_label = self.pack.schedule.stats[c.stat].label
+            lines.append(
+                f"【行动检定】{stat_label} {c.value:g} · 掷 {c.roll:.1f}"
+                f"（难度 {c.difficulty:g}，大成功需 ≥{c.difficulty + c.margin:g}）"
+                f"· 结果：{c.tier_cn}"
+            )
+        if outcome.notes:
+            lines.append(f"（行动效果：{'；'.join(outcome.notes)}）")
         ev = self.events.check_schedule_event(self.state, action_id)
         if ev is not None:
             self.history.append(self.events.trigger(self.state, ev))
-        return self._narrate(prompt)
+        return self._narrate("\n".join(lines))
 
     def say(self, text: str) -> TurnView:
         """玩家自由输入（或点日常选项）。关键抉择期间拒绝。"""
@@ -139,8 +149,9 @@ class Game:
     # ------------------------------------------------------------------
 
     def actions_available(self) -> list[ActionSpec]:
+        """行动点 + requires 门槛（D2）双重过滤后的可选行动。"""
         return [
-            a for a in self.schedule.actions() if a.cost <= self.state.action_points_left
+            a for a in self.schedule.actions() if self.schedule.action_available(self.state, a)
         ]
 
     def status_text(self) -> str:

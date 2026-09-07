@@ -3,15 +3,19 @@
 两条路径严格分离：
 - apply_change：LLM 提议路径。受增量上限约束、reason 必填、越界拒绝（不静默截断）；
 - apply_effects：世界包作者定义的确定性效果（日程/事件/关键选择结算），只做声明校验。
+  D3（P2）：效果值支持收益曲线 {base/spread/decay_every/decay_step}——随机结果越界时
+  **饱和**（记录实际生效 delta）；普通数字保持确定性语义（越界抛错 = 作者 bug）。
 所有变更都写入 stat_log（append-only），供零偏差审计回放。
 """
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
+from typing import Any
 
 from .state import GameState, StatChangeRecord
-from .worldpack import ScheduleSpec
+from .worldpack import EffectSpec, ScheduleSpec
 
 # 引擎级增量上限（仅约束 LLM 提议路径）：防注入刷数值与"一高兴加 50 好感"
 AFFECTION_DELTA_MAX = 5  # 好感单次增减幅度上限
@@ -117,36 +121,80 @@ class StatsSystem:
     # 代码路径：世界包定义的确定性效果
     # ------------------------------------------------------------------
 
-    def apply_effects(self, state: GameState, effects: dict) -> list[str]:
+    def _resolve_delta(self, value: Any, current: float, rng: random.Random) -> float:
+        """解析一个效果值为实际 delta。
+
+        - 普通数字：确定性，直接返回；
+        - 收益曲线（EffectSpec/dict）：base 经边际递减 + ±spread 随机，符号截断
+          （正收益 ≥0、负收益 ≤0，无负循环）。
+        越界由 apply_effects 统一饱和（世界包效果是游戏机制，不是玩家声明）。
+        """
+        if not isinstance(value, (dict, EffectSpec)):
+            return float(value)
+        spec = value if isinstance(value, EffectSpec) else EffectSpec(**value)
+        base = spec.base
+        if spec.decay_every > 0:
+            penalty = (current // spec.decay_every) * spec.decay_step
+            if base >= 0:
+                base = max(0.0, base - penalty)
+            else:
+                base = min(0.0, base + penalty)
+        if spec.spread > 0:
+            base += rng.uniform(-spec.spread, spec.spread)
+        delta = round(base, 1)
+        if spec.base >= 0:
+            delta = max(0.0, delta)
+        else:
+            delta = min(0.0, delta)
+        return delta
+
+    def apply_effects(
+        self, state: GameState, effects: dict, rng: random.Random | None = None
+    ) -> list[str]:
         """应用 effects 字典（stats/affections/flags），返回变更描述列表。
 
         只用于作者定义的效果（日程/事件/关键选择），不做增量上限约束。
+        越界统一**饱和**（记录实际生效 delta）——世界包效果是游戏机制，饱和优于
+        让玩家一次送礼在 97 好感时炸档；LLM 提议路径（apply_change）仍严格拒绝。
         """
+        rng = rng or random.Random()
         notes: list[str] = []
-        for stat, delta in effects.get("stats", {}).items():
+        for stat, value in effects.get("stats", {}).items():
             entry = self.spec.stats.get(stat)
             if entry is None:
                 raise StatChangeError(f"效果引用了未声明的属性 '{stat}'")
+            delta = self._resolve_delta(value, state.stats[stat], rng)
             before = state.stats[stat]
-            after = before + delta
-            if after > entry.max or after < entry.min:
-                raise StatChangeError(f"效果使 {entry.label} 越界: {before:g} → {after:g}")
+            capped = False
+            if before + delta > entry.max:
+                delta, capped = entry.max - before, True
+            elif before + delta < entry.min:
+                delta, capped = entry.min - before, True
+            if delta == 0:
+                continue  # 已在边界，无实际变化
+            after = before + delta  # after == before + delta 恒成立（审计不变量）
             state.stats[stat] = after
             state.stat_log.append(
                 StatChangeRecord(
                     state.day, "player", stat, float(delta), "worldpack effect", before, after
                 )
             )
-            notes.append(f"{entry.label} {delta:+g}")
+            notes.append(f"{entry.label} {delta:+g}" + ("（已达边界）" if capped else ""))
 
-        for npc_id, delta in effects.get("affections", {}).items():
+        for npc_id, value in effects.get("affections", {}).items():
             entry = self.spec.affections.get(npc_id)
             if entry is None:
                 raise StatChangeError(f"效果引用了未声明的好感对象 '{npc_id}'")
+            delta = self._resolve_delta(value, state.affections[npc_id], rng)
             before = state.affections[npc_id]
+            capped = False
+            if before + delta > entry.max:
+                delta, capped = entry.max - before, True
+            elif before + delta < entry.min:
+                delta, capped = entry.min - before, True
+            if delta == 0:
+                continue
             after = before + delta
-            if after > entry.max or after < entry.min:
-                raise StatChangeError(f"效果使 {entry.label} 好感越界: {before:g} → {after:g}")
             state.affections[npc_id] = after
             state.stat_log.append(
                 StatChangeRecord(
@@ -154,7 +202,7 @@ class StatsSystem:
                     before, after,
                 )
             )
-            notes.append(f"{entry.label} 好感 {delta:+g}")
+            notes.append(f"{entry.label} 好感 {delta:+g}" + ("（已达边界）" if capped else ""))
 
         for flag, value in effects.get("flags", {}).items():
             if flag not in self.spec.flags:

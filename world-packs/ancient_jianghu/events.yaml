@@ -26,3 +26,16 @@ events:
     effects:
       stats: {martial: 2}
     once: true
+
+  - id: ev_gift_return
+    title: 回礼
+    trigger:
+      kind: schedule
+      action: gift_visit
+      chance: 0.3
+    priority: normal
+    script: |
+      回礼：数日后，沈清秋差人回赠一方砚台与一封短笺，字里行间透着亲近。
+    effects:
+      affections: {shen_qingqiu: 2}
+    once: true

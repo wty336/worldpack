@@ -16,22 +16,53 @@ flags:
   poetry_top3: false     # 诗会进入前三（影响「长相守」结局）
   poetry_join: false     # 诗会关键选择：是否登台
 
+# 行动收益支持两种写法（D3 收益曲线）：
+#   普通数字            → 确定性收益（越界 = 作者错误，加载/运行期报错）
+#   {base/spread/...}   → base 经边际递减 ± spread 随机，越界饱和
 actions:
   - id: cultivate
     label: 修炼
     cost: 1
-    effects: {stats: {martial: 3}}
+    # 边际递减：武功每 20 点收益 -1（最低 0）——后期修炼收效渐微，需另寻机缘
+    effects:
+      stats: {martial: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
     scene: 长安城郊·后山
     present: []
   - id: work
     label: 打工
     cost: 1
-    effects: {stats: {silver: 15}}
+    check: {stat: charm, difficulty: 5, margin: 10}
+    effects:
+      stats: {silver: {base: 15, spread: 5}}            # 成功档
+    critical_effects:
+      stats: {silver: {base: 20, spread: 5}}            # 大成功：掌柜赏识
+    failure_effects:
+      stats: {silver: {base: 8, spread: 3}}             # 失败：笨手笨脚被扣工钱
     scene: 长安城·东市
     present: []
   - id: visit_shen
     label: 拜访沈清秋
     cost: 1
     effects: {}
+    scene: 长安城·沈府
+    present: [shen_qingqiu]
+  - id: gift_visit
+    label: 备礼探访
+    cost: 1
+    # D2 消费闭环：银两 → 好感（需已结识且银两充足，检定决定礼物的效果）
+    requires:
+      all:
+        - {flags: {met_shen: true}}
+        - {stat: {silver: {gte: 20}}}
+    check: {stat: charm, difficulty: 8, margin: 10}
+    effects:
+      stats: {silver: -20}
+      affections: {shen_qingqiu: 4}                     # 成功：礼物合意
+    critical_effects:
+      stats: {silver: -20}
+      affections: {shen_qingqiu: 6}                     # 大成功：投其所好
+    failure_effects:
+      stats: {silver: -20}
+      affections: {shen_qingqiu: 2}                     # 失败：礼物寻常，心意尚在
     scene: 长安城·沈府
     present: [shen_qingqiu]
