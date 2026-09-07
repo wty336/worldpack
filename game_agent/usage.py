@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+_WRITE_LOCK = threading.Lock()  # B-5（m5）：多实例/多线程写 JSONL 的行级互斥
 
 # 价格快照（元/百万 tokens，空闲时段）。高峰 = PEAK_FACTOR ×。
 # 来源：DeepSeek 官方定价页 2026-09（缓存命中/未命中/输出三价）。
@@ -75,8 +78,9 @@ class UsageTracker:
     def _append(self, entry: dict) -> None:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            with _WRITE_LOCK:  # B-5：并发写不交错（行交错即 JSONL 损坏）
+                with open(self.path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except OSError:  # noqa: BLE001
             pass
 

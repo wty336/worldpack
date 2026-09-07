@@ -41,14 +41,25 @@ def main() -> int:
         check("关键抉择回合流式返回", "event: delta" in text and "event: done" in text,
               f"delta 事件 {text.count('event: delta')} 个")
 
-        # 4. 自由发言（SSE：统计 delta 事件数 + done 视图）
+        # 4. 自由发言（SSE：统计 delta 事件数 + done 视图 + 流式时间线 B-1）
+        import time as _time
+
+        t0 = _time.monotonic()
+        first_delta_at = None
         with client.stream("POST", f"/api/{sid}/turn",
                            json={"kind": "say", "text": "（微笑）沈姑娘，久仰才名。"}) as r:
-            text = "".join(r.iter_text())
+            text = ""
+            for chunk in r.iter_text():
+                if text == "" and "event: delta" in chunk:
+                    first_delta_at = _time.monotonic() - t0
+                text += chunk
+        total = _time.monotonic() - t0
         delta_count = text.count("event: delta")
         done_idx = text.rfind("event: done")
         check("发言回合流式返回", delta_count > 5 and done_idx >= 0,
               f"delta 事件 {delta_count} 个")
+        check("真流式：首个增量先于流结束到达（B-1）", first_delta_at is not None and first_delta_at < total,
+              f"首个增量 {first_delta_at:.1f}s / 总时长 {total:.1f}s")
         done_json = text[done_idx:].split("data: ", 1)[1].strip()
         view = json.loads(done_json)
         check("发言回合含叙事与选项", bool(view["narration"]) and len(view["choices"]) >= 3,

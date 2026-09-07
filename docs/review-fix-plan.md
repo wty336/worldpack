@@ -17,11 +17,11 @@
 | --- | --- | --- | --- | --- |
 | C1 | Critical | Web 存读档端点任意路径读写 | web.py:172-188 | A ✅ 已修复 |
 | M5 | Major | 检索/提取上下文被引擎元消息污染 | context.py:30-33 | A ✅ 已修复 |
-| M1 | Major | SSE error 帧未 JSON 编码，前端必崩 | web.py:145-163 | B |
-| M2 | Major | /turn 未捕获 ScheduleError，流中途断裂 | web.py:150-163 | B |
-| M3 | Major | SSE 伪流式：LLM 跑完才一次性送达 | web.py:139-169 | B |
-| M4 | Major | 会话共享状态无并发保护 | web.py:38,53,56,137 | B |
-| m5 | Minor | UsageTracker 多实例写同一 JSONL 无锁 | usage.py:75-81 | B |
+| M1 | Major | SSE error 帧未 JSON 编码，前端必崩 | web.py:145-163 | B ✅ 已修复 |
+| M2 | Major | /turn 未捕获 ScheduleError，流中途断裂 | web.py:150-163 | B ✅ 已修复 |
+| M3 | Major | SSE 伪流式：LLM 跑完才一次性送达 | web.py:139-169 | B ✅ 已修复 |
+| M4 | Major | 会话共享状态无并发保护 | web.py:38,53,56,137 | B ✅ 已修复 |
+| m5 | Minor | UsageTracker 多实例写同一 JSONL 无锁 | usage.py:75-81 | B ✅ 已修复 |
 | M6 | Major | judge_corpus.py 违反分层原则（在引擎层含内容文案） | judge_corpus.py:24-27 等 | C |
 | M7 | Major | scaffold 的 name 无校验，路径穿越 | scaffold.py:151-160 | C |
 | m1 | Minor | InsightEntry.sources JSON 回环后 tuple→list | state.py:174-177 | C |
@@ -202,6 +202,11 @@
   （用可控 fake：on_text 先发一段、阻塞、断言客户端已收到、再放行）；真机 web_smoke
   复跑，观察增量是否边生成边到达。
 - **工作量**：中。
+- **✅ 实施记录**：生成器逻辑提取为 `_turn_stream(session, req)`（可测的同步生成器），
+  工作线程跑 dispatch、生成器阻塞消费队列至 `None` 哨兵。**测量发现：TestClient 会缓冲
+  整个响应体**（传输层时序测不到），时序测试改为直接迭代 `_turn_stream`——断言「首个
+  delta 帧到达时工作线程仍阻塞在 fake 的 Event 上」；传输层由真机 uvicorn 复跑验证，
+  实测**首个增量 5.9s / 总时长 15.4s**（边生成边到达）。p3-report §4 流式验收表述已修正。
 
 ### B-2（M1）SSE error 帧 JSON 编码
 
@@ -213,6 +218,9 @@
   test_web.py 改为断言 `json.loads(events[0][1])` 可解析且含错误信息。
 - **验收**：前端在 error 帧后流读取循环不中断；新增含换行错误消息的帧完整性用例。
 - **工作量**：小。注意与 B-1 合并实施（同改 gen 的组装处）。
+- **✅ 实施记录**：与 B-1 合并实施——error 帧统一 `_sse("error", json.dumps(payload))`
+  （dispatch 只 put 裸文本，组装处统一编码）。test_web 改为断言 `json.loads` 可解析且
+  含错误信息；换行安全由 json.dumps 转义保证（SSE data 恒为单行）。
 
 ### B-3（M2）/turn 补捕 ScheduleError
 
@@ -224,6 +232,8 @@
   合并进 B-1 的 except 元组。
 - **验收**：tests/test_web.py 新增——未知 action_id 的 act 请求收到 error 帧而非断流。
 - **工作量**：小。
+- **✅ 实施记录**：except 元组加入 `ScheduleError`（另补 `ValueError` 覆盖未知 kind 与
+  空输入）。新增 `test_unknown_action_returns_error_frame_not_broken_stream`。
 
 ### B-4（M4）会话并发保护
 
@@ -239,6 +249,11 @@
 - **验收**：tests/test_web.py 新增并发用例——同 sid 两个并发 turn 请求，断言串行执行、
   history 配对不变量保持（复用 ensure_pairing）；多会话 autosave 互不覆盖。
 - **工作量**：中。
+- **✅ 实施记录**：`SESSIONS: dict[str, Session(game, lock)]`；`_turn_stream` 生成器
+  **持有会话锁**（客户端开始消费时取锁、流结束释放）→ 同 sid 回合串行、on_text 竞态
+  消除；autosave 按 sid 命名（`autosave-{sid}.json`）；tracker 改模块级共享单实例
+  （配合 B-5 写锁）；save/load 亦持锁（与流式回合互斥）。新增并发 turn（ensure_pairing）
+  与多会话 autosave 隔离两个用例。
 
 ### B-5（m5）UsageTracker 写文件加锁
 
@@ -247,6 +262,51 @@
   保证，行交错即 JSONL 损坏）。
 - **验收**：tests/test_usage.py 新增多线程写一致性用例（N 线程 × M 条，逐行可解析）。
 - **工作量**：小。
+- **✅ 实施记录**：模块级 `_WRITE_LOCK` 包住 `_append`。新增用例：4 tracker × 25 条并发
+  写同一 JSONL，100 行逐行 JSON 可解析。
+
+---
+
+### 批次 B 复盘（2026-09-07 执行记录）
+
+#### 1. 结论速览
+
+| 项 | 结果 |
+| --- | --- |
+| B-1（M3）真流式 | ✅ `_turn_stream` 工作线程 + 队列 + 哨兵；离线时序断言 + 真机实测首个增量 5.9s / 总时长 15.4s |
+| B-2（M1）error 帧 JSON | ✅ 与 B-1 合并实施，组装处统一编码；前端 JSON.parse 兼容 |
+| B-3（M2）ScheduleError | ✅ 转 error 帧而非断流（另补 ValueError） |
+| B-4（M4）会话并发 | ✅ Session(game, lock) 生成器持锁串行化 + 按 sid autosave + 共享 tracker |
+| B-5（m5）tracker 写锁 | ✅ 模块级锁，4×25 并发写逐行可解析 |
+| 离线测试 | ✅ **214 passed**（209 原有 + 5 新增） |
+| 真机 | ✅ web_smoke 全项通过（含真流式时间线检查）；p3-report §4 表述已修正 |
+
+#### 2. 测量层的两个发现
+
+**发现 1：TestClient 会缓冲响应体，传输层时序在离线测不到。**
+时序测试初版走 `client.stream` + `iter_lines`，实测首行到达时工作线程早已跑完
+（release 超时兜底）——Starlette TestClient 的 ASGI 传输缓冲整个 body。
+改法：时序断言直接迭代 `_turn_stream` 同步生成器（测生成器语义：首帧到达时 worker
+仍阻塞）；传输层真流式由真机 uvicorn 复跑验证（5.9s/15.4s）。预防：**传输层时序
+断言不要依赖 TestClient**——测生成器语义 + 真机复跑两层分开。
+
+**发现 2：direct 调引擎方法会让 fake 走错流式分支。**
+B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流式路径 → fake 返回
+迭代器崩溃）。改法：经 API 驱动回合（顺带给 on_text）。预防：**Web 测试里引擎回合
+一律经 API 驱动**，直接调引擎只在需要绕开协议时用。
+
+#### 3. 教训与新增预防规则
+
+| # | 教训 | 预防规则 |
+| --- | --- | --- |
+| RF-5 | TestClient 缓冲响应体，时序断言全灭 | 传输层时序断言不要依赖 TestClient；生成器语义（离线）+ 真机复跑（传输层）分层验证 |
+| RF-6 | 锁的位置决定并发语义 | 锁放在生成器（客户端开始消费时取）而非端点：断开即释放、同 sid 自然排队；并发测试用 pairing 不变量而非时序断言 |
+| RF-7 | 历史遗留文件会让「不应存在」断言误报 | 断言「旧路径不再出现」前先清理历史遗留（saves/autosave.json）；测试自清理 |
+
+#### 4. 遗留
+
+- 批次 C（分层卫生：M6/M7/m1~m4/D1）——C-1（M6）将再次考验分层纪律
+  （judge_corpus 迁出引擎层）。
 
 ---
 
@@ -328,7 +388,7 @@
 | 批次 | 离线测试 | 保留集（真机） |
 | --- | --- | --- |
 | A | 全绿 + 新增用例 ✅（209 passed） | ✅ 已完成：轨道事实 3/3（重读协议加固后）+ memory_regression 召回@40（见 A-2 实施记录）；注入/通关可复用最近结果 |
-| B | 全绿 + 新增用例 | web_smoke 复跑（7 项）；引擎主线无改动，保留集可复用 |
+| B | 全绿 + 新增用例 ✅（214 passed） | ✅ 已完成：web_smoke 真机复跑全项通过（含真流式时间线 5.9s/15.4s）；引擎主线无改动，其余保留集复用最近结果 |
 | C | 全绿 + 新增用例 | C-4 如上文注明无需重跑；其余纯卫生项 |
 
 其他纪律：
@@ -352,4 +412,4 @@
 
 ---
 
-*审查修复计划 v0.2（批次 A 已执行并复盘，见 §2 复盘章节）。实施中与本文档冲突时以实测为准，回写本文档。*
+*审查修复计划 v0.3（批次 A、B 已执行并复盘，见各批次复盘章节）。实施中与本文档冲突时以实测为准，回写本文档。*

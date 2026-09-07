@@ -17,7 +17,9 @@ from __future__ import annotations
 import json
 import queue
 import re
+import threading
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -28,6 +30,7 @@ from .config import load_settings
 from .game import Game, GameError
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
+from .schedule import ScheduleError
 from .state import GameState
 from .storyline import StorylineError
 from .usage import UsageTracker
@@ -38,7 +41,25 @@ SAVE_ROOT = Path("saves").resolve()  # A-1：存档根目录（路径穿越防�
 
 app = FastAPI(title="game-agent web", docs_url=None, redoc_url=None)
 
-SESSIONS: dict[str, Game] = {}
+
+@dataclass
+class Session:
+    """B-4（M4）：一个游戏会话 = game + 串行化锁。"""
+
+    game: Game
+    lock: threading.Lock
+
+
+SESSIONS: dict[str, Session] = {}
+
+_WEB_TRACKER: UsageTracker | None = None  # B-4：全 Web 进程共享单实例（配合 B-5 写锁）
+
+
+def _shared_tracker() -> UsageTracker:
+    global _WEB_TRACKER
+    if _WEB_TRACKER is None:
+        _WEB_TRACKER = UsageTracker("saves/usage-web.jsonl")
+    return _WEB_TRACKER
 
 
 # ---------------------------------------------------------------------------
@@ -46,26 +67,27 @@ SESSIONS: dict[str, Game] = {}
 # ---------------------------------------------------------------------------
 
 
-def _make_game() -> Game:
+def _make_game(sid: str) -> Game:
     settings = load_settings()
     if not settings.has_api_key:
         raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
     pack = load_worldpack(DEFAULT_PACK)
     state = GameState.from_pack(pack)
     llm = LLMClient.from_settings(
-        settings, build_tools(pack.schedule), tracker=UsageTracker("saves/usage-web.jsonl")
+        settings, build_tools(pack.schedule), tracker=_shared_tracker()
     )
     return Game(
-        pack, state, llm, autosave_path="saves/autosave.json",
+        pack, state, llm,
+        autosave_path=f"saves/autosave-{sid}.json",  # B-4：按会话隔离，避免互覆
         extract_every=2, compress_threshold=30000, judge_every=5, reflect_every=10,
     )
 
 
-def _ensure_game(sid: str) -> Game:
-    game = SESSIONS.get(sid)
-    if game is None:
+def _ensure_session(sid: str) -> Session:
+    session = SESSIONS.get(sid)
+    if session is None:
         raise HTTPException(404, f"会话不存在: {sid}")
-    return game
+    return session
 
 
 def _view(game: Game, view) -> dict:
@@ -120,22 +142,24 @@ def _safe_save_path(raw: str) -> Path:
 
 @app.post("/api/new")
 def api_new() -> dict:
-    game = _make_game()
-    view = game.start()
     sid = uuid.uuid4().hex[:12]
-    SESSIONS[sid] = game
+    game = _make_game(sid)  # B-4：autosave 按 sid 命名，需先生成 sid
+    session = Session(game=game, lock=threading.Lock())
+    with session.lock:
+        view = game.start()
+        SESSIONS[sid] = session
     return {"sid": sid, "view": _view(game, view)}
 
 
 @app.get("/api/{sid}/status")
 def api_status(sid: str) -> dict:
-    game = _ensure_game(sid)
+    game = _ensure_session(sid).game
     return {"text": game.status_text(), "ending": bool(game.ending)}
 
 
 @app.get("/api/{sid}/actions")
 def api_actions(sid: str) -> dict:
-    game = _ensure_game(sid)
+    game = _ensure_session(sid).game
     return {
         "day": game.state.day,
         "action_points_left": game.state.action_points_left,
@@ -145,67 +169,83 @@ def api_actions(sid: str) -> dict:
 
 @app.post("/api/{sid}/turn")
 def api_turn(sid: str, req: TurnRequest) -> StreamingResponse:
-    """SSE 流式回合：delta 事件 = 叙事增量；done 事件 = 完整视图 JSON。"""
-    game = _ensure_game(sid)
-    deltas: queue.Queue[tuple[str, str]] = queue.Queue()
+    """SSE 流式回合：delta 事件 = 叙事增量（真流式，边生成边到达）；done = 完整视图。
 
-    def on_text(piece: str) -> None:
-        deltas.put(("delta", piece))
+    B-1（M3）：LLM 调用在工作线程执行，生成器阻塞消费队列——客户端在生成期间
+    即收到增量；B-2（M1）：error 帧与 delta/done 一样经 json.dumps（前端可解析、
+    含换行不撕裂帧）；B-3（M2）：ScheduleError 等全部转 error 帧而非断流；
+    B-4（M4）：整个回合持有会话锁，同 sid 回合串行化。
+    """
+    session = _ensure_session(sid)
+    return StreamingResponse(_turn_stream(session, req), media_type="text/event-stream")
 
-    game.on_text = on_text
 
-    def gen():
+def _turn_stream(session: Session, req: TurnRequest):
+    """回合流生成器（同步）：工作线程跑 dispatch，本生成器阻塞消费队列至哨兵。"""
+    deltas: queue.Queue = queue.Queue()
+    holder: dict = {}
+
+    def dispatch() -> None:
+        """工作线程：执行回合分发，把流式增量与结果放入队列，以 None 哨兵收尾。"""
+        game = session.game
+        game.on_text = lambda piece: deltas.put(("delta", piece))
         try:
             if req.kind == "start":
                 view = game.start()
             elif req.kind == "say":
                 if not req.text or not req.text.strip():
-                    yield _sse("error", "输入不能为空")
-                    return
+                    raise ValueError("输入不能为空")
                 view = game.say(req.text)
             elif req.kind == "pick":
                 view = game.pick(req.index or 0)
             elif req.kind == "act":
                 view = game.act(req.action_id or "")
             else:
-                yield _sse("error", f"未知回合类型 {req.kind}")
-                return
-        except GameError as e:
-            yield _sse("error", str(e))
-            return
-        except StorylineError as e:
-            yield _sse("error", str(e))
-            return
+                raise ValueError(f"未知回合类型 {req.kind}")
+            holder["view"] = view
+        except (GameError, StorylineError, ScheduleError) as e:
+            deltas.put(("error", str(e)))
         except LLMTurnError as e:
-            yield _sse("error", f"生成失败（协议熔断）: {e}")
-            return
-        while not deltas.empty():
-            event, piece = deltas.get_nowait()
-            yield _sse(event, json.dumps(piece, ensure_ascii=False))
-        yield _sse("done", json.dumps(_view(game, view), ensure_ascii=False))
+            deltas.put(("error", f"生成失败（协议熔断）: {e}"))
+        except ValueError as e:
+            deltas.put(("error", str(e)))
+        finally:
+            deltas.put(None)  # 结束哨兵
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    with session.lock:  # B-4：同 sid 回合串行化（客户端开始消费时取锁）
+        threading.Thread(target=dispatch, daemon=True).start()
+        while True:
+            item = deltas.get()  # 阻塞等待流式增量与哨兵
+            if item is None:
+                break
+            event, payload = item
+            yield _sse(event, json.dumps(payload, ensure_ascii=False))  # B-2
+        if "view" in holder:
+            yield _sse("done", json.dumps(_view(session.game, holder["view"]), ensure_ascii=False))
 
 
 @app.post("/api/{sid}/save")
 def api_save(sid: str, req: SaveRequest) -> dict:
-    game = _ensure_game(sid)
+    session = _ensure_session(sid)
     path = _safe_save_path(req.path)  # A-1：约束后的存档路径
-    save_game(game.state, path, game.history)
+    with session.lock:  # B-4：与流式回合互斥，存档的是完整回合后的状态
+        save_game(session.game.state, path, session.game.history)
     return {"ok": True, "path": str(path)}
 
 
 @app.post("/api/{sid}/load")
 def api_load(sid: str, req: SaveRequest) -> dict:
-    game = _ensure_game(sid)
+    session = _ensure_session(sid)
     path = _safe_save_path(req.path)  # A-1：约束后的存档路径
-    try:
-        game.state = load_game(path)
-        game.history = load_history(path)
-    except (FileNotFoundError, ValueError) as e:
-        raise HTTPException(400, f"读档失败: {e}")
-    game.ending = None
-    return {"ok": True, "path": str(path), "status": game.status_text()}
+    with session.lock:
+        try:
+            session.game.state = load_game(path)
+            session.game.history = load_history(path)
+        except (FileNotFoundError, ValueError) as e:
+            raise HTTPException(400, f"读档失败: {e}")
+        session.game.ending = None
+        status = session.game.status_text()
+    return {"ok": True, "path": str(path), "status": status}
 
 
 # ---------------------------------------------------------------------------

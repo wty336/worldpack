@@ -62,6 +62,29 @@ def test_usage_fields_missing_is_none():
     }
 
 
+def test_multithreaded_writes_are_line_atomic(tmp_path):
+    """B-5（m5）：多实例/多线程并发写同一 JSONL，逐行可解析、无行交错。"""
+    import threading
+
+    path = tmp_path / "shared.jsonl"
+    trackers = [UsageTracker(path) for _ in range(4)]
+
+    def write(tracker, base):
+        for i in range(25):
+            tracker.record("m", "turn", {"prompt_tokens": base + i}, ts="t")
+
+    threads = [threading.Thread(target=write, args=(t, i * 100)) for i, t in enumerate(trackers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 100
+    for line in lines:  # 逐行可解析 = 无行交错损坏
+        entry = json.loads(line)
+        assert entry["model"] == "m" and "prompt_tokens" in entry
+
+
 # ---------------------------------------------------------------------------
 # C2/C1：LLMClient 采集与路由
 # ---------------------------------------------------------------------------
