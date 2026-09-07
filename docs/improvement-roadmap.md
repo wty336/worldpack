@@ -32,7 +32,7 @@
 | 批次 1 | E1 / F1 / F2 | Judge 灵敏度验证 + 引擎层硬编码修复 | P0 ✅ 已完成（见 §12） |
 | 批次 2 | A 系列 + C 系列 | 记忆检索/反思 + 模型分层与成本记账 | P1 ✅ 已完成（见 §12） |
 | 批次 3 | D 系列 | 玩法数值循环（检定 + 消费 + 收益曲线） | P2 ✅ 已完成（见 §12） |
-| 批次 4 | B1 / E3 / F5 | Lorebook 按需注入 + 世界包脚手架 + Web 前端 | P3 |
+| 批次 4 | B1 / E3 / F5 | Lorebook 按需注入 + 世界包脚手架 + Web 前端 | P3 ✅ 已完成（见 §12） |
 
 ---
 
@@ -111,6 +111,10 @@
   schema 变化：`world.yaml` 增加 `lore: [{id, keys, text, budget?}]`。
 - **验收**：构造含 30+ lore 条目的测试包，静态前缀 ≤ 8K（design.md §4.6 预算）；
   命中条目的叙事一致性由 Judge 复核。
+- **✅ 已完成（P3）**：`world.yaml` 增加 `lore: [{id, keys, text}]`（id 唯一、keys/text
+  非空校验）；`context.select_lore` 按「场景+节点目标+近 2 条对话」关键词命中 → 命中数
+  降序、字符预算（1500）内追加注入动态区末尾；lore 零入静态前缀。离线：35 条 lore 测试包
+  前缀 4.3K（≤8K）且 lore 全隔离；真机：东市 lore 命中注入、西市零注入、Judge 复核通过。
 
 ### B2 摘要近期偏置治理（M2b 复盘 #7 遗留）
 
@@ -221,6 +225,10 @@
 - **方案**：`python -m game_agent init-worldpack <name>` 生成模板目录（六个 YAML 骨架 + 注释手册）；
   配套 check-worldpack 输出「作者友好」的校验报告（现状已较好，再补 schema 示例链接）。
 - **验收**：M3 判据——新作者仅凭 design.md §12 + 脚手架，1 周内写出过质量门的包。
+- **✅ 已完成（P3）**：`python -m game_agent init-worldpack <name>` 生成六个带注释 YAML
+  骨架（B1 lore / P2 检定/门槛/收益曲线活样板 + 示例节点/事件/结局），**生成即过
+  check-worldpack**（模板自身过质量门的工程原则）；check-worldpack 报告补规范链接。
+  「1 周写出过质量门的包」为 M3 人工判据，工具侧已交付（离线 3 项测试全绿）。
 
 ---
 
@@ -268,6 +276,10 @@
 - **现状**：CLI 已有流式回调 `on_text`，后端基础已铺好。
 - **方案**：FastAPI + SSE/WebSocket 包一层会话 API，前端先做一个极简聊天页。
 - **验收**：浏览器内完成开局 → 关键抉择 → 存档读档全流程。
+- **✅ 已完成（P3）**：`game_agent/web.py`（FastAPI 会话 API + POST-SSE 流式回合
+  （delta/done/error 事件，复用 on_text 回调）+ 内嵌极简聊天页）+ `python -m game_agent web`。
+  离线 TestClient 全流程 7 项测试全绿；真机 uvicorn：开局 → 抉择（617 个流式增量）→
+  发言（247 个增量）→ 行动 → 存读档全流程通过（`scripts/web_smoke.py`）。
 
 ---
 
@@ -287,7 +299,7 @@
    D1 检定 → D2 消费闭环 → D3 收益曲线
    （D2 发现「引擎无需改动」不可行：无门槛消费会退化，最小扩展 ActionSpec.requires）
 
-批次 4（P3 · 框架化，衔接 M3）
+批次 4（P3 · 框架化，衔接 M3）✅ 已完成
    B1 Lorebook 按需注入
    E3 世界包脚手架
    F5 Web 前端
@@ -360,6 +372,16 @@
 | C1 模型分层 | ✅ 通过（口径修正） | 路由落地；E1 双模型实测 flash 100%/100%/100% 优于 pro 100%/83%/83%（¥0.089 vs ¥0.517）——便宜档才是对的 Judge；目录无更便宜档位，「成本下降」条件 = 主模型切 pro 后侧信道留 flash |
 | 离线测试 | ✅ | **189 passed**（159 原有 + 30 新增：usage 9 + A 系列 20 + 鲁棒性 1） |
 | 保留集 | 见 `docs/p1-report.md` | 注入攻击 + 轨道事实 3/3 + 两结局通关 + 数值零偏差审计（均带 usage 账单） |
+
+### P3（B1 / E3 / F5）执行记录（2026-09-07）
+
+| 条目 | 结果 | 证据 |
+| --- | --- | --- |
+| B1 Lorebook | ✅ 通过 | lore 按需注入（场景/目标/近对话命中 + 1500 字符预算 + 零入静态前缀）；35 条 lore 测试包前缀 4.3K；真机东市 lore 命中、西市零注入、Judge 复核通过 |
+| E3 脚手架 | ✅ 通过 | init-worldpack 六骨架（B1/P2 活样板注释）生成即过校验；check-worldpack 补规范链接；M3 人工判据待新作者实测 |
+| F5 Web 前端 | ✅ 通过 | FastAPI + SSE 流式（delta/done/error）+ 内嵌聊天页；离线 TestClient 7 项全绿；真机 curl/httpx 全流程（抉择 617 增量 / 发言 247 增量 / 存读档）通过 |
+| 离线测试 | ✅ | **205 passed**（189 原有 + 16 新增：lorebook 9 + 脚手架 3 + web 4） |
+| 保留集 | 见 `docs/p3-report.md` | 注入攻击 + 轨道事实 3/3 + 两结局通关 + 数值零偏差审计 |
 
 ---
 

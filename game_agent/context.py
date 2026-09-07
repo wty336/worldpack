@@ -12,7 +12,9 @@ from dataclasses import dataclass
 
 from .memory import rank_facts
 from .state import GameState
-from .worldpack import NpcSpec, NodeSpec, WorldPack
+from .worldpack import LoreSpec, NpcSpec, NodeSpec, WorldPack
+
+LORE_BUDGET = 1500  # B1（P3）：单轮注入的 lore 文本字符预算（防世界包膨胀撑爆动态区）
 
 ENGINE_RULES = """你是一款文字互动养成游戏的叙述引擎。
 【引擎协议】
@@ -29,6 +31,30 @@ def _recent_player_text(history: list[dict], n: int = 2) -> str:
     """最近 n 条 user 消息文本（A1 检索相关性上下文）。"""
     user_msgs = [(m.get("content") or "").strip() for m in history if m.get("role") == "user"]
     return "\n".join(m for m in user_msgs[-n:] if m)
+
+
+def select_lore(
+    lore: list[LoreSpec], context: str, budget: int = LORE_BUDGET
+) -> list[LoreSpec]:
+    """B1（P3）：Lorebook 式按需选择——命中关键词（场景/目标/近对话）→ 按命中数降序、
+    文件序取至字符预算。lore 不进静态前缀，只在命中时注入动态区。"""
+    if not lore or not context:
+        return []
+    hits: list[tuple[int, int, LoreSpec]] = []
+    for index, entry in enumerate(lore):
+        n = sum(1 for k in entry.keys if k and k in context)
+        if n > 0:
+            hits.append((n, index, entry))
+    hits.sort(key=lambda t: (-t[0], t[1]))
+    selected: list[LoreSpec] = []
+    used = 0
+    for _, _, entry in hits:
+        cost = len(entry.text) + len(entry.id) + 8  # 行格式开销近似
+        if used + cost > budget:
+            continue
+        selected.append(entry)
+        used += cost
+    return selected
 
 
 @dataclass
@@ -158,6 +184,15 @@ class ContextBuilder:
                 lines.append(self._npc_card(npc, state.affections.get(npc.id, 0.0)))
                 lines.append(self._npc_memories(npc.id, state, context))
             lines.append("</在场角色>")
+
+        # B1（P3）：Lorebook 按需注入（命中关键词 + 字符预算，追加在动态区末尾）
+        lore_context = " ".join(filter(None, [state.scene, node.goal if node else "", recent]))
+        matched = select_lore(self.pack.world.lore, lore_context)
+        if matched:
+            lines.append("<lore>")
+            for entry in matched:
+                lines.append(f"- 【{entry.id}】{entry.text}")
+            lines.append("</lore>")
         return "\n".join(lines)
 
     def _npc_memories(self, npc_id: str, state: GameState, context: str = "") -> str:

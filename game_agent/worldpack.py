@@ -39,6 +39,19 @@ class WorldSpec(BaseModel):
     style_guide: list[str] = Field(default_factory=list)
     forbidden: list[str] = Field(default_factory=list)
     opening: str = ""
+    lore: list["LoreSpec"] = Field(default_factory=list)  # B1（P3）：Lorebook 条目（按需注入）
+
+
+class LoreSpec(BaseModel):
+    """B1（P3）：一条 Lorebook 条目（地点/势力/物品/传闻）。
+
+    keys：触发关键词（命中任一即候选）；text：注入文本。lore 不进静态前缀，
+    由上下文组装器按「场景 + 节点目标 + 近对话」动态注入（字符预算内）。
+    """
+
+    id: str
+    keys: list[str]
+    text: str
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +318,16 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     declared_affections = set(schedule.affections)
     declared_stats = set(schedule.stats)
     action_ids = {a.id for a in schedule.actions}
+
+    # 0) lore 条目校验（B1：id 唯一、keys/text 非空）
+    lore_ids = [l.id for l in pack_parts["world"].lore]
+    if len(lore_ids) != len(set(lore_ids)):
+        raise WorldPackError(f"lore 条目 id 重复: {lore_ids}")
+    for lore in pack_parts["world"].lore:
+        if not lore.keys or any(not k.strip() for k in lore.keys):
+            raise WorldPackError(f"lore '{lore.id}' 的 keys 不能为空且每项非空")
+        if not lore.text.strip():
+            raise WorldPackError(f"lore '{lore.id}' 的 text 不能为空")
 
     # 1) 收集全部引用 + 校验条件结构（when/completion 语法错误在加载期暴露）
     def _check_cond(cond: dict[str, Any], where: str) -> None:

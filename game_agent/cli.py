@@ -15,6 +15,7 @@ from .config import load_settings
 from .game import Game
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
+from .scaffold import init_worldpack
 from .state import GameState
 from .usage import UsageTracker
 from .worldpack import WorldPackError, load_worldpack
@@ -48,6 +49,8 @@ def _cmd_check_worldpack(args: argparse.Namespace) -> int:
     print(f"  事件: {len(pack.events.events)} 个 · 结局: {len(pack.endings.endings)} 个")
     print(f"  NPC: " + ", ".join(n.name for n in pack.npcs.values()))
     print(f"  flag 声明: " + ", ".join(sorted(s.flags)) or "（无）")
+    print(f"  lore 条目: {len(pack.world.lore)} 条（按需注入，B1）")
+    print("  世界包规范: docs/design.md §12（schema 要点 + 作者编写守则）")
     return 0
 
 
@@ -308,6 +311,33 @@ def _ask_number(max_n: int) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _cmd_init_worldpack(args: argparse.Namespace) -> int:
+    """E3（P3）：生成世界包骨架目录。"""
+    try:
+        target = init_worldpack(args.name, args.dir)
+    except FileExistsError as e:
+        print(f"[✗] {e}")
+        return 1
+    print(f"[✓] 世界包骨架已生成 → {target}")
+    print("  包含: world/schedule/mainline/events/endings.yaml + npcs/ 角色卡（含注释手册）")
+    print("  下一步: 1) 按注释填写内容  2) python -m game_agent check-worldpack "
+          f"{target}  3) 规范见 docs/design.md §12")
+    return 0
+
+
+def _cmd_web(args: argparse.Namespace) -> int:
+    """F5（P3）：启动 Web 前端（需 API Key）。"""
+    settings = load_settings()
+    if not settings.has_api_key:
+        print("[✗] 未配置 DEEPSEEK_API_KEY：请复制 .env.example 为 .env 并填入 key")
+        return 1
+    import uvicorn
+
+    print(f"Web 前端启动中 → http://127.0.0.1:{args.port} （Ctrl+C 退出）")
+    uvicorn.run("game_agent.web:app", host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="game-agent", description="文字对话养成游戏引擎")
     sub = parser.add_subparsers(dest="command")
@@ -318,10 +348,21 @@ def main(argv: list[str] | None = None) -> int:
     p_play = sub.add_parser("play", help="开始游戏（需 API Key）")
     p_play.add_argument("path", nargs="?", default=DEFAULT_WORLDPACK)
 
+    p_init = sub.add_parser("init-worldpack", help="生成世界包脚手架（E3）")
+    p_init.add_argument("name", help="世界包名（如 my_world）")
+    p_init.add_argument("--dir", default="world-packs", help="目标根目录（默认 world-packs）")
+
+    p_web = sub.add_parser("web", help="启动 Web 前端（F5，需 API Key）")
+    p_web.add_argument("--port", type=int, default=8000)
+
     args = parser.parse_args(argv)
     if args.command == "check-worldpack":
         return _cmd_check_worldpack(args)
     if args.command == "play":
         return _cmd_play(args)
+    if args.command == "init-worldpack":
+        return _cmd_init_worldpack(args)
+    if args.command == "web":
+        return _cmd_web(args)
     parser.print_help()
     return 0

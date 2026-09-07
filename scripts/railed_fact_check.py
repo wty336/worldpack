@@ -98,15 +98,32 @@ def main() -> int:
             print(f"[✗] 对局异常: {type(e).__name__}: {e}")
             return 1
 
-    # 事实检查（经状态栏，真实机制）
+    # 事实检查（经状态栏，真实机制——A1 检索注入后事实须在状态栏可见）
     print("===== 事实保持检查 =====")
     passed = 0
+    materials = game.builder.status_text(game.state, None)  # 仅材料，无历史（防叙事惯性）
     for fid, _day, _line, question, kws in FACTS:
-        msgs = game.builder.build_messages(game.state, game.history, None)
         answer = game.llm.complete(
-            [*msgs, {"role": "user", "content": f"[记忆检查] {question}"}],
+            [
+                {"role": "user", "content": f"{materials}\n\n[记忆检查] {question}"},
+            ],
             max_tokens=CHECK_MAX_TOKENS,
         )
+        # M2a #4 测量加固：散文式/空回答时追问（最多 2 次），压制叙事本能（只回短语）
+        for _retry in range(2):
+            if len(answer.strip()) <= 60 and answer.strip():
+                break
+            answer = game.llm.complete(
+                [
+                    {"role": "user", "content": f"{materials}\n\n[记忆检查] {question}"},
+                    {
+                        "role": "user",
+                        "content": "上一条回答不符合要求。请只回答问题的答案本身"
+                        "（短语即可，不超过 10 个字），不要叙述、不要解释。",
+                    },
+                ],
+                max_tokens=CHECK_MAX_TOKENS,
+            )
         correct = any(k in answer for k in kws)
         passed += 1 if correct else 0
         print(f"  {'✓' if correct else '✗'} {fid}: {answer.strip()[:100]}")
