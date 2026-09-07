@@ -20,9 +20,9 @@ from game_agent.config import load_settings
 from game_agent.judge import JudgeSystem
 from game_agent.judge_corpus import (
     ADVERSARIAL_CATEGORIES,
-    CORPUS,
     NORMAL_CATEGORY,
     build_materials,
+    load_corpus,
 )
 from game_agent.llm import LLMClient
 from game_agent.usage import UsageTracker
@@ -63,14 +63,15 @@ def main() -> int:
         return 1
 
     pack = load_worldpack(args.pack)
+    corpus = load_corpus(args.pack)  # C-1：语料随世界包（内容层资产）
     tracker = UsageTracker("reports/usage-judge-sensitivity.jsonl")  # C2
     llm = LLMClient.from_settings(settings, [], tracker=tracker)  # C1：judge 走专属模型路由
     judge = JudgeSystem(llm)
-    print(f"语料 {len(CORPUS)} 条 × {args.rounds} 轮 · 主模型 {settings.model}"
+    print(f"语料 {len(corpus)} 条 × {args.rounds} 轮 · 主模型 {settings.model}"
           f" · Judge 模型 {llm.model_for('judge')} · 包 {pack.world.name}\n")
 
     results = []
-    for case in CORPUS:
+    for case in corpus:
         hit, detail = _run_case(judge, pack, case, args.rounds)
         results.append({"id": case.id, "category": case.category, "hit": hit, "rounds": detail})
         mark = "✓" if (hit == (not case.expected)) else "✗"

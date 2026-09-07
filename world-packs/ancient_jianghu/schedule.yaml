@@ -17,7 +17,7 @@ flags:
   poetry_join: false     # 诗会关键选择：是否登台
 
 # 行动收益支持两种写法（D3 收益曲线）：
-#   普通数字            → 确定性收益（越界 = 作者错误，加载/运行期报错）
+#   普通数字            → 确定性收益（世界包效果路径越界统一饱和，见 design.md §5.3.3）
 #   {base/spread/...}   → base 经边际递减 ± spread 随机，越界饱和
 actions:
   - id: cultivate

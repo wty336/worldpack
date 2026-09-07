@@ -16,15 +16,17 @@ from game_agent.judge import JudgeSystem, parse_verdict
 from game_agent.judge_corpus import (
     ADVERSARIAL_CATEGORIES,
     CATEGORIES,
-    CORPUS,
     NORMAL_CATEGORY,
     JudgeCase,
     build_materials,
+    load_corpus,
 )
 from game_agent.llm import LLMClient
 from game_agent.worldpack import load_worldpack
 
 PACK_PATH = Path(__file__).resolve().parent.parent / "world-packs" / "ancient_jianghu"
+
+CORPUS = load_corpus(PACK_PATH)  # C-1：语料随世界包（内容层资产）
 
 
 # ---------------------------------------------------------------------------

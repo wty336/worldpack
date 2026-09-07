@@ -283,7 +283,7 @@ def test_a3_insight_cap_replaces_oldest():
 
 
 def test_a3_reflect_skips_when_no_new_memories():
-    """记忆无新增 → 不重复反思（_last_reflect_counts 门控）。"""
+    """记忆无新增 → 不重复反思（C-5：round 门控，可从存档重建）。"""
     from game_agent.game import Game
 
     pack = load_worldpack(PACK_PATH)
@@ -293,17 +293,44 @@ def test_a3_reflect_skips_when_no_new_memories():
     state.npc_memories["shen_qingqiu"] = [
         MemoryEntry(fact=f"记忆{i:02d}", day=1, round=i, importance=5.0) for i in range(8)
     ]
-    fake = FakeClient([])  # 响应耗尽：被调用即抛错
+    fake = FakeClient([resp(msg(content="洞察一|1"))])  # 1 个响应：再次调用即耗尽抛错
     llm = LLMClient(fake, "fake", [])
     game = Game(pack, state, llm)
     game.reflect_every = 10
     state.turn_count = 10
     game._reflect()
-    assert fake.chat.completions.calls  # 第一次触发（8 ≥ 8）
-    calls_before = len(fake.chat.completions.calls)
+    assert len(fake.chat.completions.calls) == 1  # 第一次触发（8 ≥ 8），洞察 round=10
     state.turn_count = 20
-    game._reflect()  # 记忆无新增 → 跳过
-    assert len(fake.chat.completions.calls) == calls_before
+    game._reflect()  # 最新记忆 round（7）≤ 洞察 round（10）→ 跳过
+    assert len(fake.chat.completions.calls) == 1
+
+
+def test_a3_reflect_no_duplicate_after_save_load():
+    """C-5（m3）：门控可从存档重建——读档后对同一批记忆不重复反思。"""
+    import json
+
+    from game_agent.game import Game
+    from game_agent.state import MemoryEntry
+
+    pack = load_worldpack(PACK_PATH)
+    state = GameState.from_pack(pack)
+    state.npc_memories["shen_qingqiu"] = [
+        MemoryEntry(fact=f"记忆{i:02d}", day=1, round=i, importance=5.0) for i in range(8)
+    ]
+    llm = LLMClient(FakeClient([resp(msg(content="洞察一|1"))]), "fake", [])
+    game = Game(pack, state, llm)
+    state.turn_count = 10
+    game._reflect()
+    assert len(state.npc_insights["shen_qingqiu"]) == 1
+
+    # 模拟存档 → 新进程读档：门控状态不在 Game 内，必须能从 state 重建
+    restored = GameState.from_dict(json.loads(json.dumps(state.to_dict(), ensure_ascii=False)))
+    new_game = Game(pack, restored, llm)
+    calls_before = len(llm._client.chat.completions.calls)
+    restored.turn_count = 20
+    new_game._reflect()  # 记忆最新 round（7）≤ 洞察 round（10）→ 不重复反思
+    assert len(restored.npc_insights["shen_qingqiu"]) == 1
+    assert len(llm._client.chat.completions.calls) == calls_before
 
 
 def test_a3_insights_injected_into_npc_card():
@@ -321,14 +348,18 @@ def test_a3_insights_injected_into_npc_card():
 
 
 def test_a3_save_roundtrip_with_insights():
+    import json
+
     from game_agent.state import InsightEntry
 
     pack, state, mem = _sys()
     state.npc_insights["shen_qingqiu"] = [
         InsightEntry(text="态度转向信任", day=3, round=20, sources=("记忆A", "记忆B"))
     ]
-    restored = GameState.from_dict(state.to_dict())
+    # C-3（m1）：经真实 json.dumps/loads 回环（模拟存档文件落盘），sources 归一化回 tuple
+    restored = GameState.from_dict(json.loads(json.dumps(state.to_dict(), ensure_ascii=False)))
     assert restored.npc_insights == state.npc_insights
+    assert isinstance(restored.npc_insights["shen_qingqiu"][0].sources, tuple)
 
 
 # ---------------------------------------------------------------------------

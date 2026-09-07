@@ -100,7 +100,6 @@ class Game:
         self.keep_turns = keep_turns  # M2b 压缩近窗
         self.judge_every = judge_every  # M2b 语义校验间隔（0=关闭）
         self.reflect_every = reflect_every  # A3 反思间隔（0=关闭）
-        self._last_reflect_counts: dict[str, int] = {}  # A3：上次反思时各 NPC 记忆条数
         self.judge = JudgeSystem(llm)  # M2b
 
     # ------------------------------------------------------------------
@@ -292,13 +291,21 @@ class Game:
     # ------------------------------------------------------------------
 
     def _reflect(self) -> None:
-        """对记忆新增达标的 NPC 合成关系洞察（侧信道：失败静默降级）。"""
+        """对记忆新增达标的 NPC 合成关系洞察（侧信道：失败静默降级）。
+
+        C-5（m3）：门控条件全部可从存档重建——「该 NPC 记忆中的最新 round 严格大于
+        最近一次洞察的 round」才反思，读档后不会对同一批记忆重复合成。
+        """
         for npc_id, bucket in self.state.npc_memories.items():
-            last = self._last_reflect_counts.get(npc_id, 0)
-            if len(bucket) < REFLECT_MIN_MEMORIES or len(bucket) == last:
+            if len(bucket) < REFLECT_MIN_MEMORIES:
                 continue
+            newest_memory_round = max(m.round for m in bucket)
+            last_insight_round = max(
+                (i.round for i in self.state.npc_insights.get(npc_id, [])), default=-1
+            )
+            if newest_memory_round <= last_insight_round:
+                continue  # 无新增记忆（含读档后重入）：不重复反思
             self._reflect_npc(npc_id, bucket)
-            self._last_reflect_counts[npc_id] = len(bucket)
 
     def _reflect_npc(self, npc_id: str, bucket: list) -> None:
         name = self.pack.npcs[npc_id].name

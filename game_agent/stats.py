@@ -2,9 +2,11 @@
 
 两条路径严格分离：
 - apply_change：LLM 提议路径。受增量上限约束、reason 必填、越界拒绝（不静默截断）；
-- apply_effects：世界包作者定义的确定性效果（日程/事件/关键选择结算），只做声明校验。
-  D3（P2）：效果值支持收益曲线 {base/spread/decay_every/decay_step}——随机结果越界时
-  **饱和**（记录实际生效 delta）；普通数字保持确定性语义（越界抛错 = 作者 bug）。
+- apply_effects：世界包作者定义的效果（日程/事件/关键选择结算），只做声明校验。
+  D3（P2）：效果值支持收益曲线 {base/spread/decay_every/decay_step}。
+  越界语义（C-6 统一口径）：世界包效果路径一律**饱和**——先截断 delta
+  （delta = 边界 - before）再算 after，记录实际生效 delta 与「已达边界」标注；
+  审计不变量 after == before + delta 恒成立。
 所有变更都写入 stat_log（append-only），供零偏差审计回放。
 """
 

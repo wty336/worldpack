@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 from game_agent.events import EventSystem
@@ -55,6 +56,27 @@ def test_schedule_event_triggers_by_chance():
     assert state.stats["martial"] == 7.0  # 5 + 2
     assert "后山奇遇" in msg["content"]
     assert events.check_schedule_event(state, "cultivate") is None  # once
+
+
+def test_event_effect_curve_uses_same_rng_across_runs():
+    """C-4（m2）：含 spread 的事件效果走系统 rng——同 seed 两次触发结果一致（R4 可复现）。"""
+    pack = load_worldpack(PACK_PATH)
+    ev = EventSpec(
+        id="ev_spread", title="随机收益事件",
+        trigger=EventTrigger(kind="condition", when={"day": {"gte": 1}}),
+        priority="normal",
+        effects={"stats": {"silver": {"base": 10, "spread": 5}}},
+        once=False,
+    )
+
+    def run_once():
+        state = GameState.from_pack(pack)
+        events = EventSystem(pack, StatsSystem(pack.schedule), random.Random(42))
+        events.trigger(state, ev)
+        return state.stats["silver"]
+
+    first, second = run_once(), run_once()
+    assert first == second  # 同 seed → 同序列 → 同结果（修复前走系统熵则必不等）
 
 
 def test_schedule_event_not_triggered_when_rng_high():

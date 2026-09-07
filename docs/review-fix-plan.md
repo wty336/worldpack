@@ -22,13 +22,13 @@
 | M3 | Major | SSE 伪流式：LLM 跑完才一次性送达 | web.py:139-169 | B ✅ 已修复 |
 | M4 | Major | 会话共享状态无并发保护 | web.py:38,53,56,137 | B ✅ 已修复 |
 | m5 | Minor | UsageTracker 多实例写同一 JSONL 无锁 | usage.py:75-81 | B ✅ 已修复 |
-| M6 | Major | judge_corpus.py 违反分层原则（在引擎层含内容文案） | judge_corpus.py:24-27 等 | C |
-| M7 | Major | scaffold 的 name 无校验，路径穿越 | scaffold.py:151-160 | C |
-| m1 | Minor | InsightEntry.sources JSON 回环后 tuple→list | state.py:174-177 | C |
-| m2 | Minor | 事件路径 rng 不可复现（与 P2 报告声明不符） | events.py:72 | C |
-| m3 | Minor | 反思门控计数不入存档，读档后重复反思 | game.py:103,293-300 | C |
-| m4 | Minor | 越界语义三处口径不一致 | stats.py:5-8 / schedule.yaml / design.md | C |
-| D1 | Docs | P1 报告内部 188/189 不一致 | p1-report.md §1 vs §6 | C |
+| M6 | Major | judge_corpus.py 违反分层原则（在引擎层含内容文案） | judge_corpus.py:24-27 等 | C ✅ 已修复 |
+| M7 | Major | scaffold 的 name 无校验，路径穿越 | scaffold.py:151-160 | C ✅ 已修复 |
+| m1 | Minor | InsightEntry.sources JSON 回环后 tuple→list | state.py:174-177 | C ✅ 已修复 |
+| m2 | Minor | 事件路径 rng 不可复现（与 P2 报告声明不符） | events.py:72 | C ✅ 已修复 |
+| m3 | Minor | 反思门控计数不入存档，读档后重复反思 | game.py:103,293-300 | C ✅ 已修复 |
+| m4 | Minor | 越界语义三处口径不一致 | stats.py:5-8 / schedule.yaml / design.md | C ✅ 已修复 |
+| D1 | Docs | P1 报告内部 188/189 不一致 | p1-report.md §1 vs §6 | C ✅ 已修复 |
 
 **批次划分**：
 - **批次 A（安全 + 机制纯度，立即）**：C1、M5 —— ✅ 已完成（见 §2 与复盘）
@@ -312,7 +312,7 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
 
 ## 4. 批次 C：分层与卫生
 
-### C-1（M6）judge_corpus.py 迁出引擎层
+### C-1（M6）judge_corpus.py 迁出引擎层 ✅ 已修复
 
 - **位置**：`game_agent/judge_corpus.py` 全文（412 行）。
 - **问题**：P0 刚修完 F1「引擎层不得含内容文案」，同批却在引擎层新增通篇
@@ -327,6 +327,13 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
 - **验收**：`uv run python -m game_agent check-worldpack` 与门禁脚本正常运行；
   `game_agent/` 包内 grep 不到「长安」「shen_qingqiu」。
 - **工作量**：小。
+- **✅ 实施记录**：取方案 1。30 条语料以 `|-` 字面块 YAML 落盘（**全字段显式**——
+  首版按旧默认值省略 day/scene 导致中性 loader 读回语义漂移，教训见 RF-8）；
+  引擎层重写为中性 `JudgeCase` + `load_corpus(pack_root)` + `build_materials`；
+  judge_sensitivity 与 test_e1_corpus 改从世界包加载。顺带中性化
+  `memory.py` 的 REFLECT_SYSTEM 示例（漏网的引擎层内容文案）。验收全过：
+  `game_agent/` grep 内容文案 **0 命中**；check-worldpack 正常（语料文件被忽略）；
+  真机 E1 门禁复跑 **100%/100%/100%/0%**（迁移零回退，¥0.094）。
 
 ### C-2（M7）scaffold 的 name 白名单
 
@@ -339,6 +346,8 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
   ```
 - **验收**：tests/test_scaffold.py 新增——`../x`、`C:/x`、含空格名均拒绝。
 - **工作量**：小。
+- **✅ 实施记录**：`re.fullmatch(r"[A-Za-z0-9_\-]+", name)` 白名单，非法抛 ValueError；
+  新增用例拒绝 `../evil`、`C:/evil`、空格、中文、空串、`a/b`、`a.b`。
 
 ### C-3（m1）InsightEntry.sources 反序列化归一化
 
@@ -346,6 +355,9 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
 - **修法**：`from_dict` 中 `sources=tuple(i.get("sources", ()))`；
   `test_a3_save_roundtrip_with_insights` 改为经真实 `json.dumps/loads` 回环。
 - **验收**：JSON 文件级回环断言 sources 类型一致。
+- **✅ 实施记录**：`from_dict` 显式构造 InsightEntry 并 `tuple(i.get("sources", ()))`
+  归一化；`test_a3_save_roundtrip_with_insights` 改为真实 `json.dumps/loads` 回环
+  并断言 sources 类型为 tuple。
 
 ### C-4（m2）事件路径 rng 同源
 
@@ -357,6 +369,9 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
   **注意**：传入 rng 后行为变化仅限含 spread/decay 的事件效果，当前世界包无此类事件，
   保留集不受影响（无需重跑真机）；但需在报告中如实说明。
 - **验收**：tests/test_events.py 新增——含 spread 效果的事件在同 seed 下两次触发结果一致。
+- **✅ 实施记录**：`trigger` 传 `rng=self.rng`；新增用例（silver `{base:10, spread:5}`，
+  同 seed 两次触发值相等——修复前走系统熵必不等）。当前世界包事件均为固定数字，
+  真机行为不变（无需重跑保留集）。
 
 ### C-5（m3）反思门控状态入存档
 
@@ -365,6 +380,10 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
   1. 计数放入 GameState（随存档）；
   2. 判定改为可从存档重建的条件（如「该 NPC 记忆中最大 round > 最近一次洞察 round」）。
 - **验收**：存档→读档后不触发重复反思；离线测试覆盖。
+- **✅ 实施记录**：取方案 2——门控改为「NPC 记忆中最新 round > 最近洞察 round」，
+  全部可从存档重建；删除 `_last_reflect_counts`。新增读档不重复反思用例
+  （json 回环后新 Game 实例 _reflect 不再调用 LLM）。行为附注：反思调用失败
+  （静默）时该门控会重试至成功——每 10 回合至多一次，属合理语义。
 
 ### C-6（m4）越界语义口径统一
 
@@ -374,12 +393,60 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
 - **修法**：三处统一为 design.md 口径——世界包效果路径一律饱和（先截断 delta 再算
   after），LLM 提议路径（change_stat）保持严格拒绝。
 - **验收**：纯文档改动，无测试影响。
+- **✅ 实施记录**：stats.py docstring、schedule.yaml 注释统一为 design.md 口径
+  （世界包效果路径一律饱和，先截断 delta 再算 after）；顺带中性化 memory.py
+  REFLECT_SYSTEM 中的内容层示例（并入 C-1 一起提交）。
 
 ### C-7（D1）P1 报告笔误
 
 - **位置**：`docs/p1-report.md` §1（"188 passed"）vs §6 / README（"189 passed"）。
 - **修法**：§1 改 189；顺带复核 README「当前状态」区四条批次记录的数字一致性
   （146/159/189/205）。
+- **✅ 实施记录**：p1-report §1 改 189 并补明细（usage 9 + A 系列 20 + 鲁棒性 1）；
+  README 四条批次数字复核一致（P0 无计数声明、P1 189、P2 159、P3 205）。
+
+---
+
+### 批次 C 复盘（2026-09-07 执行记录）
+
+#### 1. 结论速览
+
+| 项 | 结果 |
+| --- | --- |
+| C-1（M6）语料迁出 | ✅ 30 条语料 YAML 化到世界包；引擎层 grep 内容文案 **0 命中**；真机 E1 门禁 100%/100%/100%/0%（¥0.094）零回退 |
+| C-2（M7）名称白名单 | ✅ 正则白名单，7 种非法名拒绝 |
+| C-3~C-6（m1~m4） | ✅ sources 归一化 / 事件 rng 同源 / 反思门控入档重建 / 越界语义统一 |
+| C-7（D1） | ✅ p1-report 188→189，README 数字复核一致 |
+| 离线测试 | ✅ **217 passed**（214 原有 + 3 新增：scaffold 1 + events 1 + 反思读档 1） |
+| 真机 | ✅ check-worldpack 正常（语料文件被世界包加载器忽略）+ E1 门禁复跑通过 |
+
+#### 2. 实施中的两个发现
+
+**发现 1（RF-8）：YAML 化时「按旧默认值省略字段」会造成语义漂移。**
+首版生成脚本对 day/scene 按旧 Python 默认值（12 / 长安城·东市）省略写出，而新
+loader 的默认值是中性的（1 / 空）——`setting_time_conflict` 等用例依赖「第 12 天」
+材料，省略即漂移。改法：**全字段显式写出**，数据文件的语义不依赖任何一方的默认值。
+预防：数据迁移（代码 → 数据）时目标格式全字段显式；loader 默认值只做兜底，不承载语义。
+
+**发现 2（RF-9）：反思门控改 round 判定后，「失败重试」语义自然浮现。**
+C-5 用「记忆最新 round > 洞察 round」替代计数门控后，反思调用失败（静默）时没有
+洞察落盘 → 下一 tick 会重试（每 10 回合至多一次）。这是合理语义，但旧测试
+（fake 无响应）在新门控下行为改变。预防：门控重构后先问「失败路径的重试语义是什么」，
+并把该语义写进测试注释与文档。
+
+#### 3. 教训与新增预防规则
+
+| # | 教训 | 预防规则 |
+| --- | --- | --- |
+| RF-8 | 数据迁移按旧默认值省略字段 → 新 loader 中性默认值读回语义漂移 | 数据文件全字段显式；loader 默认值只做兜底，不承载语义 |
+| RF-9 | 门控机制重构改变失败路径的重试语义 | 重构门控先定义失败/重试语义并写进测试与文档 |
+
+#### 4. 收官
+
+审查修复三批次（A/B/C）全部完成，15 项发现全部修复。离线 217 全绿，真机验收
+（E1 门禁 / web_smoke / 轨道事实 / 记忆回归）逐批通过。建议后续把「新引擎 user
+消息必须带 name=engine」（RF-4）与「引擎层零内容文案」（C-1）纳入常规代码审查
+检查清单。
 
 ---
 
@@ -389,7 +456,7 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
 | --- | --- | --- |
 | A | 全绿 + 新增用例 ✅（209 passed） | ✅ 已完成：轨道事实 3/3（重读协议加固后）+ memory_regression 召回@40（见 A-2 实施记录）；注入/通关可复用最近结果 |
 | B | 全绿 + 新增用例 ✅（214 passed） | ✅ 已完成：web_smoke 真机复跑全项通过（含真流式时间线 5.9s/15.4s）；引擎主线无改动，其余保留集复用最近结果 |
-| C | 全绿 + 新增用例 | C-4 如上文注明无需重跑；其余纯卫生项 |
+| C | 全绿 + 新增用例 ✅（217 passed） | ✅ C-1 语料迁移后真机 E1 门禁复跑 100%/100%/100%/0%（零回退）；C-4 注明无需重跑；其余纯卫生项 |
 
 其他纪律：
 - 每批一个 commit，信息含「审查修复 + 编号」（对应 git 历史风格）；
@@ -412,4 +479,4 @@ B-3 测试初版用 `game.pick(0)` 直接调引擎（on_text 未设 → 非流�
 
 ---
 
-*审查修复计划 v0.3（批次 A、B 已执行并复盘，见各批次复盘章节）。实施中与本文档冲突时以实测为准，回写本文档。*
+*审查修复计划 v0.4（批次 A/B/C 全部执行并复盘，15 项发现全部修复）。实施中与本文档冲突时以实测为准，回写本文档。*

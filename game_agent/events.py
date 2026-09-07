@@ -69,7 +69,7 @@ class EventSystem:
 
     def trigger(self, state: GameState, event: EventSpec) -> dict:
         """执行事件：结算效果、记录防重、返回事件脚本消息（追加到历史）。"""
-        notes = self.stats.apply_effects(state, event.effects)
+        notes = self.stats.apply_effects(state, event.effects, rng=self.rng)  # C-4（m2）：rng 同源
         state.triggered_events.append(event.id)
         note_str = "；".join(notes) if notes else "无"
         return {

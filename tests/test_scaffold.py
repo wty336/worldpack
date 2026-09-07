@@ -29,6 +29,14 @@ def test_init_worldpack_existing_dir_raises(tmp_path):
         init_worldpack("demo_world", tmp_path)
 
 
+def test_init_worldpack_rejects_illegal_names(tmp_path):
+    """C-2（M7）：路径穿越/盘符/空格/中文名一律拒绝。"""
+    for bad in ("../evil", "C:/evil", "a b", "名字", "a/b", "", "a.b"):
+        with pytest.raises(ValueError, match="非法世界包名"):
+            init_worldpack(bad, tmp_path)
+    assert not (tmp_path / "evil").exists()
+
+
 def test_templates_are_commented_manual():
     """模板即注释手册：六个骨架都带规范指引。"""
     assert "docs/design.md §12" in TEMPLATES["world.yaml"]

@@ -6,7 +6,10 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+_NAME_PATTERN = re.compile(r"[A-Za-z0-9_\-]+")  # C-2（M7）：世界包名白名单
 
 TEMPLATES: dict[str, str] = {
     "world.yaml": """\
@@ -149,7 +152,9 @@ memory_limit: 20
 
 
 def init_worldpack(name: str, root: str | Path) -> Path:
-    """生成世界包骨架目录。已存在则抛 FileExistsError。"""
+    """生成世界包骨架目录。已存在则抛 FileExistsError；非法名抛 ValueError。"""
+    if not isinstance(name, str) or not _NAME_PATTERN.fullmatch(name):
+        raise ValueError(f"非法世界包名（仅允许字母/数字/_/-）: {name!r}")
     target = Path(root) / name
     if target.exists():
         raise FileExistsError(f"目录已存在: {target}")

@@ -172,7 +172,13 @@ class GameState:
                 for k, v in d.get("npc_memories", {}).items()
             },
             npc_insights={
-                k: [InsightEntry(**i) for i in v]
+                k: [
+                    InsightEntry(
+                        text=i["text"], day=i["day"], round=i["round"],
+                        sources=tuple(i.get("sources", ())),  # C-3（m1）：JSON 回环归一化
+                    )
+                    for i in v
+                ]
                 for k, v in d.get("npc_insights", {}).items()
             },
         )
