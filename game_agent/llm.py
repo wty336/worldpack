@@ -23,6 +23,7 @@ from openai import OpenAI
 from .config import Settings
 from .memory import MemoryError
 from .stats import StatChangeError
+from .usage import UsageTracker, usage_fields
 from .worldpack import ScheduleSpec
 
 MAX_OUTPUT_TOKENS = 2048  # 含思考链预算：重回合（抉择后叙事）需要余量，截断会导致无工具调用
@@ -131,6 +132,15 @@ def build_tools(schedule: ScheduleSpec) -> list[dict]:
                             "type": "string",
                             "description": "一句话事实，≤120 字，如「玩家承诺中秋前备齐聘银五十两」",
                         },
+                        "importance": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                            "description": (
+                                "重要性 1~10（缺省 5）：8-10 身份身世/生死承诺/命运级；"
+                                "5-7 重要关系进展与关键事件；1-4 日常喜好琐事"
+                            ),
+                        },
                     },
                     "required": ["target", "fact"],
                 },
@@ -215,26 +225,74 @@ def _validate_narration(args: Any) -> str | None:
 
 
 class LLMClient:
-    """协议客户端：run_turn 跑一轮完整闭环（change_stat 循环 + submit_narration 收尾）。"""
+    """协议客户端：run_turn 跑一轮完整闭环（change_stat 循环 + submit_narration 收尾）。
 
-    def __init__(self, client: OpenAI, model: str, tools: list[dict]):
+    C1/C2（P1）：
+    - purpose（turn/judge/compress/extract/reflect/dedup/aux）同时决定
+      ① 使用哪个模型（models 映射，缺省回退 self.model）与 ② usage 记账的用途标签；
+    - tracker 非 None 时每次 API 调用落盘 usage（含缓存命中/未命中）。
+    """
+
+    def __init__(
+        self,
+        client: OpenAI,
+        model: str,
+        tools: list[dict],
+        models: dict[str, str] | None = None,  # C1：purpose → 模型名
+        tracker: UsageTracker | None = None,  # C2：usage 落盘
+    ):
         self._client = client
         self.model = model
         self.tools = tools
+        self.models = models or {}
+        self.tracker = tracker
+
+    @classmethod
+    def from_settings(
+        cls,
+        settings: Settings,
+        tools: list[dict],
+        tracker: UsageTracker | None = None,
+    ) -> "LLMClient":
+        """按 Settings 构造：主模型 + judge/compress 专属模型路由（C1）。"""
+        return cls(
+            make_client(settings),
+            settings.model,
+            tools,
+            models={
+                "judge": settings.model_for("judge"),
+                "compress": settings.model_for("compress"),
+            },
+            tracker=tracker,
+        )
+
+    def model_for(self, purpose: str) -> str:
+        return self.models.get(purpose) or self.model
+
+    def _record_usage(self, model: str, purpose: str, resp: Any) -> None:
+        if self.tracker is not None:
+            self.tracker.record(model, purpose, usage_fields(resp))
 
     def complete(
-        self, messages: list[dict], max_tokens: int = 400, temperature: float | None = None
+        self,
+        messages: list[dict],
+        max_tokens: int = 400,
+        temperature: float | None = None,
+        purpose: str = "aux",
     ) -> str:
-        """无工具纯文本补全（M2a 事实提取器等侧信道用）。
+        """无工具纯文本补全（事实提取/压缩/Judge/去重/反思等侧信道用）。
 
         temperature 缺省走提供商默认值；判定类调用（如 Judge）传 0 以获得稳定结论。
+        purpose 决定模型路由（C1）与 usage 标签（C2）。
         """
+        model = self.model_for(purpose)
         kwargs: dict[str, Any] = dict(
-            model=self.model, messages=messages, max_tokens=max_tokens, stream=False
+            model=model, messages=messages, max_tokens=max_tokens, stream=False
         )
         if temperature is not None:
             kwargs["temperature"] = temperature
         resp = self._client.chat.completions.create(**kwargs)
+        self._record_usage(model, purpose, resp)
         return resp.choices[0].message.content or ""
 
     def run_turn(
@@ -257,22 +315,29 @@ class LLMClient:
         stat_changes: list[dict] = []
         memories: list[dict] = []
 
+        model = self.model_for("turn")
         for i in range(1, max_iters + 1):
             kwargs: dict[str, Any] = dict(
-                model=self.model,
+                model=model,
                 messages=msgs,
                 tools=self.tools,
                 tool_choice="auto",
                 max_tokens=MAX_OUTPUT_TOKENS,
             )
+            stream_usage = None  # C2：流式时 usage 在末尾 chunk（stream_options 开启后）
             if on_text is not None:
                 # openai SDK v3 的流式对象不聚合，需手动累积各 delta
-                stream = self._client.chat.completions.create(**kwargs, stream=True)
+                stream = self._client.chat.completions.create(
+                    **kwargs, stream=True, stream_options={"include_usage": True}
+                )
                 content_parts: list[str] = []
                 reasoning_parts: list[str] = []
                 tool_call_parts: dict[int, dict] = {}
                 finish: str | None = None
                 for chunk in stream:
+                    usage_chunk = getattr(chunk, "usage", None)
+                    if usage_chunk is not None:
+                        stream_usage = usage_chunk
                     if not getattr(chunk, "choices", None):
                         continue
                     choice = chunk.choices[0]
@@ -324,10 +389,12 @@ class LLMClient:
                             ),
                             finish_reason=finish,
                         )
-                    ]
+                    ],
+                    usage=stream_usage,  # C2：可能为 None（provider 未回传）
                 )
             else:
                 resp = self._client.chat.completions.create(**kwargs, stream=False)
+            self._record_usage(model, "turn", resp)
             msg = resp.choices[0].message
             finish = getattr(resp.choices[0], "finish_reason", None)
             msgs.append(_assistant_to_dict(msg))

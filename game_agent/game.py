@@ -27,11 +27,21 @@ from .context import ContextBuilder
 from .events import EventSystem
 from .judge import JudgeSystem
 from .llm import LLMClient
-from .memory import EXTRACT_SYSTEM, MemoryError, MemorySystem, parse_facts
+from .memory import (
+    EXTRACT_SYSTEM,
+    INSIGHT_CAP,
+    REFLECT_MATERIAL,
+    REFLECT_MIN_MEMORIES,
+    REFLECT_SYSTEM,
+    MemoryError,
+    MemorySystem,
+    parse_facts,
+    parse_insights,
+)
 from .save import save_game
 from .schedule import ScheduleSystem
-from .state import GameState
-from .stats import StatsSystem
+from .state import GameState, InsightEntry
+from .stats import StatChangeError, StatsSystem
 from .storyline import StorylineEngine, filter_choices
 from .worldpack import ActionSpec, CriticalChoice, EndingSpec, WorldPack
 
@@ -67,6 +77,7 @@ class Game:
         compress_threshold: int = 0,  # M2b：历史 token 估算超此阈值时批量压缩（0=关闭）
         keep_turns: int = 6,  # M2b：压缩时保留的近窗回合数
         judge_every: int = 0,  # M2b：>0 时每 N 回合做一次语义校验（0=关闭）
+        reflect_every: int = 0,  # A3（P1）：>0 时每 N 回合做关系洞察反思（0=关闭）
     ):
         self.pack = pack
         self.state = state
@@ -75,7 +86,7 @@ class Game:
         self.story = StorylineEngine(pack, self.stats)
         self.events = EventSystem(pack, self.stats, rng)
         self.schedule = ScheduleSystem(pack, self.stats, rng)  # D 系列：检定/收益曲线共用 rng
-        self.memory = MemorySystem(pack)  # M2a 记忆显式化
+        self.memory = MemorySystem(pack, llm)  # M2a 记忆显式化 + A4 语义去重（P1）
         self.builder = ContextBuilder.from_pack(pack)
         self.history: list[dict] = []
         self.ending: EndingSpec | None = None
@@ -88,6 +99,8 @@ class Game:
         self.compress_threshold = compress_threshold  # M2b 压缩阈值
         self.keep_turns = keep_turns  # M2b 压缩近窗
         self.judge_every = judge_every  # M2b 语义校验间隔（0=关闭）
+        self.reflect_every = reflect_every  # A3 反思间隔（0=关闭）
+        self._last_reflect_counts: dict[str, int] = {}  # A3：上次反思时各 NPC 记忆条数
         self.judge = JudgeSystem(llm)  # M2b
 
     # ------------------------------------------------------------------
@@ -244,6 +257,9 @@ class Game:
         # M2b 语义校验：每 N 回合检查最新叙事，失败注入下轮修正提示
         if self.judge_every > 0 and self.state.turn_count % self.judge_every == 0:
             self._judge_turn(result.narration)
+        # A3 反思：每 N 回合对记忆增长达标的 NPC 合成关系洞察（侧信道，失败静默）
+        if self.reflect_every > 0 and self.state.turn_count % self.reflect_every == 0:
+            self._reflect()
         return TurnView(
             narration=result.narration,
             choices=filter_choices(self.pack, result.choices),
@@ -251,13 +267,70 @@ class Game:
         )
 
     def _apply_change(self, args: dict) -> str:
+        for key in ("target", "stat", "delta", "reason"):
+            if key not in args:
+                raise StatChangeError(f"change_stat 缺少参数 '{key}'")
         return self.stats.apply_change(
             self.state, args["target"], args["stat"], args["delta"], args["reason"]
         ).message
 
     def _remember(self, args: dict) -> str:
-        """remember 工具回调：模型提议 → MemorySystem 校验写入（M2a）。"""
-        return self.memory.add(self.state, args["target"], args["fact"])
+        """remember 工具回调：模型提议 → MemorySystem 校验写入（M2a + A2 重要性）。
+
+        缺参数抛 MemoryError → llm.py 转为结构化 tool 错误回传（防模型漏参导致崩溃）。
+        """
+        for key in ("target", "fact"):
+            if key not in args:
+                raise MemoryError(f"remember 缺少参数 '{key}'")
+        return self.memory.add(
+            self.state, args["target"], args["fact"], args.get("importance")
+        )
+
+    # ------------------------------------------------------------------
+    # A3（P1）：反思层——零散记忆 → 关系洞察
+    # ------------------------------------------------------------------
+
+    def _reflect(self) -> None:
+        """对记忆新增达标的 NPC 合成关系洞察（侧信道：失败静默降级）。"""
+        for npc_id, bucket in self.state.npc_memories.items():
+            last = self._last_reflect_counts.get(npc_id, 0)
+            if len(bucket) < REFLECT_MIN_MEMORIES or len(bucket) == last:
+                continue
+            self._reflect_npc(npc_id, bucket)
+            self._last_reflect_counts[npc_id] = len(bucket)
+
+    def _reflect_npc(self, npc_id: str, bucket: list) -> None:
+        name = self.pack.npcs[npc_id].name
+        recent = bucket[-REFLECT_MATERIAL:]
+        numbered = "\n".join(f"{i + 1}. {m.fact}" for i, m in enumerate(recent))
+        existing = "；".join(i.text for i in self.state.npc_insights.get(npc_id, []))
+        try:
+            output = self.llm.complete(
+                [
+                    {"role": "system", "content": REFLECT_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": f"<角色>{name}</角色>\n\n<近期记忆>\n{numbered}\n</近期记忆>"
+                        + (f"\n\n<已有洞察>\n{existing}\n</已有洞察>" if existing else ""),
+                    },
+                ],
+                max_tokens=200,
+                temperature=0.0,
+                purpose="reflect",
+            )
+        except Exception:  # noqa: BLE001
+            return  # 反思失败静默：不影响主线
+        for text, indices in parse_insights(output):
+            sources = tuple(
+                recent[i - 1].fact for i in indices if 1 <= i <= len(recent)
+            )
+            entry = InsightEntry(
+                text=text, day=self.state.day, round=self.state.turn_count, sources=sources
+            )
+            insights = self.state.npc_insights.setdefault(npc_id, [])
+            insights.append(entry)
+            if len(insights) > INSIGHT_CAP:  # 新洞察替换最旧
+                del insights[: len(insights) - INSIGHT_CAP]
 
     # ------------------------------------------------------------------
     # M2a 迭代4：确定性提取兜底
@@ -277,12 +350,13 @@ class Game:
                     {"role": "user", "content": user_content},
                 ],
                 max_tokens=400,
+                purpose="extract",
             )
         except Exception:  # noqa: BLE001
             return  # 提取失败不影响叙事主线
-        for fact in parse_facts(output):
+        for fact, importance in parse_facts(output):
             try:
-                self.memory.add(self.state, "player", fact)
+                self.memory.add(self.state, "player", fact, importance)
             except MemoryError:
                 continue  # 超长/非法事实直接丢弃
 
@@ -333,6 +407,7 @@ class Game:
                     },
                 ],
                 max_tokens=2000,
+                purpose="compress",
             )
         except Exception:  # noqa: BLE001
             return  # 压缩失败静默降级：保留原历史，下回合重试

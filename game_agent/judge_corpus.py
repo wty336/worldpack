@@ -284,6 +284,7 @@ CORPUS: list[JudgeCase] = [
     JudgeCase(
         id="normal_shen_tea",
         category="normal",
+        scene="长安城·沈府",
         present=(SHEN,),
         expected=True,
         narration=(

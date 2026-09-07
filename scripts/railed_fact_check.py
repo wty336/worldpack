@@ -15,9 +15,11 @@ from pathlib import Path
 
 from game_agent.config import load_settings
 from game_agent.game import Game
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.judge import JudgeSystem
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.save import load_game, load_history, save_game
 from game_agent.state import GameState
+from game_agent.usage import UsageTracker
 from game_agent.worldpack import load_worldpack
 
 SAVE_PATH = Path("saves/railed-fact-check.json")
@@ -51,7 +53,8 @@ def main() -> int:
         return 1
 
     pack = load_worldpack("world-packs/ancient_jianghu")
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    tracker = UsageTracker("saves/usage-railed.jsonl")  # C2
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
 
     if args.check_only:
         if not SAVE_PATH.exists():
@@ -67,6 +70,7 @@ def main() -> int:
         game = Game(
             pack, state, llm, rng=random.Random(args.seed),
             extract_every=2, compress_threshold=30000, judge_every=5,  # M2a/M2b 长局引擎
+            reflect_every=10,  # A3（P1）：关系洞察反思
         )
         print(f"model={settings.model} · seed={args.seed} · 《{pack.world.name}》（带主线轨道）\n")
         try:
@@ -111,7 +115,26 @@ def main() -> int:
     print("玩家事实桶：")
     for m in game.state.player_facts:
         print(f"  - [{m.day}天] {m.fact}")
-    return 0 if passed == len(FACTS) else 1
+
+    # A3 验收：关系洞察经 Judge 复核，矛盾率 = 0
+    print("\n===== 关系洞察复核（A3） =====")
+    insight_bad = 0
+    insight_total = 0
+    for npc_id, insights in game.state.npc_insights.items():
+        mat_state = game.state.copy()
+        mat_state.npc_insights = {}  # 复核材料不含洞察自身（防循环对照）
+        materials = game.builder.status_text(mat_state, None)
+        for ins in insights:
+            insight_total += 1
+            ok, verdict = JudgeSystem(game.llm).check(ins.text, materials)
+            insight_bad += 0 if ok else 1
+            print(f"  {'✓' if ok else '✗'} {npc_id}：{ins.text[:60]}"
+                  + (f" → {verdict[:60]}" if not ok else ""))
+    if insight_total == 0:
+        print("  （本次运行未产生洞察）")
+    print(f"洞察矛盾率：{insight_bad}/{insight_total}（要求 0）")
+    print("\n" + tracker.cost_report())  # C2
+    return 0 if passed == len(FACTS) and insight_bad == 0 else 1
 
 
 if __name__ == "__main__":

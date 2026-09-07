@@ -100,8 +100,21 @@ def test_parse_facts_strips_numbering_and_noise():
         "   \n"
     )
     facts = parse_facts(output)
-    assert facts == ["我的剑名『听雨』", "我来自江南", "我答应帮老樵夫送柴"]
-    assert all("无" not in f or len(f) > 1 for f in facts)
+    assert [f for f, _ in facts] == ["我的剑名『听雨』", "我来自江南", "我答应帮老樵夫送柴"]
+    assert all(imp == 5.0 for _, imp in facts)  # 无前缀 → 缺省重要性 5
+    assert all("无" not in f or len(f) > 1 for f, _ in facts)
+
+
+def test_parse_facts_importance_prefix():
+    """A2：『重要性|事实』格式（8-10 身份级 / 1-4 琐事）。"""
+    from game_agent.memory import parse_facts
+
+    output = "9|玩家的剑名是听雨\n3|玩家爱喝龙井\n15|越界重要性应回落缺省\nabc|非法前缀\n"
+    facts = parse_facts(output)
+    assert ("玩家的剑名是听雨", 9.0) in facts
+    assert ("玩家爱喝龙井", 3.0) in facts
+    assert ("15|越界重要性应回落缺省", 5.0) in facts  # 越界/非法 → 整行按普通事实、重要性 5
+    assert ("abc|非法前缀", 5.0) in facts
 
 
 def test_parse_facts_caps_at_five():

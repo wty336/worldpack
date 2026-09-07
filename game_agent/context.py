@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .memory import rank_facts
 from .state import GameState
 from .worldpack import NpcSpec, NodeSpec, WorldPack
 
 ENGINE_RULES = """你是一款文字互动养成游戏的叙述引擎。
-
 【引擎协议】
 1. 每一轮必须以工具调用结束：需要数值变化时先调用 change_stat，最终以 submit_narration 提交本轮叙事。
 2. 数值纪律：所有数值变化必须通过 change_stat 工具完成；禁止在叙事文本中宣称数值变化；引擎拒绝（越界/超限）时按返回的错误修正或放弃。
@@ -23,6 +23,12 @@ ENGINE_RULES = """你是一款文字互动养成游戏的叙述引擎。
 5. 节点纪律：以 <agent_status> 中的「当前主线目标」为推进依据；关键剧情的抉择由引擎以固定选项接管，不得在 choices 中替代。
 6. 叙事要求：narration 为旁白与 NPC 对话（Markdown），面向玩家，自然有文采，贴合文风与人物语气；choices 给出 3~5 个自然衔接的行动选项供玩家选择，选项不得包含世界观外元素，也不得替玩家做关键抉择。narration 中禁止出现任何工具调用格式文本（如 <invoke>、<parameter>、JSON 参数）。
 7. 记忆纪律：每当玩家透露、或剧情确立关于玩家的长期事实（名字、剑名、身世、师承、喜好、承诺、约定、托付等），**立即**调用 remember 记录——玩家自身的事实记到 target='player'，NPC 对玩家的关键印象记到该 NPC 的 target。不要只记剧情大事，琐碎但长期成立的小事实同样重要。"""
+
+
+def _recent_player_text(history: list[dict], n: int = 2) -> str:
+    """最近 n 条 user 消息文本（A1 检索相关性上下文）。"""
+    user_msgs = [(m.get("content") or "").strip() for m in history if m.get("role") == "user"]
+    return "\n".join(m for m in user_msgs[-n:] if m)
 
 
 @dataclass
@@ -70,10 +76,17 @@ class ContextBuilder:
         node: NodeSpec | None = None,
         extra_status: list[str] | None = None,
     ) -> list[dict]:
-        """返回完整消息列表：静态前缀 + 历史 + 状态栏（末尾追加）。"""
+        """返回完整消息列表：静态前缀 + 历史 + 状态栏（末尾追加）。
+
+        A1（P1）：状态栏内的记忆区按检索式注入（常驻区 + top-K），
+        relevance 的上下文 = 场景 + 节点目标 + 最近玩家发言。
+        """
         msgs: list[dict] = [self.system_message]
         msgs.extend(history)
-        msgs.append({"role": "user", "content": self.status_text(state, node, extra_status)})
+        recent = _recent_player_text(history)
+        msgs.append(
+            {"role": "user", "content": self.status_text(state, node, extra_status, recent)}
+        )
         return msgs
 
     def status_text(
@@ -81,8 +94,12 @@ class ContextBuilder:
         state: GameState,
         node: NodeSpec | None = None,
         extra: list[str] | None = None,
+        recent: str = "",
     ) -> str:
-        """状态栏 + 场景卡 + 在场角色卡（tone 按当前好感注入）。"""
+        """状态栏 + 场景卡 + 在场角色卡（tone 按当前好感注入）。
+
+        recent：最近玩家发言/行动提示（A1 检索相关性上下文）。
+        """
         lines: list[str] = []
 
         # 场景卡
@@ -121,11 +138,13 @@ class ContextBuilder:
         else:
             lines.append("剧情进度：日常阶段")
             lines.append("当前主线目标：自由探索，等待主线事件发生")
-        # 玩家长期关键事实常驻（M2a：基线中被强化的信息才存活——常驻注入即"强化"的机制化）
+        # 玩家长期关键事实（A1：常驻区 top-importance + 检索区三因子 top-K，非全量）
+        context = " ".join(filter(None, [state.scene, node.goal if node else "", recent]))
         if state.player_facts:
+            facts = rank_facts(state.player_facts, context, state.turn_count)
             lines.append(
                 "关键事实：\n"
-                + "\n".join(f"- {m.fact}" for m in state.player_facts)
+                + "\n".join(f"- {m.fact}" for m in facts)
             )
         for line in extra or []:
             lines.append(line)
@@ -137,18 +156,23 @@ class ContextBuilder:
             lines.append("<在场角色>")
             for npc in present_npcs:
                 lines.append(self._npc_card(npc, state.affections.get(npc.id, 0.0)))
-                lines.append(self._npc_memories(npc.id, state))
+                lines.append(self._npc_memories(npc.id, state, context))
             lines.append("</在场角色>")
         return "\n".join(lines)
 
-    def _npc_memories(self, npc_id: str, state: GameState) -> str:
-        """该 NPC 对玩家的显式记忆（M2a：出场才注入，替代"全量历史重读"）。"""
+    def _npc_memories(self, npc_id: str, state: GameState, context: str = "") -> str:
+        """该 NPC 对玩家的显式记忆（M2a 出场才注入 + A1 检索式注入）+ A3 关系洞察。"""
         entries = state.npc_memories.get(npc_id, [])
-        if not entries:
+        insights = state.npc_insights.get(npc_id, [])
+        if not entries and not insights:
             return ""
-        lines = ["对该玩家的记忆："]
-        for m in entries:
+        lines = ["对该玩家的记忆："] if entries else []
+        for m in rank_facts(entries, context, state.turn_count):
             lines.append(f"- （第 {m.day} 天）{m.fact}")
+        if insights:
+            lines.append("关系洞察：")
+            for ins in insights:
+                lines.append(f"- {ins.text}")
         return "\n".join(lines)
 
     def _tone(self, npc_id: str, affection: float) -> str:

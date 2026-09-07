@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from game_agent.config import load_settings
 from game_agent.game import Game
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.save import save_game
 from game_agent.state import GameState
 from game_agent.worldpack import load_worldpack
@@ -21,7 +21,7 @@ def main() -> int:
 
     pack = load_worldpack("world-packs/ancient_jianghu")
     state = GameState.from_pack(pack)
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule))
     game = Game(pack, state, llm)
     print(f"model={settings.model} · 《{pack.world.name}》\n")
 

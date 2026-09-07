@@ -13,9 +13,10 @@ from pathlib import Path
 
 from .config import load_settings
 from .game import Game
-from .llm import LLMClient, LLMTurnError, build_tools, make_client
+from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
 from .state import GameState
+from .usage import UsageTracker
 from .worldpack import WorldPackError, load_worldpack
 
 DEFAULT_WORLDPACK = "world-packs/ancient_jianghu"
@@ -66,15 +67,20 @@ def _cmd_play(args: argparse.Namespace) -> int:
         print(f"[✗] 世界包加载失败: {e}")
         return 1
     state = GameState.from_pack(pack)
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    tracker = UsageTracker("saves/usage.jsonl")  # C2：usage 落盘（成本是一等指标）
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     # W-C：节点完成自动存档（引擎侧钩子）
     game = Game(
         pack, state, llm, autosave_path=AUTOSAVE,
         extract_every=2, compress_threshold=30000, judge_every=5,  # M2a/M2b 长局引擎
+        reflect_every=10,  # A3（P1）：每 10 回合合成关系洞察
     )
     # 流式显示：内容增量实时输出（修复"等很久才有反应"的体验）
     game.on_text = _make_stream_display(game)
-    return _repl(game)
+    code = _repl(game)
+    if tracker.entries:
+        print("\n" + tracker.cost_report())  # 退出时输出成本报告（C2）
+    return code
 
 
 def _make_stream_display(game: Game):

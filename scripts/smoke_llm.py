@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from game_agent.config import load_settings
 from game_agent.context import ContextBuilder
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.state import GameState
 from game_agent.stats import StatsSystem
 from game_agent.worldpack import load_worldpack
@@ -26,7 +26,7 @@ def main() -> int:
     state.present_npcs = ["shen_qingqiu"]
     stats = StatsSystem(pack.schedule)
     builder = ContextBuilder.from_pack(pack)
-    client = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    client = LLMClient.from_settings(settings, build_tools(pack.schedule))
 
     history = [
         {

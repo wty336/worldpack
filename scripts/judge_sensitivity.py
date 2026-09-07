@@ -24,7 +24,8 @@ from game_agent.judge_corpus import (
     NORMAL_CATEGORY,
     build_materials,
 )
-from game_agent.llm import LLMClient, make_client
+from game_agent.llm import LLMClient
+from game_agent.usage import UsageTracker
 from game_agent.worldpack import load_worldpack
 
 INTERCEPT_MIN = 0.80  # 每类对抗样本拦截率下限
@@ -62,8 +63,11 @@ def main() -> int:
         return 1
 
     pack = load_worldpack(args.pack)
-    judge = JudgeSystem(LLMClient(make_client(settings), settings.model, []))
-    print(f"语料 {len(CORPUS)} 条 × {args.rounds} 轮 · 模型 {settings.model} · 包 {pack.world.name}\n")
+    tracker = UsageTracker("reports/usage-judge-sensitivity.jsonl")  # C2
+    llm = LLMClient.from_settings(settings, [], tracker=tracker)  # C1：judge 走专属模型路由
+    judge = JudgeSystem(llm)
+    print(f"语料 {len(CORPUS)} 条 × {args.rounds} 轮 · 主模型 {settings.model}"
+          f" · Judge 模型 {llm.model_for('judge')} · 包 {pack.world.name}\n")
 
     results = []
     for case in CORPUS:
@@ -120,6 +124,7 @@ def main() -> int:
     out = reports_dir / f"judge_sensitivity_{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n报告已写入 {out}")
+    print("\n" + tracker.cost_report())  # C2
 
     print("\n[✓] 门禁通过" if not failed else "\n[✗] 门禁未通过——若判据太钝，先调 JUDGE_SYSTEM 再重测（E1）")
     return 0 if failed is False else 1

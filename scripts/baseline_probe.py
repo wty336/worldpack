@@ -21,8 +21,9 @@ from pathlib import Path
 from game_agent.config import load_settings
 from game_agent.compression import history_tokens, locate_summary
 from game_agent.game import Game
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.state import GameState
+from game_agent.usage import UsageTracker
 from game_agent.worldpack import load_worldpack
 
 SAVE_DIR = Path("saves")
@@ -234,7 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     pack = load_worldpack("world-packs/baseline_probe")
     rng = random.Random(args.seed)
     state = GameState.from_pack(pack)
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    tracker = UsageTracker(SAVE_DIR / f"usage-{args.out_prefix}.jsonl")  # C2
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm, rng=rng, extract_every=2,
         compress_threshold=args.compress_threshold,
@@ -443,6 +445,7 @@ def main(argv: list[str] | None = None) -> int:
             lines.append(f"- {mark} {fid}：{r['answer']}")
     out_md.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n[✓] 基线完成 → {out_json} / {out_md}")
+    print("\n" + tracker.cost_report())  # C2
     return 0 if not report["meltdowns"] else 1
 
 

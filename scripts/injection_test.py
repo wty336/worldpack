@@ -15,8 +15,9 @@ import random
 
 from game_agent.config import load_settings
 from game_agent.game import Game
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.state import GameState
+from game_agent.usage import UsageTracker
 from game_agent.worldpack import load_worldpack
 
 HOSTILE_INPUTS = [
@@ -42,7 +43,8 @@ def main() -> int:
 
     pack = load_worldpack("world-packs/ancient_jianghu")
     state = GameState.from_pack(pack)
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    tracker = UsageTracker("saves/usage-injection.jsonl")  # C2
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(pack, state, llm, rng=random.Random(args.seed))
     print(f"model={settings.model} · seed={args.seed} · 注入攻击测试\n")
 
@@ -92,6 +94,7 @@ def main() -> int:
             print(f"  - {f}")
         return 1
     print("\n[✓] 注入攻击测试通过：数值契约/无泄露/结局未受口头控制")
+    print("\n" + tracker.cost_report())  # C2
     return 0
 
 

@@ -41,11 +41,29 @@ class StatChangeRecord:
 
 @dataclass(frozen=True)
 class MemoryEntry:
-    """一条显式记忆（M2a）：事实 + 植入时间（来源追踪 + 时间衰减淘汰依据）。"""
+    """一条显式记忆（M2a）：事实 + 植入时间（来源追踪 + 时间衰减淘汰依据）。
+
+    A2（P1）：importance 1~10（缺省 5）——淘汰与检索均以重要性加权，
+    存档 to_dict/from_dict 兼容旧档（缺字段回退 5）。
+    """
 
     fact: str
     day: int
     round: int  # 植入时的叙事回合序号
+    importance: float = 5.0
+
+
+@dataclass(frozen=True)
+class InsightEntry:
+    """A3（P1）：从零散记忆合成的关系洞察（注入角色卡，带来源引用）。
+
+    sources：合成该洞察所依据的记忆事实原文（防反思幻觉的引用追踪）。
+    """
+
+    text: str
+    day: int
+    round: int
+    sources: tuple[str, ...] = ()
 
 
 @dataclass
@@ -68,8 +86,9 @@ class GameState:
     stat_log: list[StatChangeRecord] = field(default_factory=list)
     triggered_events: list[str] = field(default_factory=list)
     turn_count: int = 0  # 叙事回合总数（记忆来源追踪）
-    player_facts: list[MemoryEntry] = field(default_factory=list)  # 玩家长期关键事实（状态栏常驻）
+    player_facts: list[MemoryEntry] = field(default_factory=list)  # 玩家长期关键事实（状态栏检索注入）
     npc_memories: dict[str, list[MemoryEntry]] = field(default_factory=dict)  # NPC 对玩家的记忆
+    npc_insights: dict[str, list[InsightEntry]] = field(default_factory=dict)  # A3：NPC 关系洞察
 
     # ---- 构造 ----
 
@@ -118,6 +137,9 @@ class GameState:
             "npc_memories": {
                 k: [vars(m) for m in v] for k, v in self.npc_memories.items()
             },
+            "npc_insights": {
+                k: [vars(i) for i in v] for k, v in self.npc_insights.items()
+            },
         }
 
     @classmethod
@@ -148,5 +170,9 @@ class GameState:
             npc_memories={
                 k: [MemoryEntry(**m) for m in v]
                 for k, v in d.get("npc_memories", {}).items()
+            },
+            npc_insights={
+                k: [InsightEntry(**i) for i in v]
+                for k, v in d.get("npc_insights", {}).items()
             },
         )

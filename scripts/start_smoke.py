@@ -16,7 +16,7 @@ from pathlib import Path
 
 from game_agent.config import load_settings
 from game_agent.game import Game
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.state import GameState
 from game_agent.worldpack import load_worldpack
 
@@ -75,7 +75,7 @@ def _write_neutral_pack(tmp: Path) -> Path:
 def _run_once(pack_path, label: str, forbid: str | None) -> bool:
     pack = load_worldpack(pack_path)
     state = GameState.from_pack(pack)
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule))
     game = Game(pack, state, llm)
     view = game.start()
     if view.choice_prompt is not None:  # 开局即关键抉择的包：先选第一项再取叙事

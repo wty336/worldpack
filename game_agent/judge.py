@@ -49,6 +49,7 @@ class JudgeSystem:
                 ],
                 max_tokens=JUDGE_MAX_TOKENS,
                 temperature=JUDGE_TEMPERATURE,
+                purpose="judge",
             )
         except Exception:  # noqa: BLE001
             return True, ""

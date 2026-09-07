@@ -18,9 +18,10 @@ from pathlib import Path
 from game_agent.audit import audit_stats
 from game_agent.config import load_settings
 from game_agent.game import Game
-from game_agent.llm import LLMClient, LLMTurnError, build_tools, make_client
+from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.save import save_game
 from game_agent.state import GameState
+from game_agent.usage import UsageTracker
 from game_agent.worldpack import load_worldpack
 
 SAVE_DIR = Path("saves")
@@ -80,10 +81,12 @@ def main() -> int:
 
     pack = load_worldpack("world-packs/ancient_jianghu")
     state = GameState.from_pack(pack)
-    llm = LLMClient(make_client(settings), settings.model, build_tools(pack.schedule))
+    tracker = UsageTracker(SAVE_DIR / f"usage-{args.strategy}.jsonl")  # C2
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm, rng=random.Random(args.seed),
         extract_every=2, compress_threshold=30000, judge_every=5,  # M2a/M2b 长局引擎
+        reflect_every=10,  # A3（P1）：关系洞察反思
     )
     transcript: list[str] = []
     print(f"model={settings.model} · 策略={args.strategy} · seed={args.seed} · 《{pack.world.name}》\n")
@@ -174,6 +177,7 @@ def main() -> int:
         print(
             f"\n已保存 → {SAVE_DIR}/playthrough-{args.strategy}.{{json,txt}}（seed={args.seed}）"
         )
+        print("\n" + tracker.cost_report())  # C2：成本报告
         return status
     except LLMTurnError as e:
         print(f"[✗] 协议熔断: {e}")
