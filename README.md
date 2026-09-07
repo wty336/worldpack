@@ -10,6 +10,7 @@
 - [M1 实施计划](docs/plan-m1.md)——最小可玩原型的工作包与验收标准
 - [M1 复盘](docs/m1-postmortem.md)——18 个问题的现象、根因、解法与预防（踩坑地图）
 - [M2a 复盘](docs/m2a-postmortem.md)——五次迭代的测量教训与验收口径修订
+- [M2b 复盘](docs/m2b-postmortem.md)——压缩与语义校验的 300 轮长局验收（含潜伏 bug 与漂移观察）
 - [M1.5 计划](docs/plan-m1-5.md)——体验基线与债务清理（已全部达成）
 - [M2 计划](docs/plan-m2.md)——长线可玩三段拆分（M2a/b/c）
 
