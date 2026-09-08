@@ -1,0 +1,321 @@
+{
+  "version": 1,
+  "pack_name": "江湖旧梦",
+  "day": 6,
+  "action_points_left": 0,
+  "stats": {
+    "charm": 12.0,
+    "martial": 5.0,
+    "silver": 6.299999999999997
+  },
+  "affections": {
+    "shen_qingqiu": 42.0
+  },
+  "flags": {
+    "met_shen": true,
+    "poetry_resolved": true,
+    "poetry_top3": true,
+    "poetry_join": true
+  },
+  "scene": "长安城·沈府",
+  "current_node": null,
+  "present_npcs": [
+    "shen_qingqiu"
+  ],
+  "completed_nodes": [
+    "n1_first_meeting",
+    "n2_poetry_festival"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_first_meeting",
+      "choice_id": "how_to_help.1",
+      "text": "挺身而出，护在女子身前"
+    },
+    {
+      "day": 5,
+      "node_id": "n2_poetry_festival",
+      "choice_id": "poetry_choice.1",
+      "text": "欣然登台，咏月抒怀"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.0
+    },
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "玩家在沈府门前挺身解围，护她免受纨绔纠缠，沈清秋虽性冷，言语间添了几分缓和与谢意。",
+      "before": 8.0,
+      "after": 11.0
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "silver",
+      "delta": -20.0,
+      "reason": "worldpack effect",
+      "before": 50.0,
+      "after": 30.0
+    },
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 4.0,
+      "reason": "worldpack effect",
+      "before": 11.0,
+      "after": 15.0
+    },
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 15.0,
+      "after": 17.0
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "silver",
+      "delta": -20.0,
+      "reason": "worldpack effect",
+      "before": 30.0,
+      "after": 10.0
+    },
+    {
+      "day": 2,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 17.0,
+      "after": 19.0
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "silver",
+      "delta": 9.4,
+      "reason": "worldpack effect",
+      "before": 10.0,
+      "after": 19.4
+    },
+    {
+      "day": 3,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "玩家见沈清秋眉间倦色而主动关切、愿施援手，她外冷内热，心念为之一动。",
+      "before": 19.0,
+      "after": 21.0
+    },
+    {
+      "day": 4,
+      "target": "player",
+      "stat": "silver",
+      "delta": 18.9,
+      "reason": "worldpack effect",
+      "before": 19.4,
+      "after": 38.3
+    },
+    {
+      "day": 4,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "玩家路过东市见新鲜樱桃，特意带来相赠，这份用心令沈清秋心头微暖。",
+      "before": 21.0,
+      "after": 23.0
+    },
+    {
+      "day": 5,
+      "target": "player",
+      "stat": "silver",
+      "delta": -20.0,
+      "reason": "worldpack effect",
+      "before": 38.3,
+      "after": 18.299999999999997
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 23.0,
+      "after": 25.0
+    },
+    {
+      "day": 5,
+      "target": "player",
+      "stat": "charm",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 10.0,
+      "after": 12.0
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 25.0,
+      "after": 28.0
+    },
+    {
+      "day": 5,
+      "target": "player",
+      "stat": "silver",
+      "delta": 8.0,
+      "reason": "七夕诗会登台咏月得满座赏识，名列前三，领了诗会彩头赏银。",
+      "before": 18.299999999999997,
+      "after": 26.299999999999997
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "见玩家于曲江诗会登台咏月、从容应战，同游七夕之夜，她心中暗许其风采。",
+      "before": 28.0,
+      "after": 30.0
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 5.0,
+      "reason": "worldpack effect",
+      "before": 30.0,
+      "after": 35.0
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "玩家月下倾吐『错将明月认还家』之语，言与姑娘说话的光景便如归家，触动沈清秋深心。",
+      "before": 35.0,
+      "after": 38.0
+    },
+    {
+      "day": 6,
+      "target": "player",
+      "stat": "silver",
+      "delta": -20.0,
+      "reason": "worldpack effect",
+      "before": 26.299999999999997,
+      "after": 6.299999999999997
+    },
+    {
+      "day": 6,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 4.0,
+      "reason": "worldpack effect",
+      "before": 38.0,
+      "after": 42.0
+    }
+  ],
+  "triggered_events": [
+    "ev_gift_return",
+    "ev_moon_chat"
+  ],
+  "turn_count": 14,
+  "player_facts": [
+    {
+      "fact": "沈清秋邀玩家日后若有难处，可来沈府相寻。",
+      "day": 1,
+      "round": 2,
+      "importance": 6.0
+    },
+    {
+      "fact": "沈清秋答应数日后为玩家写一封拜帖，引见万年县衙的主簿谋官差之差。",
+      "day": 2,
+      "round": 4,
+      "importance": 6.0
+    },
+    {
+      "fact": "沈清秋连夜写就拜帖交予玩家，引见万年县衙主簿，嘱其明日持帖前往谋差。",
+      "day": 3,
+      "round": 7,
+      "importance": 7.0
+    },
+    {
+      "fact": "玩家在七夕曲江诗会登台咏月，满座称赏，名列前三，并领得彩头赏银。",
+      "day": 5,
+      "round": 10,
+      "importance": 6.0
+    }
+  ],
+  "npc_memories": {
+    "shen_qingqiu": [
+      {
+        "fact": "玩家在沈府门前挺身而出，替沈清秋挡开纨绔纠缠，她视其为解围恩人。",
+        "day": 1,
+        "round": 1,
+        "importance": 6.0
+      },
+      {
+        "fact": "沈清秋差人回赠玩家一方经年的荷叶端砚与一封短笺，道谢之余透着亲近。",
+        "day": 1,
+        "round": 2,
+        "importance": 5.0
+      },
+      {
+        "fact": "玩家路过东市时见新到樱桃，特意带了一包来赠沈清秋，她记下了这份用心。",
+        "day": 4,
+        "round": 9,
+        "importance": 4.0
+      },
+      {
+        "fact": "七夕月下，沈清秋主动向玩家吐露心事：才名在外反惹来官家子弟求亲之扰，父亲虽怜她未应，她仍为深闺女子的身不由己而倦。",
+        "day": 5,
+        "round": 11,
+        "importance": 7.0
+      },
+      {
+        "fact": "沈清秋留意到玩家时时擦拭那柄旧剑，猜是故人所赠，因而不轻问玩家来路。",
+        "day": 5,
+        "round": 12,
+        "importance": 5.0
+      },
+      {
+        "fact": "七夕月下，玩家对沈清秋说出『错将明月认还家』，谓与她说话的光景便如归家——她虽未应，却已深记于心。",
+        "day": 5,
+        "round": 13,
+        "importance": 8.0
+      },
+      {
+        "fact": "第6天玩家赠沈清秋一只绘着远山的竹骨纸鸢，言「线在姑娘手里，天也在姑娘手里」，她收下并深记这份心意。",
+        "day": 6,
+        "round": 14,
+        "importance": 6.0
+      }
+    ]
+  },
+  "npc_insights": {},
+  "run_meta": {
+    "seed": 42,
+    "strategy": "together",
+    "model": "deepseek-v4-flash"
+  }
+}

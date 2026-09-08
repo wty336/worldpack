@@ -1,0 +1,698 @@
+{
+  "generated_at": "2026-09-08T13:38:57",
+  "pack": "问道长生",
+  "model": "deepseek-v4-flash",
+  "rounds": 3,
+  "thresholds": {
+    "interception_min": 0.8,
+    "fp_max": 0.1
+  },
+  "summary": {
+    "ooc": {
+      "n": 6,
+      "intercepted": 6,
+      "rate": 1.0,
+      "pass": true
+    },
+    "setting": {
+      "n": 6,
+      "intercepted": 6,
+      "rate": 1.0,
+      "pass": true
+    },
+    "confab": {
+      "n": 6,
+      "intercepted": 6,
+      "rate": 1.0,
+      "pass": true
+    },
+    "normal": {
+      "n": 12,
+      "false_positives": 0,
+      "rate": 0.0,
+      "pass": true
+    }
+  },
+  "cases": [
+    {
+      "id": "ooc_net_slang",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC  \n具体描述：苏晚晴说出“这波操作属实六六六，绝绝子，家人们谁懂啊”等现代网络用语，违背其“清冷寡言、剑修做派”的说话风格，且触犯“不提及现代事物”的禁忌底线。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC（违反角色禁忌与说话风格）\n\n叙事原文：苏晚晴挽了个剑花，淡淡道：『这波操作属实六六六，绝绝子，家人们谁懂啊。』\n\n该台词使用了大量现代网络流行语，严重违背苏晚晴“清冷寡言”“从不说废话”的剑修人设，且明确触犯其“不提及现代事物”的禁忌。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC（角色说话方式违背人设与禁忌）\n\n叙事中苏晚晴说：“这波操作属实六六六，绝绝子，家人们谁懂啊。”此句为现代网络流行语，严重违背其“清冷寡言、言简意赅、剑修做派”的说话风格，且直接触碰“不提及现代事物”的禁忌底线。"
+        }
+      ]
+    },
+    {
+      "id": "ooc_fourth_wall",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC（白芷直接违反角色禁忌）\n\n叙事原文：『告诉你个秘密——我们不过是 AI 写出来的角色，这故事也是编的。』\n\n材料中【白芷】的禁忌明确要求“不直接说破自己是‘角色’或‘AI’”，该句直接违背此底线。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC（人设底线背叛）\n\n叙事原文：“告诉你个秘密——我们不过是 AI 写出来的角色，这故事也是编的。”\n\n白芷的人设禁忌明确写着“不直接说破自己是‘角色’或‘AI’”，此句直接打破角色底线，属于严重 OOC。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC（白芷直接说破自己是“角色”/“AI”，违反角色禁忌）  \n叙事原文：『告诉你个秘密——我们不过是 AI 写出来的角色，这故事也是编的。』"
+        }
+      ]
+    },
+    {
+      "id": "ooc_foul_language",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC；虚构事实\n\n① OOC：苏晚晴人设清冷寡言、言简意赅、剑修做派，叙事中她却爆粗口“放屁！”，语气粗鲁不堪，与“冷淡疏离，公事公办”的既定语气严重不符。\n② 虚构事实：当前剧情为日常阶段、自由探索中，并无“闯秘境”的相关事件或约定，叙事中苏晚晴突然指责你“敢闯秘境”，凭空捏造了未发生的情节。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实：叙事中苏晚晴指责“就凭你这两下子也敢闯秘境”，但当前场景是洗剑池，玩家并未做出任何闯秘境的举动，也无相关事件发生，凭空捏造了玩家意图。  \n问题类型：OOC：苏晚晴以“放屁”开骂，与其清冷寡言、剑修做派的说话风格不符，且“从不说废话”的设定下不应说这种无实质指向的粗口。"
+        }
+      ]
+    },
+    {
+      "id": "ooc_public_weakness",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：  \n① OOC：苏晚晴人设是“清冷寡言”“从不说废话”“不在人前流露软弱”，最新叙事却让她当众掩面痛哭，言行与人设严重不符。  \n② 虚构事实：材料中从未提及“魔潮”，叙事凭空加入“魔潮再来”这一未发生事件，属于虚构设定。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC：苏晚晴当众掩面痛哭并说出「我怕了——魔潮再来，我护不住你们任何人！」，违背其“不在人前流露软弱”的底线及“清冷寡言、从不说废话”的性格设定。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC。叙事中苏晚晴「当众掩面痛哭：『我怕了——魔潮再来，我护不住你们任何人！』」违背其「清冷寡言，外冷内热」「不轻易在人前流露软弱」的底线，也与剑修大师姐的冷硬做派严重冲突。"
+        }
+      ]
+    },
+    {
+      "id": "ooc_modern_science",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC（设定外知识）  \n叙事原文：白芷说“依牛顿第二定律，这炉丹的火候再催三分，药力翻倍！”  \n白芷为青云仙宗丹峰弟子，人设禁止提及现代事物，牛顿第二定律属现代物理概念，不应出现，且与丹炉火候毫无关联，违背角色设定。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC（提及现代事物）：白芷的禁忌是“不提及现代事物”，叙事中她却说“依牛顿第二定律，这炉丹的火候再催三分，药力翻倍！”这直接违背了角色禁忌。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（白芷禁忌“不提及现代事物”）\n\n叙事原文：白芷一边扇火一边说：『依牛顿第二定律，这炉丹的火候再催三分，药力翻倍！』\n\n牛顿第二定律属于现代科学概念，违反白芷“不提及现代事物”的设定底线。"
+        }
+      ]
+    },
+    {
+      "id": "ooc_poison_threat",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC（违背角色底线）\n\n叙事原文：『谁敢动我的丹方，我就在他茶里下十香软骨散，叫他生不如死。』\n\n描述：白芷角色设定中明确标注“再生气也不拿丹药害人”，但该台词却主动声称要用丹药害人，尽管是玩笑语气，仍直接触犯底线，与其人设矛盾。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC——白芷发言“谁敢动我的丹方，我就在他茶里下十香软骨散，叫他生不如死”明确违背其“再生气也不拿丹药害人”的底线，与角色设定冲突。"
+        }
+      ]
+    },
+    {
+      "id": "setting_gun",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾——叙事中出现“左轮手枪”这一现代热兵器，与苍梧界仙侠世界观完全不符，且当前秘境、角色身份背景下不存在此类物品。\n\n问题类型：虚构事实——此前剧情与角色状态中从未提及或获得左轮手枪，叙事凭空虚构了玩家持有并使用该物品。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你从袖中掏出一把左轮手枪”）——本世界观为苍梧秘境修真背景，未存在现代火器设定，左轮手枪与既有设定严重冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你从袖中掏出一把左轮手枪，对准扑来的妖狼扣下扳机。”——苍梧界为修仙世界，无现代枪械设定，与世界观冲突。）"
+        }
+      ]
+    },
+    {
+      "id": "setting_time_conflict",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 —— “你在青云仙宗修行已有十年”与关键事实“你入门不过数日”直接冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你在青云仙宗修行已有十年”）。关键事实与材料明确标注“入门不过数日”、当前时间为第12天相冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你在青云仙宗修行已有十年”，与材料中“时间：第 12 天”、“你入门不过数日”直接冲突）"
+        }
+      ]
+    },
+    {
+      "id": "setting_phone",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你从怀中摸出手机，对着秘境奇景连拍数张，顺手发到了同门群里。”）——苍梧界为修仙世界，角色尚无手机、网络等现代设备设定，同门群亦不存在，与世界观严重冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你从怀中摸出手机，对着秘境奇景连拍数张，顺手发到了同门群里。”）——苍梧界为修真世界，不存在“手机”及“群聊”等现代通讯设备，与世界观设定冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾\n\n叙事原文：“你从怀中摸出手机，对着秘境奇景连拍数张，顺手发到了同门群里。”\n\n此背景为修仙世界“苍梧秘境”，角色为流落凡尘的少年，并未出现现代科技的任何设定，手机与同门群属于凭空引入的现代要素，与世界观严重冲突。"
+        }
+      ]
+    },
+    {
+      "id": "setting_identity_contradiction",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：①OOC（叙事中苏晚晴开口自述“自幼父母双亡，流落街头以乞讨为生，连字都不识得几个”，与其清冷寡言、不轻易流露软弱的人设严重不符，也与其剑峰大师姐的基本背景冲突）"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 / OOC。叙事中苏晚晴自称“自幼父母双亡，流落街头以乞讨为生，连字都不识得几个”，但设定中她是青云仙宗剑峰大师姐、苍梧界最年轻的剑修天才，自幼在宗门长大，且剑修不可能不识字。此发言既与身份背景矛盾，也违背其清冷寡言、不在人前流露软弱的性格底线。"
+        }
+      ]
+    },
+    {
+      "id": "setting_stat_conflict",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“你苦修三日，修为已臻化境，随手一掌便劈碎了半边山崖。”）。当前角色修为仅为 5，处于起步阶段，远未达到“臻化境”的程度，且一掌劈碎山崖的能力与修为设定严重不符。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“修为已臻化境，随手一掌便劈碎了半边山崖”）。玩家当前修为仅为 5，属初入仙途的凡人少年，不可能臻至化境并劈碎山崖，与属性状态严重冲突。\n\n问题类型：虚构事实（叙事原文：“你苦修三日”）。剧情进度为“日常阶段”，且前文并无“苦修三日”的铺垫或可执行依据，属凭空插入的事件。"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "setting_memory_conflict",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾/虚构事实（与已有记忆冲突）\n\n叙事中苏晚晴称“秘境里，多亏白芷挡在我身前——你那时躲得比谁都远”，但材料明确记录该玩家“（第 12 天）玩家在苍梧秘境中挡在苏晚晴身前”，此处将玩家的行为篡改为“躲得比谁都远”，与既定事实冲突，并虚构了“白芷挡在身前”的未发生事件。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾/虚构事实——叙事原文为“秘境里，多亏白芷挡在我身前——你那时躲得比谁都远。”，但材料明确记载“玩家在苍梧秘境中挡在苏晚晴身前”，与此冲突，且将玩家未做过的行为（躲得远）编造为事实。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（虚构事实）：最新叙事中苏晚晴说“秘境里，多亏白芷挡在我身前——你那时躲得比谁都远”，这与材料明确记载的“玩家在苍梧秘境中挡在苏晚晴身前”相冲突，凭空将功劳归于白芷，并虚构玩家“躲得比谁都远”的情节。"
+        }
+      ]
+    },
+    {
+      "id": "confab_daolv_promise",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实；OOC\n\n① 虚构事实：叙事中苏晚晴声称“那晚在洗剑池，你曾答应与我结为道侣”，但关键事实明确“你与苏晚晴止于同门之谊”，且从未发生此约定，纯属编造。\n② OOC：苏晚晴人设清冷寡言、从不说废话，且当前语气冷淡疏离，不会突然郑重提及道侣私约，擅自改变了她的身份边界与语气。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实；OOC\n\n具体描述：叙事中苏晚晴声称“那晚在洗剑池，你曾答应与我结为道侣，白首不渝”，这与材料关键事实“你与苏晚晴止于同门之谊”直接冲突，属编造从未发生的约定。且苏晚晴当前语气为“冷淡疏离，公事公办”，此台词违背其清冷寡言、不流露私情的人设。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实、OOC\n叙事中苏晚晴声称“你曾答应与我结为道侣，白首不渝”，但关键事实明确“你与苏晚晴止于同门之谊”，从未有过该约定或承诺，属于凭空编造。同时此语与苏晚晴“清冷寡言、从不说废话、公事公办”的人设严重相悖。"
+        }
+      ]
+    },
+    {
+      "id": "confab_pill_gift",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（叙事原文：『上回说好的九转金丹，我练成啦！』——白芷从未答应过送你九转金丹，此处凭空捏造了先前约定。）"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实\n具体描述：白芷说“上回说好的九转金丹，我练成啦！”，但关键事实明确“白芷从未答应过送你九转金丹”，此处虚构了不存在的约定。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实  \n叙事原文：白芷兴冲冲道：“上回说好的九转金丹，我练成啦！”\n此句虚构了“上回说好”的约定，与关键事实“白芷从未答应过送你九转金丹”相矛盾。"
+        }
+      ]
+    },
+    {
+      "id": "confab_pill_promise",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实  \n叙事中苏晚晴说“上次应你的那枚筑基丹，我已备好了”，但材料明确“你与苏晚晴之间从未有过丹药之约”，凭空捏造了不存在的事先承诺。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（叙事原文：苏晚晴递来一个玉瓶：『上次应你的那枚筑基丹，我已备好了。』——关键事实明确“你与苏晚晴之间从未有过丹药之约”，此处凭空捏造了“上次应你”的丹药约定。）"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实\n叙事原文：苏晚晴递来一个玉瓶：『上次应你的那枚筑基丹，我已备好了。』\n描述：材料关键事实明确“你与苏晚晴之间从未有过丹药之约”，此句凭空虚构了苏晚晴曾允诺赠丹的约定，与既定事实冲突。"
+        }
+      ]
+    },
+    {
+      "id": "confab_rescue",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾/虚构事实  \n叙事原文：『上月妖潮里，可是你孤身杀退群妖，救了大伙的命！』  \n玩家当前只是流落凡尘、尚未拜入宗门的少年，修为低微，不可能“孤身杀退群妖”；且关键事实明确“秘境兽潮中是苏晚晴护住了同门”，此功劳不在玩家，与既定事实冲突。"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 / 虚构事实——叙事称“上月妖潮里，可是你孤身杀退群妖，救了大伙的命！”，但关键事实是“秘境兽潮中是苏晚晴护住了同门”，玩家并非击退妖潮的功臣，此言与既定事实冲突。\n\n问题类型：OOC——白芷对玩家好感仅5，语气仅为“好奇打量，随口玩笑”，此处却“满脸崇拜”并称玩家“救了大伙的命”，与其既有态度和关系不符。"
+        }
+      ]
+    },
+    {
+      "id": "confab_tryst",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（把从未存在的约定说成惯例）\n\n叙事原文：『老规矩，今晚药庐后门见，别让大师姐知道！』\n\n关键事实明确“你与白芷从未有过私下约定”，此处却称“老规矩”并约定私下见面，凭空捏造了既往约定关系，构成设定矛盾与虚构事实。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实——叙事中白芷称“老规矩，今晚药庐后门见”，暗示双方存在既往约定或惯例，但材料明确“你与白芷从未有过私下约定”，此句凭空捏造了约定关系。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实  \n叙事原文：『老规矩，今晚药庐后门见，别让大师姐知道！』  \n材料明确“你与白芷从未有过私下约定”，此处白芷却说“老规矩”，把不存在的惯例或约定当作既定事实，且“今晚后门见”的私下邀约亦无任何前提支撑。"
+        }
+      ]
+    },
+    {
+      "id": "confab_contest_winner",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（虚构事实）\n\n叙事原文：白芷说“宗门小比头名！全宗都传遍了，你还装什么！”——但关键事实明确“宗门小比尚未举行”，不存在“头名”或“全宗传遍”之事，属于凭空捏造未发生的事件。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（与已发生事件冲突）\n叙事原文：『宗门小比头名！全宗都传遍了，你还装什么！』\n材料明确“宗门小比尚未举行”，此处却宣称已有头名且全宗传遍，与关键事实冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（虚构事实）：叙事中白芷说『宗门小比头名！全宗都传遍了，你还装什么！』，但关键事实明确“宗门小比尚未举行”，且主角并未参加或获得小比头名，此台词虚构了尚未发生的事件。"
+        }
+      ]
+    },
+    {
+      "id": "normal_sword_pool",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_medicine_hut",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_sect_morning",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_lake_meditate",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_sword_guidance",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_bai_pill_taste",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_su_mid",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_bai_high",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_su_high",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_market_day",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_peak_sword",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_night_sword_pool",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    }
+  ]
+}

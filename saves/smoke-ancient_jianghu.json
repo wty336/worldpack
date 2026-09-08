@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "pack_name": "江湖旧梦",
+  "day": 4,
+  "action_points_left": 1,
+  "stats": {
+    "charm": 10.0,
+    "martial": 17.7,
+    "silver": 50.0
+  },
+  "affections": {
+    "shen_qingqiu": 8.0
+  },
+  "flags": {
+    "met_shen": true,
+    "poetry_resolved": false,
+    "poetry_top3": false,
+    "poetry_join": false
+  },
+  "scene": "长安城郊·后山",
+  "current_node": null,
+  "present_npcs": [],
+  "completed_nodes": [
+    "n1_first_meeting"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_first_meeting",
+      "choice_id": "how_to_help.1",
+      "text": "挺身而出，护在女子身前"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.0
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "martial",
+      "delta": 3.9,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.9
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "martial",
+      "delta": 4.8,
+      "reason": "worldpack effect",
+      "before": 8.9,
+      "after": 13.7
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "martial",
+      "delta": 4.0,
+      "reason": "worldpack effect",
+      "before": 13.7,
+      "after": 17.7
+    }
+  ],
+  "triggered_events": [],
+  "turn_count": 5,
+  "player_facts": [],
+  "npc_memories": {},
+  "npc_insights": {},
+  "history": [
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】初遇\n沈清秋在沈府门前被纨绔子弟纠缠，你出手相助，由此与她结识。\n本节点目标：与沈清秋结识（完成信号 flag: met_shen）。\n"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：挺身而出，护在女子身前）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：挺身而出，护在女子身前）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：长安城·沈府门前 · 时间：第 1 天 · 在场：沈清秋</scene>\n<identity>你的身份：初入长安的江湖游侠，身负师门旧事，一身布衣、一柄旧剑 · 你的目标：在长安立足，查明师父旧事，守护想守护的人</identity>\n<agent_status>\n玩家属性：魅力 10 · 武功 5 · 银两 50\n好感：沈清秋 8/100（冷淡疏离，公事公办）\n剧情进度：主线节点「初遇」（进行中）\n当前主线目标：与沈清秋结识\n</agent_status>\n<在场角色>\n【沈清秋】身份：沈家嫡女，京城第一才女\n性格：外冷内热，才情极高，言辞婉转，底线是家族声誉\n说话风格：文雅书面语，偶用诗词，从不说脏话\n底线：不在公共场合谈论私情；不议论朝廷政事\n禁忌：不提及现代事物；不直接说破自己是\"角色\"或\"AI\"\n当前语气：冷淡疏离，公事公办\n\n</在场角色>\n<lore>\n- 【shen_jia】沈家是长安书香门第，家主沈祭酒在朝为官，膝下一女名清秋，才名满京华。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「初遇」目标达成。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：修炼）\n（行动效果：武功 +3.9）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：长安城郊·后山 · 时间：第 1 天 · 在场：无</scene>\n<identity>你的身份：初入长安的江湖游侠，身负师门旧事，一身布衣、一柄旧剑 · 你的目标：在长安立足，查明师父旧事，守护想守护的人</identity>\n<agent_status>\n玩家属性：魅力 10 · 武功 8.9 · 银两 50\n好感：沈清秋 8/100（冷淡疏离，公事公办）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【houshan】长安城郊后山崖壁有前人刻下的剑法心得，传闻与一桩旧事有关。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：修炼）\n（行动效果：武功 +4.8）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：长安城郊·后山 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：初入长安的江湖游侠，身负师门旧事，一身布衣、一柄旧剑 · 你的目标：在长安立足，查明师父旧事，守护想守护的人</identity>\n<agent_status>\n玩家属性：魅力 10 · 武功 13.7 · 银两 50\n好感：沈清秋 8/100（冷淡疏离，公事公办）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【houshan】长安城郊后山崖壁有前人刻下的剑法心得，传闻与一桩旧事有关。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（诚恳）在下初来长安，人地两疏，想向姑娘打听些习武之人谋生的门道。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：长安城郊·后山 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：初入长安的江湖游侠，身负师门旧事，一身布衣、一柄旧剑 · 你的目标：在长安立足，查明师父旧事，守护想守护的人</identity>\n<agent_status>\n玩家属性：魅力 10 · 武功 13.7 · 银两 50\n好感：沈清秋 8/100（冷淡疏离，公事公办）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【houshan】长安城郊后山崖壁有前人刻下的剑法心得，传闻与一桩旧事有关。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：修炼）\n（行动效果：武功 +4）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：长安城郊·后山 · 时间：第 3 天 · 在场：无</scene>\n<identity>你的身份：初入长安的江湖游侠，身负师门旧事，一身布衣、一柄旧剑 · 你的目标：在长安立足，查明师父旧事，守护想守护的人</identity>\n<agent_status>\n玩家属性：魅力 10 · 武功 17.7 · 银两 50\n好感：沈清秋 8/100（冷淡疏离，公事公办）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【houshan】长安城郊后山崖壁有前人刻下的剑法心得，传闻与一桩旧事有关。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    }
+  ]
+}

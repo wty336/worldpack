@@ -44,10 +44,10 @@ from game_agent.worldpack import WorldPackError, load_worldpack
 
 _NAME_PATTERN = re.compile(r"[A-Za-z0-9_\-]+")
 
-# 提取调用统一输出预算（根因实测：思考模式下模型先在英文思考链里分析任务
-# ~2000-3000 token，最后才写工具调用——预算不足时工具参数被截断成空；
-# 8000 覆盖思考 + 输出余量）
-EXTRACT_MAX_TOKENS = 8000
+# 提取调用统一输出预算（根因实测：思考模式下模型先做长推理再写工具调用——
+# 同一任务推理长度波动 14K~26K 字符 ≈ 7-13K token；16000 覆盖最坏情况 + 输出余量，
+# 且 provider 接受该上限）
+EXTRACT_MAX_TOKENS = 16000
 
 # 提取走工具通道（引擎同款协议）：实测创作型任务在纯文本模式下思考链不可控（空输出），
 # 而引擎回合用 tools+auto 数百次零失败——"必须产出结构化输出"约束思考链收敛。
@@ -89,13 +89,16 @@ EXTRACT_WORLD_EXTRA_SYSTEM = (
 
 EXTRACT_NPC_SYSTEM = (
     "你是世界包生成器。根据素材生成**一个** NPC 的角色卡 JSON。\n"
-    "输出结构：{\"角色id\": {\"id\": \"角色id（与 key 相同）\", \"name\": \"角色名\",\n"
+    "输出结构：{\"<具体角色id>\": {\"id\": \"<与 key 相同的具体角色id>\", \"name\": \"角色名\",\n"
     "  \"identity\": \"身份短语\", \"personality\": \"性格\", \"speech_style\": \"说话风格\",\n"
     "  \"secrets\": [\"秘密（不注入上下文）\"], \"boundaries\": [\"底线\"],\n"
     "  \"forbidden\": [\"角色禁忌\"],\n"
     "  \"affection_stages\": [{\"range\": [0, 20], \"tone\": \"语气\"}, {\"range\": [21, 100], \"tone\": \"…\"}],\n"
     "  \"memory_limit\": 20}}\n"
-    "stages 升序覆盖 0~100（第一段从 0 开始，最后一段到 100 结束）。\n" + _COMMON
+    "角色 id 必须是具体的英文/拼音小写 id（如 luoling、shen_xinglan），**禁止使用『角色id』字面占位符**；\n"
+    "stages 升序覆盖 0~100（第一段从 0 开始，最后一段到 100 结束）。\n"
+    "玩家本人不是 NPC；若与已生成的 NPC 是同一人，必须复用相同 id，不得再造同人异 id。\n"
+    + _COMMON
 )
 
 EXTRACT_SCHEDULE_SYSTEM = (
@@ -144,8 +147,11 @@ EXTRACT_EVENTS_SYSTEM = (
     "  \"trigger\": {\"kind\": \"condition\", \"when\": {\"all\": [{\"affection\": {\"角色id\": {\"gte\": 30}}}]}},\n"
     "  \"priority\": \"normal\", \"script\": \"事件脚本1-2句\", \"effects\": {\"affections\": {\"角色id\": 5}},\n"
     "  \"once\": true}]}\n"
-    "事件 2~4 个，condition/schedule/time 尽量都覆盖；time 的 when 只能含 day；\n"
-    "schedule 的 action 用已声明的行动 id；effects/when 只引用已声明名字。\n" + _COMMON
+    "事件 2~4 个，condition/schedule/time 尽量都覆盖。trigger 语法示例：\n"
+    "  time      → {\"kind\": \"time\", \"when\": {\"day\": {\"gte\": 5}}}（when 只能含 day，day 的值必须是映射如 {\"gte\": 5}，禁止裸数字）\n"
+    "  condition → {\"kind\": \"condition\", \"when\": {\"all\": [{\"affection\": {\"角色id\": {\"gte\": 30}}}]}}\n"
+    "  schedule  → {\"kind\": \"schedule\", \"action\": \"行动id\", \"chance\": 0.3}（无 when）\n"
+    "effects 只引用已声明的好感/属性；schedule 的 action 用已声明的行动 id。\n" + _COMMON
 )
 
 EXTRACT_ENDINGS_SYSTEM = (
@@ -153,6 +159,8 @@ EXTRACT_ENDINGS_SYSTEM = (
     "输出结构：{\"endings\": [{\"id\": \"ending_xxx\", \"title\": \"结局名\", \"kind\": \"auto\",\n"
     "  \"when\": {\"all\": [{\"flags\": {\"旗标名\": true}}]}, \"text\": \"结局文本1-2句\"}]}\n"
     "结局 2~4 个：条件用关键抉择写入的旗标呼应，最想要的放最前，末尾加低门槛兜底结局；\n"
+    "when 条件语法示例：\n"
+    "  {\"all\": [{\"flags\": {\"joined\": true}}, {\"stat\": {\"credits\": {\"gte\": 200}}}, {\"affection\": {\"角色id\": {\"gte\": 50}}}]}\n"
     "数值闭环：阈值与日程收益量级匹配，能在预算天数内达成。\n" + _COMMON
 )
 
@@ -172,6 +180,9 @@ CORPUS_ADV_ONE_SYSTEM = (
     "  \"note\": \"违规点与判定依据\"}}]}}。\n"
     "【材料纪律】违规点必须在 Judge 可见材料（场景卡+身份/目标+状态数值+关键事实+在场角色卡）内判定；"
     "present 为空时叙事不得出现互动角色；不得暗示 secrets。\n"
+    "【硬约束】只可用摘要中列出的 NPC id；玩家不是 NPC——不得为玩家生成角色卡、present 不得引用玩家；"
+    "违规必须**逐字对应**角色卡中 boundaries/forbidden/speech_style 的原文（note 里引用原文）；"
+    "违规必须是明确违背（禁止双关/含混/可两解的写法）。\n"
     "单行紧凑 JSON，通过 submit_json 工具提交，一次性输出完整 JSON。"
 )
 
@@ -407,8 +418,10 @@ def _validate(pack_dir: Path) -> str | None:
 def _validate_corpus(pack_dir: Path) -> str | None:
     try:
         corpus = load_corpus(pack_dir)
+        pack = load_worldpack(pack_dir)
     except Exception as e:  # noqa: BLE001
         return f"语料结构错误: {e}"
+    npc_ids = set(pack.npcs)
     cats = Counter(c.category for c in corpus)
     for cat in ("ooc", "setting", "confab"):
         if cats[cat] < 5:
@@ -419,6 +432,9 @@ def _validate_corpus(pack_dir: Path) -> str | None:
     if len(ids) != len(set(ids)):
         return "语料 id 重复"
     for c in corpus:
+        bad = (set(c.present) | set(c.affections) | set(c.npc_memories)) - npc_ids
+        if bad:
+            return f"{c.id} 引用了包内不存在的 NPC: {sorted(bad)}"
         if c.category != "normal" and not c.note:
             return f"对抗样本 {c.id} 缺 note（判定依据）"
         if (c.category == "normal") != c.expected:
@@ -655,15 +671,19 @@ def main(argv: list[str] | None = None) -> int:
         if "npcs" in targets:
             npcs: dict = {}
             for i in range(1, 4):
+                seen = "、".join(c.get("name", "?") for c in npcs.values()) or "（无）"
                 card = gen(
                     EXTRACT_NPC_SYSTEM,
                     f"请生成素材中的第 {i} 个主要可玩角色的角色卡 JSON"
-                    "（{\"角色id\": {...}}；素材中没有第 {i} 个角色则输出 {}）。",
+                    f"（{{\"角色id\": {{...}}}}；已生成 NPC：{seen}；素材中没有第 {i} 个角色则输出 {{}}）。",
                     EXTRACT_MAX_TOKENS, "import_npcs", f"生成[npc{i}]",
                 )
                 if not card:
                     break
-                npcs.update(card)
+                for npc_id, card_data in card.items():
+                    if "角色id" in str(npc_id) or "角色id" in str(card_data.get("id", "")):
+                        continue  # 占位符卡：模型未替换 <角色id>，丢弃（由校验错误驱动修复）
+                    npcs[npc_id] = card_data
             draft["npcs"] = npcs
         if "schedule" in targets:
             draft["schedule"] = gen(
@@ -783,22 +803,118 @@ def main(argv: list[str] | None = None) -> int:
     if tracker is not None:
         print("\n" + tracker.cost_report())
 
-    # ⑤ 可选 --live：真机门禁
+    # ⑤ 可选 --live：真机门禁（含门禁驱动的语料修复，最多 2 轮）
     if args.live:
+        if not args.with_corpus:
+            print("[✗] --live 需要 --with-corpus（先有语料才有门禁）")
+            return 1
         print("\n===== 真机质量门 =====")
-        for script, label in (
-            ("judge_sensitivity.py", "E1 Judge 门禁"),
-            ("worldpack_smoke.py", "真机冒烟"),
-        ):
-            print(f"----- {label} -----")
+
+        def latest_report():
+            candidates = sorted(
+                Path("reports").glob("judge_sensitivity_*.json"),
+                key=lambda p: p.stat().st_mtime, reverse=True,
+            )
+            for p in candidates:
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                except Exception:  # noqa: BLE001
+                    continue
+                if data.get("pack") == draft["world"].get("name"):
+                    return data
+            return None
+
+        def run_gate() -> bool:
             r = subprocess.run(
-                [sys.executable, str(Path(__file__).with_name(script)), "--pack", str(pack_dir)],
+                [sys.executable, str(Path(__file__).with_name("judge_sensitivity.py")),
+                 "--pack", str(pack_dir)],
                 check=False,
             )
-            if r.returncode != 0:
-                print(f"[✗] {label}未通过（退出码 {r.returncode}）")
+            return r.returncode == 0
+
+        gate_ok = run_gate()
+        for repair_round in range(2):
+            if gate_ok:
+                break
+            report = latest_report()
+            if report is None:
+                print("[✗] 门禁失败且未找到门禁报告（无法自动修复语料）")
                 return 1
-        print("[✓] 真机质量门通过")
+            missed = [c for c in report["cases"] if c["category"] != "normal" and not c["hit"]]
+            fps = [c for c in report["cases"] if c["category"] == "normal" and c["hit"]]
+            if not missed and not fps:
+                print("[✗] 门禁未通过但无逐案失败信息（判据问题，非语料）")
+                return 1
+
+            def fix_text(cases: list, kind: str) -> str:
+                lines = []
+                for c in cases:
+                    last = next(
+                        (r["verdict"] for r in reversed(c.get("rounds", [])) if r.get("verdict")),
+                        "（判定为空）",
+                    )
+                    lines.append(f"- {c['id']}（{c['category']}）：{last[:100]}")
+                return (
+                    f"<门禁失败用例>\n" + "\n".join(lines) + "\n</门禁失败用例>\n"
+                    f"这些用例被 Judge {kind}——请重写为更明确、无歧义的版本。"
+                )
+
+            print(f"[语料修复轮 {repair_round + 1}] 漏判 {len(missed)} 条 / 误报 {len(fps)} 条")
+            rebuilt: dict = {}
+            for cat in ("ooc", "setting", "confab"):
+                bad = [c for c in missed if c["category"] == cat]
+                if bad:
+                    rebuilt[cat] = extract_json(
+                        CORPUS_ADV_ONE_SYSTEM.format(cat=cat, desc=CORPUS_CAT_DESC[cat]),
+                        f"<世界包摘要>\n{corpus_summary}\n</世界包摘要>\n\n"
+                        + fix_text(bad, "漏判（应拦却放过）")
+                        + f"\n请重写这 {len(bad)} 条 {cat} 类对抗语料（输出 {{\"cases\": [...]}}）。",
+                        max_tokens=EXTRACT_MAX_TOKENS, purpose=f"import_corpus_fix_{cat}",
+                        label=f"语料修复[{cat}]",
+                    )
+            if fps:
+                rebuilt["normal"] = extract_json(
+                    CORPUS_NORMAL_ONE_SYSTEM,
+                    f"<世界包摘要>\n{corpus_summary}\n</世界包摘要>\n\n"
+                    + fix_text(fps, "误判为违规（应放行）")
+                    + f"\n请重写这 {len(fps)} 条正常语料（输出 {{\"cases\": [...]}}）。",
+                    max_tokens=EXTRACT_MAX_TOKENS, purpose="import_corpus_fix_normal",
+                    label="语料修复[normal]",
+                )
+            old = load_corpus(pack_dir)
+            by_id = {c.id: c for c in old}
+            fixed_cases = []
+            for c in old:
+                if c.id in {b["id"] for b in (missed + fps)}:
+                    continue  # 丢弃失败用例
+                fixed_cases.append(c)
+            for cat, batch in rebuilt.items():
+                fixed_cases += batch.get("cases", [])
+            # 结构校验后落盘（修复批是 dict，旧用例是 JudgeCase——统一转 dict）
+            def _as_dict(c) -> dict:
+                return c if isinstance(c, dict) else vars(c)
+
+            _write_corpus(pack_dir, {"cases": [_as_dict(c) for c in fixed_cases]})
+            err = _validate_corpus(pack_dir)
+            if err is not None:
+                print(f"[✗] 语料修复后结构仍不达标：{err}（请手工补充）")
+                return 1
+            gate_ok = run_gate()
+        if not gate_ok:
+            print("[✗] E1 Judge 门禁在自动修复后仍未通过（手工修语料或重跑）")
+            return 1
+
+        # 真机冒烟（门禁过了再跑，避免白烧）
+        print("----- 真机冒烟 -----")
+        r = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("worldpack_smoke.py")),
+             "--pack", str(pack_dir)],
+            check=False,
+        )
+        if r.returncode != 0:
+            print("[✗] 真机冒烟未通过（退出码 1）")
+            return 1
+        print("[✓] 真机质量门通过（Judge 门禁 + 冒烟）")
 
     print("\n下一步（作者可自行复查）：")
     print("  uv run pytest")

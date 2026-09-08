@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "pack_name": "江湖旧梦",
+  "day": 1,
+  "action_points_left": 0,
+  "stats": {
+    "charm": 10.0,
+    "martial": 5.0,
+    "silver": 50.0
+  },
+  "affections": {
+    "shen_qingqiu": 12.0
+  },
+  "flags": {
+    "met_shen": true,
+    "poetry_top3": false,
+    "poetry_join": false
+  },
+  "scene": "长安城·沈府",
+  "current_node": null,
+  "present_npcs": [
+    "shen_qingqiu"
+  ],
+  "completed_nodes": [
+    "n1_first_meeting"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_first_meeting",
+      "choice_id": "how_to_help.1",
+      "text": "挺身而出，护在女子身前"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.0
+    },
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "见你挺身护在她身前，沈清秋眼中闪过一丝意外，对这个陌生游侠的仗义心生一分好感。",
+      "before": 8.0,
+      "after": 10.0
+    },
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "数日后于市集再见，她认出你这般游侠打扮的旧识，眉目间较初见少了几分疏冷，多了几分客气与和气。",
+      "before": 10.0,
+      "after": 12.0
+    }
+  ],
+  "triggered_events": []
+}

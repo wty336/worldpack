@@ -1,0 +1,422 @@
+{
+  "version": 1,
+  "pack_name": "霓虹深处",
+  "day": 4,
+  "action_points_left": 2,
+  "stats": {
+    "intel": 10.0,
+    "cyber": 5.0,
+    "credits": 140.5
+  },
+  "affections": {
+    "lin_che": 8.0,
+    "a_ling": 5.0
+  },
+  "flags": {
+    "deal_made": true,
+    "job_runner": false,
+    "clinic_helper": true,
+    "solo_route": false,
+    "memory_lead": true,
+    "zero_allied": false,
+    "zero_sold": true,
+    "zero_hidden": false,
+    "confrontation_done": false,
+    "tower_stormed": false,
+    "tower_deal": false,
+    "tower_backdoor": false
+  },
+  "scene": "夜澜市·数据街",
+  "current_node": null,
+  "present_npcs": [],
+  "completed_nodes": [
+    "n1_clinic_deal",
+    "n2_data_street"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_clinic_deal",
+      "choice_id": "how_to_repay.2",
+      "text": "帮诊所跑黑市渠道"
+    },
+    {
+      "day": 3,
+      "node_id": "n2_data_street",
+      "choice_id": "zero_choice.2",
+      "text": "把她的坐标卖给霓光"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "lin_che",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.0
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "credits",
+      "delta": 15.6,
+      "reason": "worldpack effect",
+      "before": 50.0,
+      "after": 65.6
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "credits",
+      "delta": 15.1,
+      "reason": "worldpack effect",
+      "before": 65.6,
+      "after": 80.69999999999999
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "credits",
+      "delta": 8.1,
+      "reason": "worldpack effect",
+      "before": 80.69999999999999,
+      "after": 88.79999999999998
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "credits",
+      "delta": 10.9,
+      "reason": "worldpack effect",
+      "before": 88.79999999999998,
+      "after": 99.69999999999999
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "credits",
+      "delta": 9.9,
+      "reason": "worldpack effect",
+      "before": 99.69999999999999,
+      "after": 109.6
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "credits",
+      "delta": 20.0,
+      "reason": "worldpack effect",
+      "before": 109.6,
+      "after": 129.6
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "credits",
+      "delta": 10.9,
+      "reason": "worldpack effect",
+      "before": 129.6,
+      "after": 140.5
+    }
+  ],
+  "triggered_events": [],
+  "turn_count": 8,
+  "player_facts": [],
+  "npc_memories": {},
+  "npc_insights": {},
+  "history": [
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】白噪诊所\n你按匿名消息来到白噪诊所。医生林澈告诉你：你脑中那块记忆碎片并非你自己的，\n是有人在手术中\"寄存\"进去的——而你，还欠着诊所一笔义体手术费。\n本节点目标：与诊所达成还债协议（完成信号 flag: deal_made）。\n"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：帮诊所跑黑市渠道）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：帮诊所跑黑市渠道）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·白噪诊所 · 时间：第 1 天 · 在场：林澈</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 50\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：主线节点「白噪诊所」（进行中）\n当前主线目标：与白噪诊所达成还债协议\n</agent_status>\n<在场角色>\n【林澈】身份：白噪诊所的神经外科医生，前澜生生物研究员\n性格：冷静克制，冷面心热，医者底线极硬\n说话风格：语气平稳克制，医学术语精确，很少用语气词\n底线：不轻易谈论离开澜生生物的原因；不做违背医者底线的手术\n禁忌：不提及现实世界的具体品牌与名人；不直接说破自己是\"角色\"或\"由程序生成\"\n当前语气：公事公办，保持距离\n\n</在场角色>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【lansheng】澜生生物垄断记忆与神经手术。白噪诊所是地下黑诊所，医生林澈曾是澜生的研究员。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「白噪诊所」目标达成。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接单拾荒）\n【行动检定】智识 10 · 掷 9.0（难度 6，大成功需 ≥16）· 结果：成功\n（行动效果：信用点 +15.6）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·数据街 · 时间：第 1 天 · 在场：无</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 65.6\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【credits】信用点是新纪通用货币，刷腕带即可支付。拾荒者接一单少则十几点，多则上百。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接单拾荒）\n【行动检定】智识 10 · 掷 9.3（难度 6，大成功需 ≥16）· 结果：成功\n（行动效果：信用点 +15.1）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·数据街 · 时间：第 1 天 · 在场：无</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 80.7\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【credits】信用点是新纪通用货币，刷腕带即可支付。拾荒者接一单少则十几点，多则上百。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接单拾荒）\n【行动检定】智识 10 · 掷 3.7（难度 6，大成功需 ≥16）· 结果：失败\n（行动效果：信用点 +8.1）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·数据街 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 88.8\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【credits】信用点是新纪通用货币，刷腕带即可支付。拾荒者接一单少则十几点，多则上百。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接单拾荒）\n【行动检定】智识 10 · 掷 15.9（难度 6，大成功需 ≥16）· 结果：成功\n（行动效果：信用点 +10.9）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·数据街 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 99.7\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【credits】信用点是新纪通用货币，刷腕带即可支付。拾荒者接一单少则十几点，多则上百。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（揉着太阳穴）昨晚的记忆又缺了一块。林医生，这台手术到底切掉了我多少东西？"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·数据街 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 99.7\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【lansheng】澜生生物垄断记忆与神经手术。白噪诊所是地下黑诊所，医生林澈曾是澜生的研究员。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【credits】信用点是新纪通用货币，刷腕带即可支付。拾荒者接一单少则十几点，多则上百。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】数据街寻踪\n你潜入数据街追查记忆碎片的来源，在旧终端区遇到一个叫阿零的少女——\n她能读取你脑中的碎片，而你发现她正被霓光科技的追踪程序锁定。\n本节点目标：取得记忆碎片线索（完成信号 flag: memory_lead）。\n"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：把她的坐标卖给霓光）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：把她的坐标卖给霓光）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·旧终端区 · 时间：第 3 天 · 在场：阿零</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 129.6\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：主线节点「数据街寻踪」（进行中）\n当前主线目标：在数据街查到记忆碎片的线索\n</agent_status>\n<在场角色>\n【阿零】身份：数据流中的神秘少女，疑似一段失落的人工智能人格\n性格：天真机敏，好奇心旺盛，偶尔说出远超年龄的话\n说话风格：语速轻快，爱用反问，偶尔蹦出术语\n底线：不轻易透露自己的来历；不解释自己为何总在旧终端区徘徊\n禁忌：不直接承认自己是\"程序\"或\"代码\"（直至剧情揭示）；不直接说破自己是\"角色\"或\"由程序生成\"\n当前语气：好奇打量，保持警觉\n\n</在场角色>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【lansheng】澜生生物垄断记忆与神经手术。白噪诊所是地下黑诊所，医生林澈曾是澜生的研究员。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【zero_plan】传闻霓光科技的\"零号计划\"试图将人类意识数据化。你脑中的记忆碎片，纹样与零号计划的标记惊人相似。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「数据街寻踪」目标达成。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接单拾荒）\n【行动检定】智识 10 · 掷 0.8（难度 6，大成功需 ≥16）· 结果：失败\n（行动效果：信用点 +10.9）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：夜澜市·数据街 · 时间：第 3 天 · 在场：无</scene>\n<identity>你的身份：记忆缺损的地下拾荒者，脑内植着一块不属于自己的记忆碎片 · 你的目标：查明记忆碎片的来源，在夜澜市立足</identity>\n<agent_status>\n玩家属性：智识 10 · 义体 5 · 信用点 140.5\n好感：林澈 8/100（公事公办，保持距离） · 阿零 5/100（好奇打量，保持警觉）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【yelan】夜澜市建在旧海港废墟之上，霓虹终夜不熄。三大公司——霓光科技、星网、澜生生物——瓜分了这座城市的天际线。\n- 【xingwang】星网公司掌控全城网络。数据街是其边缘地带，拾荒者与骇客在此交易情报，警察从不踏足。\n- 【data_street】数据街是底层拾荒者的地盘：旧终端区堆满报废服务器，黑市什么都能买到，也什么都能卖。\n- 【credits】信用点是新纪通用货币，刷腕带即可支付。拾荒者接一单少则十几点，多则上百。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    }
+  ]
+}

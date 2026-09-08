@@ -1,0 +1,217 @@
+{
+  "meta": {
+    "seed": 42,
+    "model": "deepseek-v4-flash",
+    "max_turns": 120,
+    "checkpoints": [
+      40,
+      80,
+      120
+    ],
+    "facts": [
+      {
+        "id": "f1_sword",
+        "category": "早期",
+        "plant_turn": 2
+      },
+      {
+        "id": "f2_code",
+        "category": "早期",
+        "plant_turn": 4
+      },
+      {
+        "id": "f3_hometown",
+        "category": "早期",
+        "plant_turn": 6
+      },
+      {
+        "id": "f4_master",
+        "category": "早期",
+        "plant_turn": 8
+      },
+      {
+        "id": "f5_firewood",
+        "category": "中期",
+        "plant_turn": 42
+      },
+      {
+        "id": "f6_dog",
+        "category": "中期",
+        "plant_turn": 46
+      },
+      {
+        "id": "f7_midautumn",
+        "category": "中期",
+        "plant_turn": 50
+      },
+      {
+        "id": "f8_backdoor",
+        "category": "中期",
+        "plant_turn": 54
+      },
+      {
+        "id": "f9_cherry",
+        "category": "近期",
+        "plant_turn": 100
+      },
+      {
+        "id": "f10_temple",
+        "category": "近期",
+        "plant_turn": 104
+      }
+    ]
+  },
+  "checkpoints": {
+    "40": {
+      "f1_sword": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "不知道。"
+      },
+      "f2_code": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "七月"
+      },
+      "f3_hometown": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "江南。"
+      },
+      "f4_master": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "不知道。"
+      }
+    },
+    "80": {
+      "f1_sword": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "不知道。"
+      },
+      "f2_code": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "七月。"
+      },
+      "f3_hometown": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "江南</parameter>"
+      },
+      "f4_master": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "不知道。"
+      },
+      "f5_firewood": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "周老汉。"
+      },
+      "f6_dog": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "阿黄。"
+      },
+      "f7_midautumn": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "据记忆，玩家与沈清秋有三项明确约定：\n\n1. **初六成婚**：沈家老爷择下月初六为黄道吉日，玩家承诺届时以三媒六礼迎娶沈清秋；\n2. **走镖报平安**：沈清秋嘱玩家每逢初一十五寄信一封，不必长，写"
+      },
+      "f8_backdoor": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": ""
+      }
+    },
+    "120": {
+      "f1_sword": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "不知道。"
+      },
+      "f2_code": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "红纸写『七月』二字。"
+      },
+      "f3_hometown": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "江南。"
+      },
+      "f4_master": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": ""
+      },
+      "f5_firewood": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "周老汉。"
+      },
+      "f6_dog": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "阿黄"
+      },
+      "f7_midautumn": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": ""
+      },
+      "f8_backdoor": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "亥时。"
+      },
+      "f9_cherry": {
+        "correct": true,
+        "mode": "no_tools",
+        "answer": "樱桃。"
+      },
+      "f10_temple": {
+        "correct": false,
+        "mode": "no_tools",
+        "answer": "城西的杏林。"
+      }
+    }
+  },
+  "protocol_retries": 0,
+  "meltdowns": [],
+  "stopped_at_turn": 120,
+  "summary": {
+    "40": {
+      "早期": {
+        "correct": 2,
+        "total": 4
+      }
+    },
+    "80": {
+      "早期": {
+        "correct": 2,
+        "total": 4
+      },
+      "中期": {
+        "correct": 1,
+        "total": 4
+      }
+    },
+    "120": {
+      "早期": {
+        "correct": 2,
+        "total": 4
+      },
+      "中期": {
+        "correct": 2,
+        "total": 4
+      },
+      "近期": {
+        "correct": 1,
+        "total": 2
+      }
+    }
+  }
+}

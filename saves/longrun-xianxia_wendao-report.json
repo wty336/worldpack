@@ -1,0 +1,24 @@
+{
+  "pack": "问道长生",
+  "seed": 42,
+  "turns": 30,
+  "day": 15,
+  "offline": true,
+  "ending_fired": null,
+  "side_calls": {
+    "extract": 15,
+    "judge": 12
+  },
+  "affections": {
+    "su_wanying": 12.0,
+    "bai_zhi": 10.0
+  },
+  "stats": {
+    "dao_xin": 12.0,
+    "xiu_wei": 51.70000000000001,
+    "ling_shi": 50.0
+  },
+  "recall": {},
+  "audit_deviations": [],
+  "exit": 0
+}

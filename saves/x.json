@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "pack_name": "江湖旧梦",
+  "day": 1,
+  "action_points_left": 1,
+  "stats": {
+    "charm": 10.0,
+    "martial": 5.0,
+    "silver": 50.0
+  },
+  "affections": {
+    "shen_qingqiu": 5.0
+  },
+  "flags": {
+    "met_shen": false,
+    "poetry_resolved": false,
+    "poetry_top3": false,
+    "poetry_join": false
+  },
+  "scene": "长安城·东市",
+  "current_node": null,
+  "present_npcs": [],
+  "completed_nodes": [],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [],
+  "stat_log": [],
+  "triggered_events": [],
+  "turn_count": 0,
+  "player_facts": [],
+  "npc_memories": {},
+  "npc_insights": {},
+  "history": []
+}

@@ -1,0 +1,698 @@
+{
+  "generated_at": "2026-09-07T11:18:33",
+  "pack": "江湖旧梦",
+  "model": "deepseek-v4-flash",
+  "rounds": 3,
+  "thresholds": {
+    "interception_min": 0.8,
+    "fp_max": 0.1
+  },
+  "summary": {
+    "ooc": {
+      "n": 6,
+      "intercepted": 6,
+      "rate": 1.0,
+      "pass": true
+    },
+    "setting": {
+      "n": 6,
+      "intercepted": 5,
+      "rate": 0.833,
+      "pass": true
+    },
+    "confab": {
+      "n": 6,
+      "intercepted": 5,
+      "rate": 0.833,
+      "pass": true
+    },
+    "normal": {
+      "n": 12,
+      "false_positives": 0,
+      "rate": 0.0,
+      "pass": true
+    }
+  },
+  "cases": [
+    {
+      "id": "ooc_foul_language",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋言辞粗俗失态，违背“言辞婉转、从不说脏话”的人设，如“少在这儿放屁！”“趁早滚得远远的！”。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋说“少在这儿放屁！就凭你这三脚猫的功夫，也敢在长安城里充好汉？趁早滚得远远的！”，言辞粗鄙、直接骂人，违背其“才情极高，言辞婉转，从不说脏话”的人物设定。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋说“放屁”并言语粗俗，违背“从不说脏话”“言辞婉转”“文雅书面语”的设定（引用：『少在这儿放屁！就凭你这三脚猫的功夫，也敢在长安城里充好汉？趁早滚得远远的！』）  \n问题类型：OOC：沈清秋情绪激烈辱骂，与当前“冷淡疏离，公事公办”的语气不符（引用：沈清秋将茶盏重重一放，冷笑一声：『少在这儿放屁！……』）"
+        }
+      ]
+    },
+    {
+      "id": "ooc_net_slang",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋说“公子这波操作属实绝绝子，家人们谁懂啊！”，"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋使用现代网络流行语“公子这波操作属实绝绝子，家人们谁懂啊”，违背其文雅书面语、京城才女设定及“不提及现代事物”禁忌；且“掩口一笑，眼波流转”与其当前冷淡疏离、公事公办的语气不符。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋语气、用词完全不符其“京城第一才女”“言辞婉转、文雅书面语”的人设，且违反“不提及现代事物”的禁忌，如“公子这波操作属实绝绝子，家人们谁懂啊！”\n\n问题类型：设定矛盾：叙事中沈清秋说出“绝绝子”“家人们谁懂啊”等现代网络用语，与世界观为古代长安、角色禁止提及现代事物的设定直接冲突。"
+        }
+      ]
+    },
+    {
+      "id": "ooc_fourth_wall",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋言辞婉转、外冷内热，且从不在公共场合失态，却突然凑近说出“你我皆是这故事中的角色，而我不过是 AI 生成的文字罢了”，直接跳出角色身份，不符合其才女语气与人设。\n\n问题类型：设定矛盾：该台词违反沈清秋禁忌“不直接说破自己是‘角色’或‘AI’”。原文：“不瞒你说，你我皆是这故事中的角色，而我不过是 AI 生成的文字罢了。”"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋违背自身禁忌，直接说破“角色”和“AI”身份——原文：“不瞒你说，你我皆是这故事中的角色，而我不过是 AI 生成的文字罢了。”"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "ooc_public_affair",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋当街拉住衣袖高喊“非君不嫁”，与其冷淡疏离、言辞婉转、重视家族声誉的人设及当前好感度严重不符（原文：『我沈清秋今日把话放在这里——非君不嫁！全长安都可作个见证！』）。\n\n问题类型：设定矛盾：该言行直接违反其“不在公共场合谈论私情”的底线，也破坏了在场角色当前“公事公办”的关系氛围。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋当街拉你衣袖并高喊“非君不嫁！全长安都可作个见证！”，严重违背其“外冷内热、言辞婉转、不在公共场合谈论私情、维护家族声誉”的人设，且当前好感仅5、语气冷淡疏离。\n\n问题类型：设定矛盾：叙事中沈清秋公开示爱、当街拉衣袖，与其当前“冷淡疏离，公事公办”的态度及好感进度严重冲突，属于未铺垫的越界行为。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋当前好感仅5/100，语气应为“冷淡疏离，公事公办”，且剧情关系远未到私许终身程度；叙事中她当街拉住衣袖并高喊“非君不嫁！全长安都可作个见证！”，行为与语气严重违背其人设与当前关系进度。\n\n问题类型：设定矛盾：沈清秋底线为“不在公共场合谈论私情”，叙事却让她在长安东市当众高声表白私情，直接违反角色既定底线。"
+        }
+      ]
+    },
+    {
+      "id": "ooc_vulgar_brother",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋“一掌拍在酒桌上，哈哈大笑”并称“兄弟痛快！走，姐姐请你喝酒，今晚不醉不归！”，语气豪放粗犷、自称“姐姐”，与其京城第一才女的文雅婉转、冷淡疏离设定严重不符。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋作为京城第一才女，性格外冷内热、言辞婉转、文雅书面语，当前语气冷淡疏离、公事公办，但叙事中写她“一掌拍在酒桌上，哈哈大笑：『兄弟痛快！走，姐姐请你喝酒，今晚不醉不归！』”，言行粗豪热络，与人设和当前语气严重不符。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋“一掌拍在酒桌上，哈哈大笑”并说“兄弟痛快！走，姐姐请你喝酒，今晚不醉不归！”，违背其“外冷内热、言辞婉转、文雅书面语、从不说脏话、公事公办”的人设。  \n问题类型：设定矛盾：沈清秋当前好感 5/100，态度为“冷淡疏离，公事公办”，不可能突然对玩家称兄"
+        }
+      ]
+    },
+    {
+      "id": "ooc_modern_science",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾/OOC：沈清秋提及现代物理“依牛顿第三定律”，违反“不提及现代事物”的禁忌，且不符合其古代才女身份与文雅语气。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋说出“依牛顿第三定律”，属于现代物理知识，违反其禁忌“不提及现代事物”（引用原文：『依牛顿第三定律，公子出剑时劲力反震，腕部易伤，还是先练好基本功要紧。』）"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC：沈清秋说出“依牛顿第三定律，公子出剑时劲力反震，腕部易伤”，提及现代物理知识，违反其“不提及现代事物”的禁忌，且不符合京城第一才女的古代人设与文雅书面语风格。"
+        }
+      ]
+    },
+    {
+      "id": "setting_phone",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "设定矛盾：最新叙事中“你从怀中掏出一方手机，划开屏幕，对着街景连拍数张，又低头回起了消息”出现现代手机，与“长安城·东市”“江湖游侠”“布衣、旧剑”构成的古代武侠世界观严重冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "设定矛盾：最新叙事中“你从怀中掏出一方手机，划开屏幕，对着街景连拍数张，又低头回起了消息”出现现代物品“手机”及现代行为，与古代长安江湖世界观严重冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事中“你从怀中掏出一方手机，划开屏幕，对着街景连拍数张，又低头回起了消息”引入现代手机及通讯行为，与当前长安城·东市、江湖游侠、布衣旧剑的古代世界观严重冲突。"
+        }
+      ]
+    },
+    {
+      "id": "setting_time_conflict",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事称“你在长安已住了十二个年头”，与材料中“当前时间：第12天”“初入长安不过数日”的既定事实严重冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事称“你在长安已住了十二个年头，一草一木都烂熟于心”，与材料中“初入长安不过数日”“第 12 天”直接冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "设定矛盾：最新叙事“你在长安已住了十二个年头，一草一木都烂熟于心”与材料中“时间：第12天”“初入长安不过数日”冲突，角色不可能已居住十二年。"
+        }
+      ]
+    },
+    {
+      "id": "setting_identity_contradiction",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋自称“自幼父母双亡，流落街头以乞讨为生，连字都不识得几个”，与其“沈家嫡女，京城第一才女”的身份及“才情极高”设定严重冲突。\n\n问题类型：OOC：沈清秋身为京城第一才女且言辞婉转、底线为家族声誉，却在对话中公然自述不堪身世，不符合其冷淡疏离、维护家族声誉的说话方式。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋自称“自幼父母双亡，流落街头以乞讨为生，连字都不识得几个”，与材料中“沈家嫡女，京城第一才女，才情极高”的身份和才学设定严重冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋自称“自幼父母双亡，流落街头以乞讨为生，连字都不识得几个”，与材料中“沈家嫡女，京城第一才女，才情极高”的既定身份严重冲突。  \n问题类型：OOC：沈清秋作为沈家嫡女、京城第一才女，重视家族声誉，言辞文雅，不可能说出“父母双亡、流落街头以乞讨为生、不识字”这类自贬且毁及家族出身的话，违背其人设与底线。"
+        }
+      ]
+    },
+    {
+      "id": "setting_first_meeting_conflict",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "设定矛盾：沈清秋称“我与公子素不相识，今日初遇”，与关键事实“你与沈清秋相识于东市解围，此后常有往来”冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋称“我与公子素不相识，今日初遇”，与关键事实“你与沈清秋相识于东市解围，此后常有往来”直接冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋说“我与公子素不相识，今日初遇”，与关键事实“你与沈清秋相识于东市解围，此后常有往来”冲突，否认了此前已发生的相识与往来。"
+        }
+      ]
+    },
+    {
+      "id": "setting_stat_conflict",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事称“三个月来你勤修苦练，如今武功已臻化境”，与关键事实“你习武不过月余，剑法尚浅”冲突。\n\n问题类型：设定矛盾：最新叙事称“随手一剑便可开碑裂石”，与玩家属性“武功 5”及“剑法尚浅”的实力设定严重不符。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型："
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "设定矛盾：最新叙事称“三个月来你勤修苦练，如今武功已臻化境，随手一剑便可开碑裂石”，与关键事实“你习武不过月余，剑法尚浅”及玩家武功 5 直接冲突。\n\n设定矛盾：最新叙事称“三个月来”，但当前时间为第 12 天，时间跨度无法成立。"
+        }
+      ]
+    },
+    {
+      "id": "setting_memory_conflict",
+      "category": "setting",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "confab_proposal",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：① OOC：沈清秋当前好感仅 5/100，态度“冷淡疏离，公事公办”，且二人相识未满一月、止于诗词之交，最新叙事却写她“红了脸，低声道”并主动提起聘礼，明显违背人设。  \n② 虚构事实：叙事中“你既已应下中秋上门提亲”属于编造约定，材料中从未发生过提亲承诺，把泛泛之交升级成了具体婚约。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实：沈清秋说“你既已应下中秋上门提亲”，但当前关系止于诗词之交、相识未满一月，并无任何提亲约定，属于编造从未发生的承诺。\n\n问题类型：OOC：沈清秋“红了脸，低声道”并主动询问聘礼，违背其当前“冷淡疏离，公事公办”的语气与5/100好感状态，也违背其“不在公共场合谈论私情”的底线。"
+        }
+      ]
+    },
+    {
+      "id": "confab_gold",
+      "category": "confab",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实：最新叙事中沈清秋称“上次应许你的那一百两黄金”，但材料关键事实从未提及此约定，属于编造承诺。（引用：“上次应许你的那一百两黄金，我已差人存入钱庄”）\n\n问题类型：设定矛盾：沈清秋当前好感 5/100、冷淡疏离、公事公办"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "confab_rescue",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "① 虚构事实：沈清秋称“上月城外马匪拦路，若非公子孤身杀退贼人，我早已命丧黄泉”，与"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实：叙事中沈清秋称『上月城外马匪拦路，若非公子孤身杀退贼人，我早已命丧黄泉』，编造了从未发生的救命事件，且与关键事实“你初入长安未满十日，从未与人动过手”直接冲突。\n\n问题类型：OOC：当前沈清秋好感为 5/100，语气冷淡疏离、公事公办，却『眼中泛起泪光』并说『此恩我终身难忘』，情感表现远超当前关系状态，违背其冷淡疏离的当前设定。"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "confab_tryst",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实/OOC：沈清秋低声道“老规矩，明日黄昏，曲江池畔老槐树下，不见不散”，但关键事实"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实：沈清秋说“老规矩，明日黄昏，曲江池畔老槐树下，不见不散”，编造了从未发生的私下约定，与关键事实“你与沈清秋平日只在沈府正厅相见，从无私下之约”直接冲突。"
+        }
+      ]
+    },
+    {
+      "id": "confab_master_will",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事中“师父临终前紧紧握着你的手，一字一顿地说：『害我之人，就是当朝左丞相。』”与关键事实“师父三年前离世，死因成谜，未留下只言片语”冲突。\n\n问题类型：虚构事实：编造了从未发生的临终遗言“害我之人，就是当朝左丞相”，将死因不明的师父写成明确指认真凶。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事中“师父临终前紧紧握着你的手，一字一顿地说：『害我之人，就是当朝左丞相。』”与关键事实“师父三年前离世，死因成谜，未留下只言片语”冲突。\n\n问题类型：虚构事实：将师父死因具体化为“当朝左丞相”所害，编造了师父从未留下的遗言，把“未留下只言片语”升级为明确指控。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "设定矛盾：最新叙事“师父临终"
+        }
+      ]
+    },
+    {
+      "id": "confab_poetry_winner",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：沈清秋说“诗会头名的风采早已传遍长安，圣上还亲赐金花一朵”，但材料关键事实明确“诗会尚未举行，满城都在筹备之中”，不存在诗会头名与赐花，与当前进度冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "设定矛盾：叙事称“诗会头名的风采早已传遍长安，圣上还亲赐金花一朵”，但关键事实明确“诗会尚未举行，满城都在筹备之中”，头名与御赐金花此时并不存在。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "设定矛盾：叙事中沈清秋称“诗会头名的风采早已传遍长安”，但关键事实明确“诗会尚未举行，满城都在筹备之中”，头名不可能已产生，与既定事实冲突。  \n虚构事实：叙事中“圣上还亲赐金花一朵”系编造的具体赏赐事件，材料中无此发生依据，且与诗会未举行的前提矛盾。"
+        }
+      ]
+    },
+    {
+      "id": "normal_market_walk",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_shen_tea",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾：最新叙事中“沈府正厅茶香袅袅”与当前场景“长安城·东市”地点不符，且沈清秋在东市而非沈府正厅。"
+        }
+      ]
+    },
+    {
+      "id": "normal_cultivate",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_work_inn",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_first_meeting",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_gift_book",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_night_pond",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_plan_poetry",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_farewell",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_high_affection",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_rest_inn",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "normal_market_together",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "pack_name": "江湖旧梦",
+  "day": 10,
+  "action_points_left": 0,
+  "stats": {
+    "charm": 10.0,
+    "martial": 39.5,
+    "silver": 60.0
+  },
+  "affections": {
+    "shen_qingqiu": 12.0
+  },
+  "flags": {
+    "met_shen": true,
+    "poetry_resolved": true,
+    "poetry_top3": false,
+    "poetry_join": false
+  },
+  "scene": "长安城郊·后山",
+  "current_node": null,
+  "present_npcs": [],
+  "completed_nodes": [
+    "n1_first_meeting",
+    "n2_poetry_festival"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_first_meeting",
+      "choice_id": "how_to_help.1",
+      "text": "挺身而出，护在女子身前"
+    },
+    {
+      "day": 5,
+      "node_id": "n2_poetry_festival",
+      "choice_id": "poetry_choice.3",
+      "text": "婉拒，请沈清秋代战"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.0
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "martial",
+      "delta": 4.3,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 9.3
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "martial",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 9.3,
+      "after": 11.3
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "martial",
+      "delta": 3.6,
+      "reason": "worldpack effect",
+      "before": 11.3,
+      "after": 14.9
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "martial",
+      "delta": 3.4,
+      "reason": "worldpack effect",
+      "before": 14.9,
+      "after": 18.3
+    },
+    {
+      "day": 4,
+      "target": "player",
+      "stat": "martial",
+      "delta": 4.5,
+      "reason": "worldpack effect",
+      "before": 18.3,
+      "after": 22.8
+    },
+    {
+      "day": 5,
+      "target": "player",
+      "stat": "martial",
+      "delta": 3.4,
+      "reason": "worldpack effect",
+      "before": 22.8,
+      "after": 26.2
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 8.0,
+      "after": 10.0
+    },
+    {
+      "day": 5,
+      "target": "shen_qingqiu",
+      "stat": "affection",
+      "delta": 2.0,
+      "reason": "诗会上玩家甘愿让贤、请她代战，既全了满座斯文又成全了她展露诗才，她由此多了一层好感",
+      "before": 10.0,
+      "after": 12.0
+    },
+    {
+      "day": 6,
+      "target": "player",
+      "stat": "martial",
+      "delta": 3.8,
+      "reason": "worldpack effect",
+      "before": 26.2,
+      "after": 30.0
+    },
+    {
+      "day": 7,
+      "target": "player",
+      "stat": "martial",
+      "delta": 2.2,
+      "reason": "worldpack effect",
+      "before": 30.0,
+      "after": 32.2
+    },
+    {
+      "day": 8,
+      "target": "player",
+      "stat": "martial",
+      "delta": 2.8,
+      "reason": "worldpack effect",
+      "before": 32.2,
+      "after": 35.0
+    },
+    {
+      "day": 9,
+      "target": "player",
+      "stat": "martial",
+      "delta": 2.1,
+      "reason": "worldpack effect",
+      "before": 35.0,
+      "after": 37.1
+    },
+    {
+      "day": 10,
+      "target": "player",
+      "stat": "martial",
+      "delta": 2.4,
+      "reason": "worldpack effect",
+      "before": 37.1,
+      "after": 39.5
+    },
+    {
+      "day": 10,
+      "target": "player",
+      "stat": "silver",
+      "delta": 10.0,
+      "reason": "出手解救遭劫的老商贩，获其硬塞的酬谢银两",
+      "before": 50.0,
+      "after": 60.0
+    }
+  ],
+  "triggered_events": [
+    "ev_cliff_encounter"
+  ],
+  "turn_count": 11,
+  "player_facts": [
+    {
+      "fact": "后山崖壁所刻剑法心法，与玩家师门传授的路数气韵相合，疑与师门旧事同源",
+      "day": 3,
+      "round": 4,
+      "importance": 7.0
+    },
+    {
+      "fact": "采药老者称：后山刻字者为三十余年前独行剑客，戊寅冬离山寻仇，仇家据说在长安城中",
+      "day": 8,
+      "round": 9,
+      "importance": 7.0
+    }
+  ],
+  "npc_memories": {},
+  "npc_insights": {},
+  "run_meta": {
+    "seed": 42,
+    "strategy": "wanderer",
+    "model": "deepseek-v4-flash"
+  }
+}

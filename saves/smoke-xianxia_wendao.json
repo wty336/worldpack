@@ -1,0 +1,313 @@
+{
+  "version": 1,
+  "pack_name": "问道长生",
+  "day": 4,
+  "action_points_left": 1,
+  "stats": {
+    "dao_xin": 10.0,
+    "xiu_wei": 18.1,
+    "ling_shi": 50.0
+  },
+  "affections": {
+    "su_wanying": 9.0,
+    "bai_zhi": 6.0
+  },
+  "flags": {
+    "joined_sect": true,
+    "peak_sword": true,
+    "peak_pill": false,
+    "peak_formation": false,
+    "realm_done": true,
+    "saved_fellow": false,
+    "relic_taken": true,
+    "crisis_done": false,
+    "guard_gate": false,
+    "escort_retreat": false,
+    "lone_strike": false
+  },
+  "scene": "苍梧界·青云山下",
+  "current_node": null,
+  "present_npcs": [],
+  "completed_nodes": [
+    "n1_entrance",
+    "n2_secret_realm"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_entrance",
+      "choice_id": "choose_peak.1",
+      "text": "拜入剑峰，执剑问心"
+    },
+    {
+      "day": 3,
+      "node_id": "n2_secret_realm",
+      "choice_id": "relic_choice.2",
+      "text": "先取残碑拓纹，再回头接应"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "su_wanying",
+      "stat": "affection",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 8.0
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "xiu_wei",
+      "delta": 4.1,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 9.1
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "xiu_wei",
+      "delta": 4.0,
+      "reason": "worldpack effect",
+      "before": 9.1,
+      "after": 13.1
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "xiu_wei",
+      "delta": 2.0,
+      "reason": "worldpack effect",
+      "before": 13.1,
+      "after": 15.1
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "xiu_wei",
+      "delta": 3.0,
+      "reason": "worldpack effect",
+      "before": 15.1,
+      "after": 18.1
+    },
+    {
+      "day": 3,
+      "target": "su_wanying",
+      "stat": "affection",
+      "delta": 1.0,
+      "reason": "worldpack effect",
+      "before": 8.0,
+      "after": 9.0
+    },
+    {
+      "day": 3,
+      "target": "bai_zhi",
+      "stat": "affection",
+      "delta": 1.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 6.0
+    }
+  ],
+  "triggered_events": [],
+  "turn_count": 5,
+  "player_facts": [],
+  "npc_memories": {},
+  "npc_insights": {},
+  "history": [
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】收徒大典\n十年一度的收徒大典上，你以半枚剑印通过问心之试，剑、丹、阵三峰长老皆欲收你入门。\n本节点目标：拜入青云仙宗（完成信号 flag: joined_sect）。\n"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：拜入剑峰，执剑问心）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：拜入剑峰，执剑问心）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：青云仙宗·问心台 · 时间：第 1 天 · 在场：苏晚晴、白芷</scene>\n<identity>你的身份：流落凡尘的少年，身怀半枚残缺剑印 · 你的目标：拜入青云仙宗，查明剑印的来历，在仙途上立足</identity>\n<agent_status>\n玩家属性：道心 10 · 修为 5 · 灵石 50\n好感：苏晚晴 8/100（冷淡疏离，公事公办） · 白芷 5/100（好奇打量，随口玩笑）\n剧情进度：主线节点「收徒大典」（进行中）\n当前主线目标：拜入青云仙宗\n</agent_status>\n<在场角色>\n【苏晚晴】身份：青云仙宗剑峰大师姐，苍梧界最年轻的剑修天才\n性格：清冷寡言，外冷内热，剑道执念极深，底线是宗门与同门\n说话风格：言简意赅，剑修做派，偶引剑诀，从不说废话\n底线：不轻易提及师父的旧事；不在人前流露软弱\n禁忌：不提及现代事物；不直接说破自己是\"角色\"或\"AI\"\n当前语气：冷淡疏离，公事公办\n\n【白芷】身份：青云仙宗丹峰小师妹，古灵精怪的炼丹天才\n性格：活泼跳脱，心直口快，看似没心没肺，实则极重情义\n说话风格：语速轻快，爱给人起外号，高兴时手舞足蹈\n底线：不轻易谈论自己为何入门；再生气也不拿丹药害人\n禁忌：不提及现代事物；不直接说破自己是\"角色\"或\"AI\"\n当前语气：好奇打量，随口玩笑\n\n</在场角色>\n<lore>\n- 【qingyun_zong】青云仙宗是苍梧界三大宗门之一，下辖剑、丹、阵三峰，每十年开山门收徒一次。\n- 【jianfeng】剑峰执杀伐，峰下洗剑池水寒彻骨。峰主苏长老剑道通玄，门下大师姐苏晚晴十六岁便以一剑名动苍梧。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「收徒大典」目标达成。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：打坐吐纳）\n【行动检定】道心 10 · 掷 9.0（难度 6，大成功需 ≥16）· 结果：成功\n（行动效果：修为 +4.1）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：青云仙宗·后山灵泉 · 时间：第 1 天 · 在场：无</scene>\n<identity>你的身份：流落凡尘的少年，身怀半枚残缺剑印 · 你的目标：拜入青云仙宗，查明剑印的来历，在仙途上立足</identity>\n<agent_status>\n玩家属性：道心 10 · 修为 9.1 · 灵石 50\n好感：苏晚晴 8/100（冷淡疏离，公事公办） · 白芷 5/100（好奇打量，随口玩笑）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【qingyun_zong】青云仙宗是苍梧界三大宗门之一，下辖剑、丹、阵三峰，每十年开山门收徒一次。\n- 【jianfeng】剑峰执杀伐，峰下洗剑池水寒彻骨。峰主苏长老剑道通玄，门下大师姐苏晚晴十六岁便以一剑名动苍梧。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：打坐吐纳）\n【行动检定】道心 10 · 掷 9.3（难度 6，大成功需 ≥16）· 结果：成功\n（行动效果：修为 +4）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：青云仙宗·后山灵泉 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：流落凡尘的少年，身怀半枚残缺剑印 · 你的目标：拜入青云仙宗，查明剑印的来历，在仙途上立足</identity>\n<agent_status>\n玩家属性：道心 10 · 修为 13.1 · 灵石 50\n好感：苏晚晴 8/100（冷淡疏离，公事公办） · 白芷 5/100（好奇打量，随口玩笑）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【qingyun_zong】青云仙宗是苍梧界三大宗门之一，下辖剑、丹、阵三峰，每十年开山门收徒一次。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（郑重抱拳）师姐，弟子吐纳总觉气机滞涩，可否指点一二？"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：青云仙宗·后山灵泉 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：流落凡尘的少年，身怀半枚残缺剑印 · 你的目标：拜入青云仙宗，查明剑印的来历，在仙途上立足</identity>\n<agent_status>\n玩家属性：道心 10 · 修为 13.1 · 灵石 50\n好感：苏晚晴 8/100（冷淡疏离，公事公办） · 白芷 5/100（好奇打量，随口玩笑）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【qingyun_zong】青云仙宗是苍梧界三大宗门之一，下辖剑、丹、阵三峰，每十年开山门收徒一次。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】秘境历练\n苍梧秘境开启，你随同门入内历练。秘境深处，你发现一方残碑——碑上缺口的纹路，与你的半枚剑印分毫不差。\n恰在此时，兽潮暴起，同门陷于重围。\n本节点目标：平安归来（完成信号 flag: realm_done）。\n"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：先取残碑拓纹，再回头接应）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：先取残碑拓纹，再回头接应）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：苍梧界·苍梧秘境 · 时间：第 3 天 · 在场：苏晚晴、白芷</scene>\n<identity>你的身份：流落凡尘的少年，身怀半枚残缺剑印 · 你的目标：拜入青云仙宗，查明剑印的来历，在仙途上立足</identity>\n<agent_status>\n玩家属性：道心 10 · 修为 18.1 · 灵石 50\n好感：苏晚晴 9/100（冷淡疏离，公事公办） · 白芷 6/100（好奇打量，随口玩笑）\n剧情进度：主线节点「秘境历练」（进行中）\n当前主线目标：从苍梧秘境平安归来\n</agent_status>\n<在场角色>\n【苏晚晴】身份：青云仙宗剑峰大师姐，苍梧界最年轻的剑修天才\n性格：清冷寡言，外冷内热，剑道执念极深，底线是宗门与同门\n说话风格：言简意赅，剑修做派，偶引剑诀，从不说废话\n底线：不轻易提及师父的旧事；不在人前流露软弱\n禁忌：不提及现代事物；不直接说破自己是\"角色\"或\"AI\"\n当前语气：冷淡疏离，公事公办\n\n【白芷】身份：青云仙宗丹峰小师妹，古灵精怪的炼丹天才\n性格：活泼跳脱，心直口快，看似没心没肺，实则极重情义\n说话风格：语速轻快，爱给人起外号，高兴时手舞足蹈\n底线：不轻易谈论自己为何入门；再生气也不拿丹药害人\n禁忌：不提及现代事物；不直接说破自己是\"角色\"或\"AI\"\n当前语气：好奇打量，随口玩笑\n\n</在场角色>\n<lore>\n- 【cangwu_mijing】苍梧秘境每十年随收徒大典开启一次，内有上古残碑与凶兽。弟子入内历练，机缘与凶险并存。\n- 【jianyin】你身怀的半枚剑印纹路古朴，传闻与苍梧秘境深处的一方残碑同源——剑印所刻，恰是残碑缺口的另一半。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「秘境历练」目标达成。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    }
+  ]
+}

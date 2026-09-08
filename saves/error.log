@@ -1,0 +1,40 @@
+AttributeError: 'Stream' object has no attribute 'choices'
+Traceback (most recent call last):
+  File "E:\研究生\LLM\game-agent\game_agent\cli.py", line 138, in _repl
+    view = game.pick(n - 1)
+           ^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\game.py", line 93, in pick
+    return self._narrate(msg["content"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\game.py", line 136, in _narrate
+    view = self._llm_round()
+           ^^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\game.py", line 159, in _llm_round
+    result = self.llm.run_turn(messages, self._apply_change, on_text=self.on_text)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\llm.py", line 233, in run_turn
+    msg = resp.choices[0].message
+          ^^^^^^^^^^^^
+AttributeError: 'Stream' object has no attribute 'choices'
+
+------------------------------------------------------------
+AttributeError: 'Stream' object has no attribute 'choices'
+Traceback (most recent call last):
+  File "E:\研究生\LLM\game-agent\game_agent\cli.py", line 138, in _repl
+    view = game.pick(n - 1)
+           ^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\game.py", line 93, in pick
+    return self._narrate(msg["content"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\game.py", line 136, in _narrate
+    view = self._llm_round()
+           ^^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\game.py", line 159, in _llm_round
+    result = self.llm.run_turn(messages, self._apply_change, on_text=self.on_text)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\研究生\LLM\game-agent\game_agent\llm.py", line 233, in run_turn
+    msg = resp.choices[0].message
+          ^^^^^^^^^^^^
+AttributeError: 'Stream' object has no attribute 'choices'
+
+------------------------------------------------------------

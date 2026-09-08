@@ -1,33 +1,32 @@
 events:
-- id: ev_blackbox_decode
-  title: 黑匣子破译
+- id: ev_wake_debt
+  title: 码头的两条路
   trigger:
-    kind: schedule
-    action: visit_luoling
+    kind: time
     when:
       day:
-        gte: 3
+        gte: 1
   priority: normal
-  script: 洛零破译了黑匣子：航程记录属于一艘早已注销的船，目的地是环外的远日点禁区。
+  script: 在旧货码头醒来，欠着修理费和沈星澜的人情债，她递来押运与黑市两条路。
   effects:
-    attributes:
-      clue: 1
     affections:
-      luoling: 5
+      shen_xinglan: 5
   once: true
-- id: ev_mining_seize
-  title: 矿业上门
+- id: ev_luo_blackbox
+  title: 黑匣子的秘密
   trigger:
     kind: time
     when:
       day:
         gte: 3
   priority: normal
-  script: 矿业安保队按回收条例上门，要没收你的黑匣子。
-  effects: {}
+  script: 洛零破译黑匣子，航程记录属于一艘已注销的船，目的地是环外的远日点禁区。
+  effects:
+    affections:
+      luoling: 5
   once: true
-- id: ev_shen_trust
-  title: 沈星澜的暗示
+- id: ev_shen_hint
+  title: 她知道的比你多
   trigger:
     kind: condition
     when:
@@ -36,23 +35,20 @@ events:
           shen_xinglan:
             gte: 30
   priority: normal
-  script: 沈星澜话里有话：你少的那段记忆，她似乎知道是什么。
+  script: 沈星澜暗示：你的记忆不是丢了，是被记忆银行提存了，取回需要行长的密钥。
   effects:
-    attributes:
-      clue: 1
     affections:
-      shen_xinglan: 3
+      shen_xinglan: 5
   once: true
-- id: ev_memory_bank
-  title: 记忆银行的线索
+- id: ev_luo_signal
+  title: 机器的耳朵
   trigger:
-    kind: time
-    when:
-      day:
-        gte: 8
+    kind: schedule
+    action: gift_luoling
+    chance: 0.3
   priority: normal
-  script: 线索指向记忆银行：你的记忆不是丢了，是被提存了，取回需要行长那把密钥。
+  script: 送洛零零件，她兴奋地说黑匣子信号里藏着矿业的登记编号。
   effects:
-    attributes:
-      clue: 1
+    affections:
+      luoling: 5
   once: true

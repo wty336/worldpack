@@ -169,6 +169,25 @@ def test_judge_sends_materials_and_temperature_zero():
     assert "听雨" in call["messages"][-1]["content"]  # 材料被送入
 
 
+def test_judge_empty_output_escalates_budget():
+    """B（素材导入工具）发现：空输出 = 未知而非通过——Judge 升级预算重试一次。
+
+    思考模式偶发把 500 预算烧在推理链上输出为空，parse_verdict('') 会静默放行
+    （假阴性）；修复后空输出用 2000 预算重试，推理完成即可产出判定。
+    """
+    from game_agent.judge import JUDGE_EMPTY_RETRY_TOKENS, JUDGE_MAX_TOKENS
+
+    pack, judge = _judge_with(
+        [resp(msg(content="")), resp(msg(content="OOC：角色说出网络用语。"))]
+    )
+    ok, verdict = judge.check("某叙事", "材料")
+    assert ok is False and "OOC" in verdict
+    calls = judge.llm._client.chat.completions.calls
+    assert len(calls) == 2
+    assert calls[0]["max_tokens"] == JUDGE_MAX_TOKENS
+    assert calls[1]["max_tokens"] == JUDGE_EMPTY_RETRY_TOKENS
+
+
 def test_judge_silent_degradation_on_api_error():
     class _Boom:
         chat = None
