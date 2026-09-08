@@ -38,8 +38,8 @@ def test_init_worldpack_rejects_illegal_names(tmp_path):
 
 
 def test_templates_are_commented_manual():
-    """模板即注释手册：六个骨架都带规范指引。"""
-    assert "docs/design.md §12" in TEMPLATES["world.yaml"]
+    """模板即注释手册：六个骨架都带规范指引（指向独立作者手册）。"""
+    assert "docs/worldpack-manual.md" in TEMPLATES["world.yaml"]
     assert "critical_effects" in TEMPLATES["schedule.yaml"]  # P2 特性说明
     assert "completion" in TEMPLATES["mainline.yaml"]
     assert "kind:" in TEMPLATES["events.yaml"]

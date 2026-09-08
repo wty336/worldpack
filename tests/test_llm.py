@@ -82,6 +82,31 @@ def test_retry_after_no_tool_call():
     assert result.narration
 
 
+def test_length_truncation_retry_instructs_shorten():
+    """finish_reason=length（输出超长被截断）→ 重试提示明确要求缩短叙事、先收尾。
+
+    M3 世界包验证（都市包真机）发现的熔断根因：模型先写长文再调工具，输出触及
+    上限被截断，若重试提示不点明"缩短"，模型会重复同样行为直至熔断。
+    """
+    from types import SimpleNamespace
+
+    truncated = SimpleNamespace(
+        choices=[SimpleNamespace(
+            finish_reason="length",
+            message=_msg(content="很长的叙事，但没有工具调用，被截断"),
+        )]
+    )
+    client, apply = _client([truncated, _resp(_msg(tool_calls=[SUBMIT]))])
+    result = client.run_turn([{"role": "user", "content": "hi"}], apply)
+    assert result.iterations == 2 and result.narration
+    fail_msg = next(
+        m["content"]
+        for m in result.messages
+        if m["role"] == "user" and "不符合协议" in m["content"]
+    )
+    assert "finish_reason=length" in fail_msg and "缩短" in fail_msg
+
+
 def test_meltdown_after_consecutive_failures():
     """连续 3 次协议失败 → 熔断抛 LLMTurnError。"""
     bad = _resp(_msg(content="没有工具调用"))

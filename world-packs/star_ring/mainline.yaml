@@ -1,0 +1,123 @@
+nodes:
+- id: n1_dock_contract
+  title: 码头的委托
+  when:
+    all: []
+  goal: 接下委托还清欠债，才能雇洛零解码黑匣子
+  completion:
+    flags:
+      node1_done: true
+  on_enter:
+    scene: 旧货码头
+    briefing: 你在码头醒来，修船费与沈星澜的人情债压身，黑匣子里的陌生航程记录无人能解。还清债务即完成本节点。
+    present:
+    - pilot
+    - shen_xinglan
+  critical_choices:
+  - id: choice_n1_route
+    prompt: 沈星澜摆出两条路：远航物流押运单来钱快但要跟公司打交道，黑市货危险但利厚，你接哪条？
+    options:
+    - text: 接远航物流的押运单
+      effects:
+        flags:
+          route_escort: true
+          node1_done: true
+        stats:
+          credits: 30
+    - text: 替沈星澜跑黑市货
+      effects:
+        flags:
+          route_blackmarket: true
+          node1_done: true
+        affections:
+          shen_xinglan: 2
+        stats:
+          credits: 45
+          ship: -2
+  free_scope: 码头跑短货单、找沈星澜打听、维护远行者号
+- id: n2_blackbox
+  title: 黑匣子
+  when:
+    all:
+    - day:
+        gte: 3
+    - flags:
+        node1_done: true
+  goal: 查明黑匣子记录归属与远日点坐标，应对矿业回收令
+  completion:
+    flags:
+      node2_done: true
+  on_enter:
+    scene: 拾荒区修理间
+    briefing: 洛零破译出航程属于一艘已注销的船，目的地是环外'远日点'禁区——半年前的空难不是意外。矿业安保队上门按回收条例要没收黑匣子，做出抉择即完成本节点。
+    present:
+    - pilot
+    - luoling
+  critical_choices:
+  - id: choice_n2_blackbox
+    prompt: 矿业安保队堵在门口，黑匣子交还是不交？
+    options:
+    - text: 交出黑匣子换封口费
+      effects:
+        flags:
+          gave_blackbox: true
+          node2_done: true
+        stats:
+          credits: 50
+    - text: 带洛零逃进拾荒区继续查
+      effects:
+        flags:
+          fled_scrapyard: true
+          node2_done: true
+        affections:
+          luoling: 2
+        stats:
+          clue: 1
+  free_scope: 拾荒区躲藏、洛零检修远行者号、向沈星澜求助
+- id: n3_memory_bank
+  title: 记忆银行
+  when:
+    all:
+    - day:
+        gte: 8
+    - flags:
+        node2_done: true
+  goal: 潜入记忆银行中心库，取回被提存的记忆
+  completion:
+    flags:
+      node3_done: true
+  on_enter:
+    scene: 记忆银行中心库外
+    briefing: 线索指明你的记忆不是丢了，而是被'提存'，取回需要行长手里的密钥。你已摸到中心库入口，选定夺回记忆的方式即完成本节点。
+    present:
+    - pilot
+    - shen_xinglan
+    - luoling
+  critical_choices:
+  - id: choice_n3_bank
+    prompt: 密钥锁在中心库里，你打算怎么取回记忆？
+    options:
+    - text: 硬闯提存库抢密钥
+      effects:
+        flags:
+          route_storm: true
+          node3_done: true
+        stats:
+          ship: -2
+    - text: 把黑匣子记录卖给远航物流换离城船票
+      effects:
+        flags:
+          route_sellrecord: true
+          node3_done: true
+        stats:
+          credits: 80
+    - text: 用洛零的干扰器走数据后门悄悄赎回
+      effects:
+        flags:
+          route_databackdoor: true
+          node3_done: true
+        affections:
+          luoling: 2
+        stats:
+          clue: 1
+  free_scope: 中心库踩点、准备干扰器、与沈星澜约定接应

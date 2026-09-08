@@ -1,0 +1,73 @@
+# 主线大纲：节点链（见 design.md §6）
+# 三个节点覆盖三类结构：恒真开场 / 日期+旗标触发 / 双条件触发；
+# 全部 completion 以 flag 收口（代码可验证），选项效果写入 flag 供结局回溯。
+nodes:
+  - id: n1_entrance
+    title: 收徒大典
+    when: {all: []}          # 恒真：开场即触发
+    goal: 拜入青云仙宗
+    completion:
+      flags: {joined_sect: true}
+    on_enter:
+      scene: 青云仙宗·问心台
+      present: [su_wanying, bai_zhi]
+      briefing: |
+        十年一度的收徒大典上，你以半枚剑印通过问心之试，剑、丹、阵三峰长老皆欲收你入门。
+        本节点目标：拜入青云仙宗（完成信号 flag: joined_sect）。
+    critical_choices:
+      - id: choose_peak
+        prompt: 问心台上，剑、丹、阵三峰长老同时向你伸出了手。你拜入何峰？
+        options:
+          - {text: 拜入剑峰，执剑问心, effects: {flags: {joined_sect: true, peak_sword: true}, affections: {su_wanying: 3}}}
+          - {text: 拜入丹峰，炉火炼心, effects: {flags: {joined_sect: true, peak_pill: true}, affections: {bai_zhi: 3}}}
+          - {text: 拜入阵峰，天机入道, effects: {flags: {joined_sect: true, peak_formation: true}, stats: {dao_xin: 2}}}
+    free_scope: 拜峰之后入门的见闻自由发挥；本节点随拜师完成，等待秘境节点触发。
+
+  - id: n2_secret_realm
+    title: 秘境历练
+    when:
+      all:
+        - {day: {gte: 3}}
+        - {flags: {joined_sect: true}}
+    goal: 从苍梧秘境平安归来
+    completion:
+      flags: {realm_done: true}
+    on_enter:
+      scene: 苍梧界·苍梧秘境
+      present: [su_wanying, bai_zhi]
+      briefing: |
+        苍梧秘境开启，你随同门入内历练。秘境深处，你发现一方残碑——碑上缺口的纹路，与你的半枚剑印分毫不差。
+        恰在此时，兽潮暴起，同门陷于重围。
+        本节点目标：平安归来（完成信号 flag: realm_done）。
+    critical_choices:
+      - id: relic_choice
+        prompt: 残碑在前，同门危在旦夕。你如何抉择？
+        options:
+          - {text: 弃碑救人，护住同门, effects: {flags: {realm_done: true, saved_fellow: true}, affections: {su_wanying: 3, bai_zhi: 4}}}
+          - {text: 先取残碑拓纹，再回头接应, effects: {flags: {realm_done: true, relic_taken: true}, stats: {xiu_wei: 3}, affections: {su_wanying: 1, bai_zhi: 1}}}
+          - {text: 设阵引开兽潮，两面兼顾, effects: {flags: {realm_done: true, saved_fellow: true}, stats: {dao_xin: 2}}}
+    free_scope: 秘境内的见闻与战斗由剧情自由生成；归来后进入日常，等待山门危局节点。
+
+  - id: n3_night_raid
+    title: 魔潮夜袭
+    when:
+      all:
+        - {day: {gte: 8}}
+        - {flags: {realm_done: true}}
+    goal: 击退魔修，守住山门
+    completion:
+      flags: {crisis_done: true}
+    on_enter:
+      scene: 青云仙宗·山门
+      present: [su_wanying, bai_zhi]
+      briefing: |
+        甲子之夜，魔潮自北境涌来，护山大阵摇摇欲坠。魔修此行的目标，正是你剑印上的那半道纹路。
+        本节点目标：击退魔潮，守住山门（完成信号 flag: crisis_done）。
+    critical_choices:
+      - id: battle_choice
+        prompt: 魔潮压境，山门告急。你选择哪条战线？
+        options:
+          - {text: 死守山门，与大师姐并肩, effects: {flags: {crisis_done: true, guard_gate: true}, affections: {su_wanying: 3}, stats: {xiu_wei: 2}}}
+          - {text: 护送外门弟子撤退, effects: {flags: {crisis_done: true, escort_retreat: true}, affections: {bai_zhi: 3}, stats: {dao_xin: 2}}}
+          - {text: 独闯敌阵，直取魔帅, effects: {flags: {crisis_done: true, lone_strike: true}, stats: {xiu_wei: 4}}}
+    free_scope: 战况由剧情自由生成；战后剑印的真相在后续剧情中揭晓。

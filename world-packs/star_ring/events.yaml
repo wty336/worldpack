@@ -1,0 +1,58 @@
+events:
+- id: ev_blackbox_decode
+  title: 黑匣子破译
+  trigger:
+    kind: schedule
+    action: visit_luoling
+    when:
+      day:
+        gte: 3
+  priority: normal
+  script: 洛零破译了黑匣子：航程记录属于一艘早已注销的船，目的地是环外的远日点禁区。
+  effects:
+    attributes:
+      clue: 1
+    affections:
+      luoling: 5
+  once: true
+- id: ev_mining_seize
+  title: 矿业上门
+  trigger:
+    kind: time
+    when:
+      day:
+        gte: 3
+  priority: normal
+  script: 矿业安保队按回收条例上门，要没收你的黑匣子。
+  effects: {}
+  once: true
+- id: ev_shen_trust
+  title: 沈星澜的暗示
+  trigger:
+    kind: condition
+    when:
+      all:
+      - affection:
+          shen_xinglan:
+            gte: 30
+  priority: normal
+  script: 沈星澜话里有话：你少的那段记忆，她似乎知道是什么。
+  effects:
+    attributes:
+      clue: 1
+    affections:
+      shen_xinglan: 3
+  once: true
+- id: ev_memory_bank
+  title: 记忆银行的线索
+  trigger:
+    kind: time
+    when:
+      day:
+        gte: 8
+  priority: normal
+  script: 线索指向记忆银行：你的记忆不是丢了，是被提存了，取回需要行长那把密钥。
+  effects:
+    attributes:
+      clue: 1
+  once: true

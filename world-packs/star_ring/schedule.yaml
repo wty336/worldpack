@@ -1,0 +1,99 @@
+day_action_points: 1
+stats:
+  credits:
+    label: 信用点
+    min: 0
+    max: 100
+    initial: 5
+  ship:
+    label: 远行者号船况
+    min: 0
+    max: 100
+    initial: 60
+  clue:
+    label: 真相线索
+    min: 0
+    max: 100
+    initial: 0
+affections:
+  shen_xinglan:
+    label: 沈星澜
+    min: 0
+    max: 100
+    initial: 5
+  luoling:
+    label: 洛零
+    min: 0
+    max: 100
+    initial: 5
+flags:
+  node1_done: false
+  route_escort: false
+  route_blackmarket: false
+  node2_done: false
+  gave_blackbox: false
+  fled_scrapyard: false
+  node3_done: false
+  route_storm: false
+  route_sellrecord: false
+  route_databackdoor: false
+  ending_stay: false
+  ending_leave: false
+  ending_free: false
+  ending_trapped: false
+actions:
+- id: run_short_cargo
+  label: 跑一单短途货
+  cost: 1
+  check:
+    stat: ship
+    difficulty: 6
+    margin: 10
+  effects:
+    stats:
+      credits: 60
+      ship: -5
+  critical_effects:
+    stats:
+      credits: 120
+  failure_effects:
+    stats:
+      credits: 15
+      ship: -8
+  scene: 货运码头
+  present: []
+- id: visit_shenxinglan
+  label: 去旧货码头找沈星澜
+  cost: 1
+  effects:
+    affections:
+      shen_xinglan: 2
+    stats:
+      clue: 1
+  scene: 旧货码头
+  present:
+  - shen_xinglan
+- id: visit_luoling
+  label: 去拾荒区找洛零
+  cost: 1
+  effects:
+    affections:
+      luoling: 2
+  scene: 拾荒区
+  present:
+  - luoling
+- id: gift_luoling_parts
+  label: 送洛零一套稀有零件
+  cost: 1
+  requires:
+    all:
+    - flags:
+        node1_done: true
+  effects:
+    stats:
+      credits: -30
+    affections:
+      luoling: 2
+  scene: 拾荒区
+  present:
+  - luoling

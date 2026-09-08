@@ -1,0 +1,56 @@
+# 事件规则（见 design.md §9）
+# 三类触发全用上：condition（条件）/ schedule（行动概率）/ time（日期）——
+# time 类是《江湖旧梦》未覆盖的引擎路径，本包验证其通用性。
+events:
+  - id: ev_sword_pool
+    title: 洗剑池夜话
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {su_wanying: {gte: 30}}}
+    priority: high
+    script: |
+      洗剑池夜话：苏晚晴邀你至洗剑池畔，月下论剑，谈及她的剑与你的剑印同源之事。
+    effects:
+      affections: {su_wanying: 5}
+    once: true
+
+  - id: ev_epiphany
+    title: 灵泉顿悟
+    trigger:
+      kind: schedule
+      action: meditate
+      chance: 0.3
+    priority: normal
+    script: |
+      灵泉顿悟：打坐时你神游太虚，隐约窥见剑印中封印的一式剑意，修为精进。
+    effects:
+      stats: {xiu_wei: 2}
+    once: true
+
+  - id: ev_sect_contest
+    title: 宗门小比
+    trigger:
+      kind: time
+      when: {day: {gte: 5}}
+    priority: normal
+    script: |
+      宗门小比：三峰小比开擂，你代表本峰登台守擂，小胜一场，声名渐起。
+    effects:
+      stats: {xiu_wei: 3}
+      affections: {su_wanying: 1, bai_zhi: 1}
+    once: true
+
+  - id: ev_pill_return
+    title: 药庐回礼
+    trigger:
+      kind: schedule
+      action: gift_pill
+      chance: 0.3
+    priority: normal
+    script: |
+      药庐回礼：数日后，白芷差人送来一瓶亲手炼制的培元丹，附笺笑问丹药效果。
+    effects:
+      stats: {xiu_wei: 2}
+    once: true

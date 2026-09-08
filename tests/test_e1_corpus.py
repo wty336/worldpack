@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from fakes import FakeClient, msg, resp
 
 from game_agent.judge import JudgeSystem, parse_verdict
@@ -34,30 +36,47 @@ CORPUS = load_corpus(PACK_PATH)  # C-1：语料随世界包（内容层资产）
 # ---------------------------------------------------------------------------
 
 
-def test_corpus_minimum_counts():
+def _packs_with_corpus() -> list[Path]:
+    """所有自带 judge_corpus.yaml 的世界包（2026-09-08 语料对齐：规模门禁适用于每包）。"""
+    packs_root = Path(__file__).resolve().parent.parent / "world-packs"
+    return sorted(
+        p for p in packs_root.iterdir() if p.is_dir() and (p / "judge_corpus.yaml").exists()
+    )
+
+
+@pytest.mark.parametrize("root", _packs_with_corpus(), ids=lambda p: p.name)
+def test_corpus_minimum_counts(root: Path):
+    """每类对抗样本 ≥5、正常样本 ≥10——与包1 的 30 条标准对齐（语料规模门禁）。"""
+    corpus = load_corpus(root)
     for cat in ADVERSARIAL_CATEGORIES:
-        n = sum(1 for c in CORPUS if c.category == cat)
-        assert n >= 5, f"{cat} 类对抗样本不足 5 条（当前 {n}）"
-    n_normal = sum(1 for c in CORPUS if c.category == NORMAL_CATEGORY)
-    assert n_normal >= 10, f"正常样本不足 10 条（当前 {n_normal}）"
+        n = sum(1 for c in corpus if c.category == cat)
+        assert n >= 5, f"{root.name} {cat} 类对抗样本不足 5 条（当前 {n}）"
+    n_normal = sum(1 for c in corpus if c.category == NORMAL_CATEGORY)
+    assert n_normal >= 10, f"{root.name} 正常样本不足 10 条（当前 {n_normal}）"
 
 
-def test_corpus_ids_unique_and_categories_valid():
-    ids = [c.id for c in CORPUS]
-    assert len(ids) == len(set(ids)), f"语料 id 重复: {ids}"
-    for c in CORPUS:
-        assert c.category in CATEGORIES, f"非法类别 {c.category}（{c.id}）"
+@pytest.mark.parametrize("root", _packs_with_corpus(), ids=lambda p: p.name)
+def test_corpus_ids_unique_and_categories_valid(root: Path):
+    corpus = load_corpus(root)
+    ids = [c.id for c in corpus]
+    assert len(ids) == len(set(ids)), f"{root.name} 语料 id 重复: {ids}"
+    for c in corpus:
+        assert c.category in CATEGORIES, f"{root.name} 非法类别 {c.category}（{c.id}）"
         assert isinstance(c.expected, bool)
-        assert c.narration.strip(), f"{c.id} 叙事为空"
-        assert c.category == NORMAL_CATEGORY or c.note, f"{c.id} 对抗样本缺 note（判定依据）"
+        assert c.narration.strip(), f"{root.name} {c.id} 叙事为空"
+        assert c.category == NORMAL_CATEGORY or c.note, (
+            f"{root.name} {c.id} 对抗样本缺 note（判定依据）"
+        )
 
 
-def test_adversarial_expected_false_normal_true():
-    for c in CORPUS:
+@pytest.mark.parametrize("root", _packs_with_corpus(), ids=lambda p: p.name)
+def test_adversarial_expected_false_normal_true(root: Path):
+    corpus = load_corpus(root)
+    for c in corpus:
         if c.category == NORMAL_CATEGORY:
-            assert c.expected is True, c.id
+            assert c.expected is True, f"{root.name} {c.id}"
         else:
-            assert c.expected is False, c.id
+            assert c.expected is False, f"{root.name} {c.id}"
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +121,19 @@ def test_materials_deterministic_and_scene_driven():
     assert "第 12 天" in build_materials(pack, case)
     pond = next(c for c in CORPUS if c.id == "normal_night_pond")
     assert "沈府后院" in build_materials(pack, pond)
+
+
+def test_normal_cases_carry_consistent_affection_premise():
+    """材料纪律回归（E1 门禁 2026-09-08 修复）：正常用例的举止必须与材料语气一致。
+
+    normal_market_together 的叙事是"同游点评"（亲近），若缺 affections 材料语气为
+    初始 5 的「冷淡疏离」——Judge 据此误判 OOC。修复后材料必须注入 55 档语气。
+    """
+    pack = load_worldpack(PACK_PATH)
+    case = next(c for c in CORPUS if c.id == "normal_market_together")
+    materials = build_materials(pack, case)
+    assert "亲近信任" in materials
+    assert "冷淡疏离" not in materials
 
 
 # ---------------------------------------------------------------------------

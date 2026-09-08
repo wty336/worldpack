@@ -1,0 +1,89 @@
+# 日程与数值定义：引擎状态的真值 schema（见 design.md §5）
+# 通用性验证点：
+#   - 属性 key 用英文（intel/cyber/credits），与前两包拼音 key 完全不同——
+#     引擎 change_stat 枚举与状态栏只认 label 展示、key 由本文件声明；
+#   - day_action_points: 2——每日行动点数同样由世界包决定（前两包为 1）。
+day_action_points: 2
+
+stats:
+  intel: {label: 智识, min: 0, max: 100, initial: 10}
+  cyber: {label: 义体, min: 0, max: 100, initial: 5}
+  credits: {label: 信用点, min: 0, max: 999999, initial: 50}
+
+affections:
+  lin_che: {label: 林澈, min: 0, max: 100, initial: 5}
+  a_ling: {label: 阿零, min: 0, max: 100, initial: 5}
+
+# 剧情旗标：全部在此声明（初始值），正文只引用不新增
+flags:
+  deal_made: false       # 与诊所达成还债协议（节点 N1 完成信号）
+  job_runner: false      # N1 选择：接霓光科技的寻回任务
+  clinic_helper: false   # N1 选择：帮诊所跑黑市
+  solo_route: false      # N1 选择：独闯数据街
+  memory_lead: false     # 已获记忆碎片线索（节点 N2 完成信号）
+  zero_allied: false     # N2 选择：相信阿零，带她一起走
+  zero_sold: false       # N2 选择：把阿零坐标卖给霓光
+  zero_hidden: false     # N2 选择：帮阿零销毁追踪代码
+  confrontation_done: false  # 与霓光科技的对峙已了结（节点 N3 完成信号）
+  tower_stormed: false   # N3 选择：硬闯霓光大厦
+  tower_deal: false      # N3 选择：与霓光谈判交易
+  tower_backdoor: false  # N3 选择：用阿零的密钥走数据后门
+
+# 行动（P2 特性全活样板）：检定三档 + 执行门槛 + 收益曲线
+actions:
+  - id: scavenge
+    label: 接单拾荒
+    cost: 1
+    check: {stat: intel, difficulty: 6, margin: 10}
+    effects:
+      stats: {credits: {base: 15, spread: 5}}        # 成功档
+    critical_effects:
+      stats: {credits: {base: 22, spread: 5}}        # 大成功：接下大单
+    failure_effects:
+      stats: {credits: {base: 8, spread: 3}}         # 失败：单子黄了
+    scene: 夜澜市·数据街
+    present: []
+  - id: train
+    label: 义体训练
+    cost: 1
+    check: {stat: cyber, difficulty: 6, margin: 10}
+    effects:
+      stats: {cyber: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
+    critical_effects:
+      stats: {cyber: {base: 6, spread: 1, decay_every: 20, decay_step: 1}}
+    failure_effects:
+      stats: {cyber: {base: 2, spread: 1}}           # 义体排异，收效甚微
+    scene: 夜澜市·地下训练馆
+    present: []
+  - id: visit_lin
+    label: 拜访林澈
+    cost: 1
+    effects: {}
+    scene: 夜澜市·白噪诊所
+    present: [lin_che]
+  - id: visit_zero
+    label: 拜访阿零
+    cost: 1
+    effects: {}
+    scene: 夜澜市·旧终端区
+    present: [a_ling]
+  - id: gift_gear
+    label: 送器材探访
+    cost: 1
+    # D2 消费闭环：信用点 → 好感（需已达成还债协议且信用点充足，智识检定决定器材是否合用）
+    requires:
+      all:
+        - {flags: {deal_made: true}}
+        - {stat: {credits: {gte: 30}}}
+    check: {stat: intel, difficulty: 8, margin: 10}
+    effects:
+      stats: {credits: -30}
+      affections: {lin_che: 4}                       # 成功：器材合用
+    critical_effects:
+      stats: {credits: -30}
+      affections: {lin_che: 6}                       # 大成功：雪中送炭
+    failure_effects:
+      stats: {credits: -30}
+      affections: {lin_che: 2}                       # 失败：心意尚在
+    scene: 夜澜市·白噪诊所
+    present: [lin_che]

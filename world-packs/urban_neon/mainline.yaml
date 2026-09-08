@@ -1,0 +1,75 @@
+# 主线大纲：节点链（见 design.md §6）
+# 都市悬疑线：还债协议 → 数据街寻踪 → 霓光大厦对峙。
+# completion 全部以 flag 收口，选项效果写入旗标供结局回溯。
+nodes:
+  - id: n1_clinic_deal
+    title: 白噪诊所
+    when: {all: []}          # 恒真：开场即触发
+    goal: 与白噪诊所达成还债协议
+    completion:
+      flags: {deal_made: true}
+    on_enter:
+      scene: 夜澜市·白噪诊所
+      present: [lin_che]
+      briefing: |
+        你按匿名消息来到白噪诊所。医生林澈告诉你：你脑中那块记忆碎片并非你自己的，
+        是有人在手术中"寄存"进去的——而你，还欠着诊所一笔义体手术费。
+        本节点目标：与诊所达成还债协议（完成信号 flag: deal_made）。
+    critical_choices:
+      - id: how_to_repay
+        prompt: 手术灯下，林澈推过来一份账单。你如何还债？
+        options:
+          - {text: 接下霓光科技的寻回任务, effects: {flags: {deal_made: true, job_runner: true}, stats: {credits: 10}}}
+          - {text: 帮诊所跑黑市渠道, effects: {flags: {deal_made: true, clinic_helper: true}, affections: {lin_che: 3}}}
+          - {text: 独闯数据街，自己找活路, effects: {flags: {deal_made: true, solo_route: true}, stats: {intel: 2}}}
+    free_scope: 还债方式的细节自由发挥；协议达成即本节点完成，等待寻踪节点触发。
+
+  - id: n2_data_street
+    title: 数据街寻踪
+    when:
+      all:
+        - {day: {gte: 3}}
+        - {flags: {deal_made: true}}
+    goal: 在数据街查到记忆碎片的线索
+    completion:
+      flags: {memory_lead: true}
+    on_enter:
+      scene: 夜澜市·旧终端区
+      present: [a_ling]
+      briefing: |
+        你潜入数据街追查记忆碎片的来源，在旧终端区遇到一个叫阿零的少女——
+        她能读取你脑中的碎片，而你发现她正被霓光科技的追踪程序锁定。
+        本节点目标：取得记忆碎片线索（完成信号 flag: memory_lead）。
+    critical_choices:
+      - id: zero_choice
+        prompt: 追踪程序的红色光标已在逼近。你如何处置阿零？
+        options:
+          - {text: 相信阿零，带她一起走, effects: {flags: {memory_lead: true, zero_allied: true}, affections: {a_ling: 4}}}
+          - {text: 把她的坐标卖给霓光, effects: {flags: {memory_lead: true, zero_sold: true}, stats: {credits: 20}}}
+          - {text: 帮她销毁追踪代码, effects: {flags: {memory_lead: true, zero_hidden: true}, affections: {a_ling: 3}, stats: {intel: 2}}}
+    free_scope: 数据街的见闻由剧情自由生成；线索到手即完成，等待对峙节点。
+
+  - id: n3_neon_tower
+    title: 霓光大厦
+    when:
+      all:
+        - {day: {gte: 8}}
+        - {flags: {memory_lead: true}}
+    goal: 与霓光科技了结记忆碎片之事
+    completion:
+      flags: {confrontation_done: true}
+    on_enter:
+      scene: 夜澜市·霓光大厦
+      present: [lin_che, a_ling]
+      briefing: |
+        线索指向霓光大厦——你的记忆碎片，正是"零号计划"的载体。霓光科技发来最后通牒：
+        交出碎片，或者被回收。林澈与阿零都在你身边。
+        本节点目标：了结对峙（完成信号 flag: confrontation_done）。
+    critical_choices:
+      - id: tower_choice
+        prompt: 霓光大厦的灯光压下来。你选择哪条路？
+        options:
+          - {text: 硬闯霓光大厦, effects: {flags: {confrontation_done: true, tower_stormed: true}, stats: {cyber: 4}}}
+          - {text: 与霓光谈判，把碎片卖个好价钱, effects: {flags: {confrontation_done: true, tower_deal: true}, stats: {credits: 50}}}
+          - {text: 用阿零的密钥走数据后门, effects: {flags: {confrontation_done: true, tower_backdoor: true}, affections: {a_ling: 3}, stats: {intel: 3}}}
+    free_scope: 对峙过程由剧情自由生成；真相在抉择中揭晓。

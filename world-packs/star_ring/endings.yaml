@@ -1,0 +1,35 @@
+endings:
+- id: ending_leave
+  title: 远行之人
+  kind: auto
+  when:
+    all:
+    - flags:
+        fled_scrapyard: true
+    - flags:
+        route_databackdoor: true
+  text: 你从数据后门悄悄取回了被提存的记忆，没有回头，驾着远行者号朝航线图上不存在的坐标飞去。
+- id: ending_free
+  title: 自由之身
+  kind: auto
+  when:
+    all:
+    - flags:
+        route_sellrecord: true
+  text: 你把黑匣子记录卖给远航物流，换来一张离城船票，带着洛零远走高飞——用过去换自由，不亏。
+- id: ending_stay
+  title: 星环归人
+  kind: auto
+  when:
+    all:
+    - flags:
+        gave_blackbox: true
+  text: 你按回收条例把黑匣子交给矿业，封口费还清了债，从此不再追问过去——有些过去不重要，有些人值得留下。
+- id: ending_trapped
+  title: 星环困兽
+  kind: auto
+  when:
+    all:
+    - flags:
+        node1_done: true
+  text: 第12天你仍没查到真相，记忆银行的人先一步找上门，你被永远留在了星环城。

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import traceback
 from pathlib import Path
 
@@ -50,7 +51,7 @@ def _cmd_check_worldpack(args: argparse.Namespace) -> int:
     print(f"  NPC: " + ", ".join(n.name for n in pack.npcs.values()))
     print(f"  flag 声明: " + ", ".join(sorted(s.flags)) or "（无）")
     print(f"  lore 条目: {len(pack.world.lore)} 条（按需注入，B1）")
-    print("  世界包规范: docs/design.md §12（schema 要点 + 作者编写守则）")
+    print("  世界包规范: docs/worldpack-manual.md（作者手册：schema + 守则 + 陷阱 + 验收单）")
     return 0
 
 
@@ -321,18 +322,21 @@ def _cmd_init_worldpack(args: argparse.Namespace) -> int:
     print(f"[✓] 世界包骨架已生成 → {target}")
     print("  包含: world/schedule/mainline/events/endings.yaml + npcs/ 角色卡（含注释手册）")
     print("  下一步: 1) 按注释填写内容  2) python -m game_agent check-worldpack "
-          f"{target}  3) 规范见 docs/design.md §12")
+          f"{target}  3) 完整作者手册见 docs/worldpack-manual.md")
     return 0
 
 
 def _cmd_web(args: argparse.Namespace) -> int:
-    """F5（P3）：启动 Web 前端（需 API Key）。"""
+    """F5（P3）：启动 Web 前端（需 API Key）。--pack 指定世界包（M3 换包即玩）。"""
     settings = load_settings()
     if not settings.has_api_key:
         print("[✗] 未配置 DEEPSEEK_API_KEY：请复制 .env.example 为 .env 并填入 key")
         return 1
     import uvicorn
 
+    # M3：世界包经环境变量传入 web 模块（uvicorn 以模块串启动，无法直接传参）
+    os.environ["GAME_WORLDPACK"] = str(Path(args.pack))
+    print(f"世界包: {args.pack}")
     print(f"Web 前端启动中 → http://127.0.0.1:{args.port} （Ctrl+C 退出）")
     uvicorn.run("game_agent.web:app", host="127.0.0.1", port=args.port, log_level="warning")
     return 0
@@ -354,6 +358,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p_web = sub.add_parser("web", help="启动 Web 前端（F5，需 API Key）")
     p_web.add_argument("--port", type=int, default=8000)
+    p_web.add_argument(
+        "--pack", default=DEFAULT_WORLDPACK,
+        help=f"世界包路径（默认 {DEFAULT_WORLDPACK}）",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "check-worldpack":

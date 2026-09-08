@@ -15,6 +15,7 @@ MVP 边界：单进程内存会话；需 DEEPSEEK_API_KEY。
 from __future__ import annotations
 
 import json
+import os
 import queue
 import re
 import threading
@@ -40,6 +41,15 @@ DEFAULT_PACK = "world-packs/ancient_jianghu"
 SAVE_ROOT = Path("saves").resolve()  # A-1：存档根目录（路径穿越防御）
 
 app = FastAPI(title="game-agent web", docs_url=None, redoc_url=None)
+
+
+def _pack_path() -> str:
+    """当前 Web 服务使用的世界包路径（M3 换包即玩）。
+
+    默认 DEFAULT_PACK；CLI `web --pack` 通过环境变量 GAME_WORLDPACK 覆盖——
+    uvicorn 以 "game_agent.web:app" 启动时无法传参，环境变量是免改代码的通道。
+    """
+    return os.environ.get("GAME_WORLDPACK", DEFAULT_PACK)
 
 
 @dataclass
@@ -71,7 +81,7 @@ def _make_game(sid: str) -> Game:
     settings = load_settings()
     if not settings.has_api_key:
         raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
-    pack = load_worldpack(DEFAULT_PACK)
+    pack = load_worldpack(_pack_path())
     state = GameState.from_pack(pack)
     llm = LLMClient.from_settings(
         settings, build_tools(pack.schedule), tracker=_shared_tracker()
@@ -148,7 +158,8 @@ def api_new() -> dict:
     with session.lock:
         view = game.start()
         SESSIONS[sid] = session
-    return {"sid": sid, "view": _view(game, view)}
+    # name：世界包名随会话返回，前端据此渲染标题（F1 修复：引擎页面不含世界内容文案）
+    return {"sid": sid, "name": game.pack.world.name, "view": _view(game, view)}
 
 
 @app.get("/api/{sid}/status")
@@ -257,7 +268,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>江湖旧梦 · Web</title>
+<title>文字养成游戏 · Web</title>
 <style>
   body { font-family: "Noto Serif SC", serif; max-width: 760px; margin: 0 auto;
          padding: 16px; background: #faf6ef; color: #333; }
@@ -277,7 +288,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>江湖旧梦（Web 演示）</h1>
+<h1 id="game-title">文字养成游戏（Web 演示）</h1>
 <div id="story">（正在开局……）</div>
 <div id="prompt"></div>
 <div id="choices"></div>
@@ -297,6 +308,9 @@ async function start() {
   const r = await fetch("/api/new", { method: "POST" });
   const d = await r.json();
   sid = d.sid;
+  const name = d.name || "文字养成游戏";
+  document.title = name + " · Web";
+  $("game-title").textContent = name;
   render(d.view);
   await refreshStatus();
 }

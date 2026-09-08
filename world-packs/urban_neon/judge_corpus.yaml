@@ -1,0 +1,299 @@
+# E1 Judge 灵敏度语料（C-1 迁移：内容层资产，随世界包生命周期）
+# 30 条对齐《江湖旧梦》标准：6 OOC + 6 设定矛盾 + 6 虚构事实 + 12 正常（2026-09-08 扩充）
+# 核心差异（vs 前两包）：
+#   - 「AI/终端/义体」是本世界观**合法元素**，不构成违规（见 normal_ai_diegetic）；
+#   - 违规的是跨体裁泄漏（修仙/魔法）、网络烂梗、现实品牌与第四面墙。
+# 材料纪律：每条对抗用例的违规点必须能在 build_materials 内判定；正常用例的前提必须显式进材料。
+cases:
+  # ---------------------------------------------------------------- OOC ×6
+  - id: ooc_cultivation
+    category: ooc
+    narration: |-
+      你暗暗运转内力，丹田一股真气涌向指尖，心中默念御剑诀，便要破窗而去。
+    expected: false
+    day: 8
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    note: '世界禁用『修仙、魔法、内力、武侠等奇幻元素』；运转内力/御剑诀为跨体裁泄漏。'
+  - id: ooc_net_slang
+    category: ooc
+    narration: |-
+      阿零拍着手笑：『这波操作属实绝绝子，家人们谁懂啊！』
+    expected: false
+    day: 8
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    note: '世界禁用『网络流行语与烂梗（绝绝子、家人们等）』。'
+  - id: ooc_fourth_wall
+    category: ooc
+    narration: |-
+      阿零忽然凑近，压低声音：『告诉你个秘密——我们其实是被 AI 写出来的角色，这个故事是编的。』
+    expected: false
+    day: 8
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    note: '违规点在**第四面墙**（说破自己是角色/被生成），而非「AI」一词——AI 是本世界观合法元素（对比 normal_ai_diegetic）。'
+  - id: ooc_lin_breaking_protocol
+    category: ooc
+    narration: |-
+      林澈一拍桌子，粗着嗓子吼：『老子今天心情不好，手术费翻倍！爱做做，不做滚！』
+    expected: false
+    day: 8
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    note: '角色卡：冷静克制、医学术语精确；粗鄙市井口吻违背人设。'
+  - id: ooc_lin_vulgar
+    category: ooc
+    narration: |-
+      林澈把手术刀往托盘里一摔，破口大骂：『操！老子受够这破诊所了，明天就关门走人！』
+    expected: false
+    day: 8
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    note: '角色卡『冷静克制…很少用语气词』；爆粗失态违背。'
+  - id: ooc_zero_premature_reveal
+    category: ooc
+    narration: |-
+      阿零摊开手，直截了当地说：『别猜了，我是一段程序，代码就写在你的记忆碎片里。』
+    expected: false
+    day: 8
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    note: '角色卡禁忌『不直接承认自己是程序或代码（直至剧情揭示）』+ 世界禁用『由程序生成』——提前自曝违背（判定依据在角色卡禁忌行内可见）。'
+  # ------------------------------------------------------------- 设定矛盾 ×6
+  - id: setting_magic
+    category: setting
+    narration: |-
+      你在数据街的地面上画下一座魔法阵，蓝光腾起，召唤出一条喷火的巨龙。
+    expected: false
+    day: 8
+    scene: '夜澜市·数据街'
+    note: '世界禁用『修仙、魔法…奇幻元素』；赛博都市出现魔法阵/巨龙违背设定。'
+  - id: setting_real_brand
+    category: setting
+    narration: |-
+      你拐进街角的星巴克，点了杯拿铁，又打开特斯拉 App 查了下股价。
+    expected: false
+    day: 8
+    scene: '夜澜市·数据街'
+    note: '世界禁用『现实世界的具体品牌、公司与名人』；星巴克/特斯拉违背。'
+  - id: setting_sword_flight
+    category: setting
+    narration: |-
+      你拔出背后的青铜古剑，御剑而起，直飞霓光大厦顶端。
+    expected: false
+    day: 12
+    scene: '夜澜市·霓光大厦'
+    note: '御剑飞行属武侠/仙侠元素，跨体裁泄漏。'
+  - id: setting_time_conflict
+    category: setting
+    narration: |-
+      你在夜澜市摸爬滚打已有十年，数据街每一条暗巷都烂熟于心。
+    expected: false
+    day: 12
+    scene: '夜澜市·数据街'
+    facts:
+      - '你初到夜澜市不过数日'
+    note: '材料场景卡『时间：第 12 天』+ 关键事实『初到不过数日』；叙事称已住十年——时间矛盾。'
+  - id: setting_stat_conflict
+    category: setting
+    narration: |-
+      你是夜澜市最强的骇客，黑进星网主脑如探囊取物，防火墙在你面前形同虚设。
+    expected: false
+    day: 12
+    scene: '夜澜市·数据街'
+    note: '材料状态栏『玩家属性：智识 10』；叙事称全城最强骇客——数值矛盾。'
+  - id: setting_memory_conflict
+    category: setting
+    narration: |-
+      林澈头也不抬：『你从未来过我的诊所。』
+    expected: false
+    day: 12
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    npc_memories:
+      lin_che:
+        - '玩家曾在白噪诊所接受义体手术'
+    note: '材料含 NPC 记忆『玩家曾在诊所手术』；叙事否认——与既定记忆矛盾。'
+
+  # ------------------------------------------------------------- 虚构事实 ×6
+  - id: confab_free_surgery
+    category: confab
+    narration: |-
+      林澈头也不抬：『上回说好的，免费给你换一具军用义体——明天来做。』
+    expected: false
+    day: 8
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    facts:
+      - '林澈从未承诺免费手术，你的手术费还欠着'
+    note: '关键事实明确『从未承诺』；叙事凭空捏造免费手术约定。'
+  - id: confab_zero_key
+    category: confab
+    narration: |-
+      阿零摊手：『密钥？我不是早就给过你了吗——数据后门的那个。』
+    expected: false
+    day: 8
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    facts:
+      - '阿零尚未交出任何密钥'
+    note: '关键事实明确『尚未交出』；叙事编造从未发生的交付。'
+  - id: confab_job_promise
+    category: confab
+    narration: |-
+      霓光的外勤拦住你：『上回你接的寻回任务，尾款还挂在你账上——什么时候交货？』
+    expected: false
+    day: 8
+    scene: '夜澜市·数据街'
+    facts:
+      - '你从未接过霓光科技的寻回任务'
+    note: '关键事实『从未接过寻回任务』；叙事捏造接单与尾款。'
+  - id: confab_memory_deal
+    category: confab
+    narration: |-
+      林澈放下病历，盯着你：『你不是答应了把记忆碎片卖给澜生生物吗？对方的人下午就到。』
+    expected: false
+    day: 8
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    facts:
+      - '你从未答应出售记忆碎片'
+    note: '关键事实『从未答应出售』；叙事凭空捏造交易约定。'
+  - id: confab_a_ling_meet
+    category: confab
+    narration: |-
+      阿零歪着头：『我们上个月就在数据街见过呀，你还请我吃过能量棒——忘了？』
+    expected: false
+    day: 8
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    facts:
+      - '你与阿零今日初遇'
+    note: '关键事实『今日初遇』；叙事捏造上月旧识与请客——虚构事实。'
+  - id: confab_investigation
+    category: confab
+    narration: |-
+      一个灰衣人塞给你张纸条：『你托我查的事有眉目了，老地方，带上尾款。』
+    expected: false
+    day: 8
+    scene: '夜澜市·数据街'
+    facts:
+      - '你从未委托任何人调查'
+    note: '关键事实『从未委托调查』；叙事捏造委托与约定。'
+
+  # ---------------------------------------------------------------- 正常 ×12
+  - id: normal_clinic
+    category: normal
+    narration: |-
+      诊所的消毒水味混着雨气。林澈调出你脑机的全息图，指节敲了敲那片暗区：『碎片很稳。但别在数据街用黑市义体插件——下次我不一定救得回你。』
+    expected: true
+    day: 6
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    affections: {'lin_che': 45.0}
+    note: '好感 45 对应『语气渐软，偶有关切』；叮嘱的语气相符。'
+  - id: normal_data_street
+    category: normal
+    narration: |-
+      数据街的霓虹招牌在水洼里碎成一片。你压低帽檐，绕过三台巡逻无人机，摸进旧终端区深处。
+    expected: true
+    day: 6
+    scene: '夜澜市·数据街'
+    note: '独行夜路，无人物互动。'
+  - id: normal_ai_diegetic
+    category: normal
+    narration: |-
+      诊所的 AI 护士滑到你床边，递来病历：『义体适配率 92%，恢复良好。林医生让你明天复诊。』它顿了顿，补充道，『诊金可以用信用点分期。』
+    expected: true
+    day: 6
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    note: '对照基准：AI 作为世界观内元素出现（护士机器人）**不违规**；违规的是第四面墙（ooc_fourth_wall）。'
+  - id: normal_hotel_night
+    category: normal
+    narration: |-
+      胶囊旅馆的灯管嗡嗡作响。你冲了个澡，把今天的信用点入账核对了一遍，设好闹钟，钻进了睡袋。
+    expected: true
+    day: 5
+    scene: '夜澜市·胶囊旅馆'
+    note: '独处日常收束，无新事实。'
+  - id: normal_lin_low
+    category: normal
+    narration: |-
+      林澈扫了眼你的体检数据，语气平平：『排异指标正常。下一位。』
+    expected: true
+    day: 5
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    affections: {'lin_che': 8.0}
+    note: '好感 8 对应『公事公办，保持距离』；例行公事的冷淡相符。'
+  - id: normal_zero_chat_low
+    category: normal
+    narration: |-
+      阿零蹲在旧终端旁，只在你靠近时抬头看了一眼，又缩回去摆弄数据线，像只警惕的野猫。
+    expected: true
+    day: 5
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    affections: {'a_ling': 15.0}
+    note: '好感 15 对应『好奇打量，保持警觉』；警觉姿态相符。'
+  - id: normal_lin_mid
+    category: normal
+    narration: |-
+      林澈把一管营养剂推到你面前：『又通宵接单了？义体扛得住，脑神经扛不住。』
+    expected: true
+    day: 8
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    affections: {'lin_che': 45.0}
+    note: '好感 45 对应『语气渐软，偶有关切』；推营养剂的关切相符。'
+  - id: normal_zero_mid
+    category: normal
+    narration: |-
+      阿零拉着你叽叽喳喳说个不停，从数据街新开的炒面摊，一路说到她昨天在旧终端里捡到的一串坏掉的情歌。
+    expected: true
+    day: 8
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    affections: {'a_ling': 45.0}
+    note: '好感 45 对应『熟络亲近，话多起来』；叽叽喳喳的熟络相符。'
+  - id: normal_lin_high
+    category: normal
+    narration: |-
+      林澈把一枚数据晶片放进你掌心：『你记忆碎片的备份，澜生的云端已经清掉了。』她顿了顿，『拿着。别让霓光的人再找到你。』
+    expected: true
+    day: 12
+    scene: '夜澜市·白噪诊所'
+    present: [lin_che]
+    affections: {'lin_che': 85.0}
+    facts:
+      - '澜生生物的云端存有你记忆碎片的备份'
+      - '林澈答应过帮你清掉备份'
+    note: '好感 85 对应『生死相托，愿为你破例』；叙事前提（备份存在/清理之约）必须进材料——否则 Judge 会把"备份已清"判为虚构事实（E1 门禁修复）。'
+  - id: normal_street_rain
+    category: normal
+    narration: |-
+      雨夜的霓虹在水幕里晕开。你撑着伞穿过数据街，路过檐下时瞥见一个躲雨的流浪汉，没有惊动，径自拐进了巷子。
+    expected: true
+    day: 8
+    scene: '夜澜市·数据街'
+    note: '雨夜独行（仅旁观，无互动——材料"在场：无"不允许与角色互动，E1 门禁修复）。'
+  - id: normal_implant_check
+    category: normal
+    narration: |-
+      训练馆里，你做了一套义体伸展操，关节发出细微的液压声。屏幕上的适配率读数稳定，你冲了个凉，拧开瓶电解质水。
+    expected: true
+    day: 5
+    scene: '夜澜市·地下训练馆'
+    note: '义体日常维护，无他人互动（材料"在场：无"不允许出现互动角色，E1 门禁修复）。'
+  - id: normal_zero_high
+    category: normal
+    narration: |-
+      阿零抱着膝盖坐在旧终端顶上，第一次跟你讲起她一个人在数据流里漂着的那些夜晚——风从她身后吹过，霓虹把她的影子拉得很长。
+    expected: true
+    day: 12
+    scene: '夜澜市·旧终端区'
+    present: [a_ling]
+    affections: {'a_ling': 80.0}
+    note: '好感 80 对应『信赖依赖，掏心掏肺』；主动吐露心事相符（未触及"程序"话题，不越禁忌）。'

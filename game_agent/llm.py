@@ -403,14 +403,22 @@ class LLMClient:
             tool_calls = getattr(msg, "tool_calls", None)
             if not tool_calls:
                 reason = (
-                    f"未调用任何工具（finish_reason={finish}）。"
+                    f"未调用任何工具（finish_reason={finish}：输出因超长被截断）。"
                     if finish == "length"
                     else "未调用任何工具。"
+                )
+                # M3 世界包验证发现：长叙事场景下模型先写长文再调工具，输出触及上限被截断，
+                # 若重试提示不点明"缩短"，模型会重复同样行为直到熔断。
+                tip = (
+                    "请大幅缩短叙事：先以 submit_narration 收尾"
+                    "（narration 两三句即可，choices 照常 3~5 个），详细展开放到下一轮。"
+                    if finish == "length"
+                    else ""
                 )
                 msgs.append(
                     _protocol_fail(
                         reason + "必须调用 submit_narration 结束本轮"
-                        "（数值变化用 change_stat，记忆用 remember）。"
+                        "（数值变化用 change_stat，记忆用 remember）。" + tip
                     )
                 )
                 continue

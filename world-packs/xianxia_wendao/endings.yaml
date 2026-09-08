@@ -1,0 +1,52 @@
+# 结局规则（见 design.md §6.3）——代码每轮自动判定，按文件顺序优先匹配
+endings:
+  - id: ending_jianxin
+    title: 剑心同尘
+    kind: auto
+    when:
+      all:
+        - {affection: {su_wanying: {gte: 50}}}
+        - {flags: {saved_fellow: true}}
+        - {flags: {crisis_done: true}}
+    text: |
+      魔潮退去，山门复宁。
+      洗剑池畔，苏晚晴将她的剑与你的剑印并放一处——两柄剑影相合，恰是完璧。
+      『这半枚剑印，寻的是你。』她轻声道。
+      ——结局达成：剑心同尘
+
+  - id: ending_changsheng
+    title: 问道长生
+    kind: auto
+    when:
+      all:
+        - {stat: {xiu_wei: {gte: 35}}}
+        - {flags: {relic_taken: true}}
+        - {flags: {crisis_done: true}}
+    text: |
+      残碑拓纹补全了剑印，一式剑意破印而出。
+      魔帅陨落，北境魔修百年不敢南顾。你在苍梧界立下剑道根基，自此问道长生。
+      ——结局达成：问道长生
+
+  - id: ending_danxin
+    title: 丹心相许
+    kind: auto
+    when:
+      all:
+        - {affection: {bai_zhi: {gte: 50}}}
+        - {flags: {crisis_done: true}}
+    text: |
+      魔潮退去的那夜，白芷在药庐为你熬了一炉养魂汤，絮絮叨叨直到天明。
+      『以后你下山，带上我。』她仰着脸说，眼睛比炉火还亮。
+      ——结局达成：丹心相许
+
+  - id: ending_guichen
+    title: 尘缘未了
+    kind: auto
+    when:
+      all:
+        - {day: {gte: 12}}
+        - {stat: {xiu_wei: {lt: 30}}}
+    text: |
+      第十二日，你抚着剑印，终是明白机缘未至。
+      你辞别山门，重回凡尘——仙途尚远，尘缘未了。
+      ——结局达成：尘缘未了

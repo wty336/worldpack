@@ -1,0 +1,52 @@
+# 结局规则（见 design.md §6.3）——代码每轮自动判定，按文件顺序优先匹配
+endings:
+  - id: ending_digital
+    title: 数字归途
+    kind: auto
+    when:
+      all:
+        - {affection: {a_ling: {gte: 50}}}
+        - {flags: {zero_allied: true}}
+        - {flags: {confrontation_done: true}}
+    text: |
+      对峙结束的那夜，阿零站在旧终端区的废墟上，背后是重亮起来的霓虹。
+      『我的数据里，原来一直留着你的位置。』她说。
+      你脑中的碎片不再刺痛——它们找到了归处。
+      ——结局达成：数字归途
+
+  - id: ending_neon_deep
+    title: 霓虹深处
+    kind: auto
+    when:
+      all:
+        - {affection: {lin_che: {gte: 50}}}
+        - {flags: {confrontation_done: true}}
+    text: |
+      雨还在下。林澈关了诊所的灯，与你并肩站在霓虹照不到的后巷。
+      『这城市吞掉过很多人。』她顿了顿，『但吞不掉我们。』
+      ——结局达成：霓虹深处
+
+  - id: ending_freefall
+    title: 自由落体
+    kind: auto
+    when:
+      all:
+        - {stat: {credits: {gte: 200}}}
+        - {flags: {tower_deal: true}}
+        - {flags: {confrontation_done: true}}
+    text: |
+      你把记忆碎片卖了个好价钱。霓光大厦的转账到账时，你已坐在出城的磁悬浮上。
+      夜澜市的霓虹在后视镜里缩成一条光带，像一场终将醒来的梦。
+      ——结局达成：自由落体
+
+  - id: ending_city_swallow
+    title: 夜澜沉没
+    kind: auto
+    when:
+      all:
+        - {day: {gte: 12}}
+        - {stat: {intel: {lt: 30}}}
+    text: |
+      第十二天，你依然查不清碎片的来历。夜澜市的霓虹日复一日地亮着，
+      你走在其中，像一滴落进海里的雨。
+      ——结局达成：夜澜沉没

@@ -289,4 +289,6 @@ cases:
     day: 12
     scene: '长安城·东市'
     present: [shen_qingqiu]
+    affections: {'shen_qingqiu': 55.0}
+    note: '好感 55 对应『亲近信任，主动分享』——同游点评与材料语气一致（E1 门禁修复：此前缺 affections，材料语气为初始 5 的『冷淡疏离』，被 Judge 误判 OOC）。'
     note: '公共场合同行，保持分寸——不违背『不在公共场合谈私情』的底线。'

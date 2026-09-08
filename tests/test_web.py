@@ -104,7 +104,19 @@ def test_index_page_served():
     with TestClient(web_module.app) as client:
         r = client.get("/")
         assert r.status_code == 200
-        assert "江湖旧梦" in r.text and "api/new" in r.text
+        # F1（M3）：页面静态文案不含任何世界内容（标题由 /api/new 返回的包名动态渲染）
+        assert "文字养成游戏" in r.text and "api/new" in r.text
+        assert "江湖旧梦" not in r.text
+        assert "game-title" in r.text  # 标题挂载点，JS 用 d.name 填充
+
+
+def test_pack_path_env_override(monkeypatch):
+    """M3 换包即玩：GAME_WORLDPACK 环境变量覆盖默认世界包（web --pack 的通道）。"""
+    assert web_module._pack_path() == web_module.DEFAULT_PACK
+    monkeypatch.setenv("GAME_WORLDPACK", "world-packs/xianxia_wendao")
+    assert web_module._pack_path() == "world-packs/xianxia_wendao"
+    monkeypatch.delenv("GAME_WORLDPACK")
+    assert web_module._pack_path() == web_module.DEFAULT_PACK
 
 
 def test_full_flow_new_pick_say_save_load(tmp_path):

@@ -13,7 +13,7 @@ _NAME_PATTERN = re.compile(r"[A-Za-z0-9_\-]+")  # C-2（M7）：世界包名白�
 
 TEMPLATES: dict[str, str] = {
     "world.yaml": """\
-# 世界包：《{name}》——脚手架模板（规范见 docs/design.md §12）
+# 世界包：《{name}》——脚手架模板（完整作者手册见 docs/worldpack-manual.md）
 # 改完即可校验：python -m game_agent check-worldpack
 name: {name}
 era: 架空大陆·青云城

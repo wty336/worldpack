@@ -1,0 +1,54 @@
+# 事件规则（见 design.md §9）
+# 三类触发全用上：condition（条件）/ schedule（行动概率）/ time（日期）。
+events:
+  - id: ev_clinic_night
+    title: 诊所夜话
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {lin_che: {gte: 30}}}
+    priority: high
+    script: |
+      诊所夜话：深夜的诊所，林澈摘下目镜，第一次谈起她离开澜生生物的原因，以及"零号计划"最初的样子。
+    effects:
+      affections: {lin_che: 5}
+    once: true
+
+  - id: ev_black_market
+    title: 黑市奇遇
+    trigger:
+      kind: schedule
+      action: scavenge
+      chance: 0.3
+    priority: normal
+    script: |
+      黑市奇遇：接单时你在黑市淘到一枚报废的军用数据晶片，转手卖了个好价钱。
+    effects:
+      stats: {credits: 10}
+    once: true
+
+  - id: ev_blackout
+    title: 数据街停电之夜
+    trigger:
+      kind: time
+      when: {day: {gte: 5}}
+    priority: normal
+    script: |
+      数据街停电之夜：全城断网十分钟，霓虹熄灭的刹那，你反而看清了碎片里的一个坐标。
+    effects:
+      stats: {intel: 2}
+    once: true
+
+  - id: ev_zero_gift
+    title: 阿零的晶片
+    trigger:
+      kind: schedule
+      action: visit_zero
+      chance: 0.3
+    priority: normal
+    script: |
+      阿零的晶片：临别时，阿零往你手心塞了枚数据晶片，说是从旧终端里"捡"来的，闪着和你记忆碎片一样的光。
+    effects:
+      affections: {a_ling: 2}
+    once: true

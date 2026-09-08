@@ -1,0 +1,87 @@
+# 日程与数值定义：引擎状态的真值 schema（见 design.md §5）
+# 注：属性 key 完全由本世界包决定（道心/修为/灵石）——引擎无任何内置属性名，
+# change_stat 工具枚举与状态栏都随本文件动态生成（通用性验证点）。
+day_action_points: 1
+
+stats:
+  dao_xin: {label: 道心, min: 0, max: 100, initial: 10}
+  xiu_wei: {label: 修为, min: 0, max: 100, initial: 5}
+  ling_shi: {label: 灵石, min: 0, max: 999999, initial: 50}
+
+affections:
+  su_wanying: {label: 苏晚晴, min: 0, max: 100, initial: 5}
+  bai_zhi: {label: 白芷, min: 0, max: 100, initial: 5}
+
+# 剧情旗标：全部在此声明（初始值），正文只引用不新增
+flags:
+  joined_sect: false      # 已拜入宗门（节点 N1 完成信号）
+  peak_sword: false       # N1 选择：拜入剑峰
+  peak_pill: false        # N1 选择：拜入丹峰
+  peak_formation: false   # N1 选择：拜入阵峰
+  realm_done: false       # 秘境历练已归（节点 N2 完成信号）
+  saved_fellow: false     # N2 选择：弃碑救人 / 引开兽潮
+  relic_taken: false      # N2 选择：独取残碑拓纹
+  crisis_done: false      # 魔潮夜袭已平（节点 N3 完成信号）
+  guard_gate: false       # N3 选择：死守山门
+  escort_retreat: false   # N3 选择：护送撤退
+  lone_strike: false      # N3 选择：独闯敌阵
+
+# 行动（P2 特性全活样板）：检定三档 + 执行门槛 + 收益曲线
+actions:
+  - id: meditate
+    label: 打坐吐纳
+    cost: 1
+    # 道心检定：悟性不足时入定效率低（三档独立收益）
+    check: {stat: dao_xin, difficulty: 6, margin: 10}
+    effects:
+      stats: {xiu_wei: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
+    critical_effects:
+      stats: {xiu_wei: {base: 6, spread: 1, decay_every: 20, decay_step: 1}}
+    failure_effects:
+      stats: {xiu_wei: {base: 2, spread: 1}}          # 心浮气躁，收效甚微
+    scene: 青云仙宗·后山灵泉
+    present: []
+  - id: hunt
+    label: 下山猎妖
+    cost: 1
+    check: {stat: xiu_wei, difficulty: 8, margin: 10}
+    effects:
+      stats: {ling_shi: {base: 15, spread: 5}}        # 成功档：妖丹换灵石
+    critical_effects:
+      stats: {ling_shi: {base: 22, spread: 5}}        # 大成功：猎得大妖
+    failure_effects:
+      stats: {ling_shi: {base: 8, spread: 3}}         # 失败：无功而返
+    scene: 苍梧界·青云坊市
+    present: []
+  - id: visit_su
+    label: 拜访苏晚晴
+    cost: 1
+    effects: {}
+    scene: 青云仙宗·剑峰洗剑池
+    present: [su_wanying]
+  - id: visit_bai
+    label: 拜访白芷
+    cost: 1
+    effects: {}
+    scene: 青云仙宗·丹峰药庐
+    present: [bai_zhi]
+  - id: gift_pill
+    label: 赠丹探访
+    cost: 1
+    # D2 消费闭环：灵石 → 好感（需已入门且灵石充足，道心检定决定赠礼分寸）
+    requires:
+      all:
+        - {flags: {joined_sect: true}}
+        - {stat: {ling_shi: {gte: 30}}}
+    check: {stat: dao_xin, difficulty: 8, margin: 10}
+    effects:
+      stats: {ling_shi: -30}
+      affections: {su_wanying: 4}                     # 成功：礼物合意
+    critical_effects:
+      stats: {ling_shi: -30}
+      affections: {su_wanying: 6}                     # 大成功：投其所好
+    failure_effects:
+      stats: {ling_shi: -30}
+      affections: {su_wanying: 2}                     # 失败：心意尚在
+    scene: 青云仙宗·剑峰洗剑池
+    present: [su_wanying]
