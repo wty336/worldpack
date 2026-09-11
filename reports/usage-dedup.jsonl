@@ -38,3 +38,13 @@
 {"ts": "2026-09-11T14:30:08", "model": "local-14b", "purpose": "dedup", "prompt_tokens": 90, "completion_tokens": 2}
 {"ts": "2026-09-11T14:30:08", "model": "local-14b", "purpose": "dedup", "prompt_tokens": 85, "completion_tokens": 2}
 {"ts": "2026-09-11T14:30:08", "model": "local-14b", "purpose": "dedup", "prompt_tokens": 85, "completion_tokens": 2}
+{"ts": "2026-09-11T17:49:05", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 103, "completion_tokens": 2, "cache_hit_tokens": 0, "cache_miss_tokens": 103}
+{"ts": "2026-09-11T17:49:06", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 100, "completion_tokens": 158, "cache_hit_tokens": 0, "cache_miss_tokens": 100}
+{"ts": "2026-09-11T17:49:07", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 107, "completion_tokens": 2, "cache_hit_tokens": 0, "cache_miss_tokens": 107}
+{"ts": "2026-09-11T17:49:07", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 105, "completion_tokens": 2, "cache_hit_tokens": 0, "cache_miss_tokens": 105}
+{"ts": "2026-09-11T17:49:09", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 105, "completion_tokens": 228, "cache_hit_tokens": 0, "cache_miss_tokens": 105}
+{"ts": "2026-09-11T17:49:10", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 101, "completion_tokens": 35, "cache_hit_tokens": 0, "cache_miss_tokens": 101}
+{"ts": "2026-09-11T17:49:11", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 106, "completion_tokens": 61, "cache_hit_tokens": 0, "cache_miss_tokens": 106}
+{"ts": "2026-09-11T17:49:12", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 108, "completion_tokens": 75, "cache_hit_tokens": 0, "cache_miss_tokens": 108}
+{"ts": "2026-09-11T17:49:13", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 103, "completion_tokens": 2, "cache_hit_tokens": 0, "cache_miss_tokens": 103}
+{"ts": "2026-09-11T17:49:14", "model": "deepseek-v4-flash", "purpose": "dedup", "prompt_tokens": 100, "completion_tokens": 52, "cache_hit_tokens": 0, "cache_miss_tokens": 100}

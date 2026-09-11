@@ -1,0 +1,4 @@
+﻿model=deepseek-v4-flash · seed=42 · 《江湖旧梦》（带主线轨道）
+
+[✗] 对局异常: LLMTurnError: 连续 3 次未能产出合法协议输出（熔断）
+

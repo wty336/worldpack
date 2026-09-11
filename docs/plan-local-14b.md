@@ -332,6 +332,12 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   统一空响应升级重试并推广到 dedup/reflect/extract，judge 改走同一实现；compress / turn
   仅取常量、不纳入重试）→ `docs/local14b-p012-retro.md` §10.4 +
   `tests/test_sidechannel_budget.py`（5 例）+ 全量 **262 passed**。
+- 2026-09-11 · **flash 对照线重测**（预算修复后）：dedup **40-50% → 10/10 = 100%**
+  （历史取证：456 次调用 61.2% 顶满 50 预算）→「14B 完胜」改为**持平**；reflect 从 6 连空
+  恢复到产出 2 条洞察；railed 轨道事实 flash 3/3（extract 零顶满，旧 34.8% 顶满）；
+  judge 经"偏差方向"论证无需重测（空响应只会压低拦截率，100% 是保守下界）。
+  残留待办：截断（非空）不触发重试、judge 升级预算 2000 亦会被顶满、reflect 基础预算偏紧、
+  compress 补标预算须 >2000 → `reports/sidechannel-budget-retest-20260911.md`。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |
