@@ -305,6 +305,18 @@ turn 云端"的混合省钱档，需要给 `Settings`/`LLMClient` 加 purpose �
 Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④长局腐化验证）无冲突，
 且 worldpack-QA 的长局产物可直接作为 Phase 2 的数据与基线补充。
 
+**滚动复盘**：
+- 2026-09-08 · 阶段 0-2 执行复盘（资产找回 / L2 门禁 / 离线统计 / vLLM 环境踩坑 /
+  14B 零样本协议遵从第一信号 / 实验支撑脚本）→ `docs/local14b-p012-retro.md`。
+- 2026-09-08~09-11 · 阶段 3-4 执行复盘（flash 对照重跑：小窗 smoke 三包全过 + dedup
+  基线退化 40-50%；14B 矩阵：judge 两包过闸 / dedup 100% 完胜 flash / xianxia+urban
+  小窗通关 / 间歇性协议熔断两类失败模式 / railed 0/3 暴露事实提取层失败 /
+  长局零样本不可测）→ 同上文档 §5-§6。
+- 2026-09-11 · 阶段 5-6 执行复盘与决策门 0（ICR v1/v2：污染输入毒化 vLLM + 
+  **reasoning_content 缺失对 flash 的系统性 bias**——14B 一次通过 36-42% 跨形态稳定可靠、
+  flash 重放数字不可靠；**判定：走预期路径进 Phase 1 窄模块蒸馏**，主回合留 Phase 2）
+  → `reports/local14b-p0-20260911.md`（五轴初值）+ 同上复盘文档 §7。
+
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |
 | Phase 0 零样本对照 | 2~3 天 | `reports/local14b-p0-<ts>.md`（差距清单表 + 五轴初值） |

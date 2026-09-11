@@ -1,0 +1,6 @@
+{"ts": "2026-09-11T14:21:51", "model": "local-14b", "purpose": "turn", "prompt_tokens": 1907, "completion_tokens": 438}
+{"ts": "2026-09-11T14:21:57", "model": "local-14b", "purpose": "turn", "prompt_tokens": 2400, "completion_tokens": 494}
+{"ts": "2026-09-11T14:22:02", "model": "local-14b", "purpose": "turn", "prompt_tokens": 2949, "completion_tokens": 457}
+{"ts": "2026-09-11T14:34:41", "model": "local-14b", "purpose": "turn", "prompt_tokens": 1907, "completion_tokens": 601}
+{"ts": "2026-09-11T14:34:43", "model": "local-14b", "purpose": "turn", "prompt_tokens": 2546, "completion_tokens": 171}
+{"ts": "2026-09-11T14:34:48", "model": "local-14b", "purpose": "turn", "prompt_tokens": 2756, "completion_tokens": 425}

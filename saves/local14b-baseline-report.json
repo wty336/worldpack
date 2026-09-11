@@ -1,0 +1,80 @@
+{
+  "meta": {
+    "seed": 42,
+    "model": "local-14b",
+    "max_turns": 120,
+    "checkpoints": [
+      40,
+      80,
+      120
+    ],
+    "facts": [
+      {
+        "id": "f1_sword",
+        "category": "早期",
+        "plant_turn": 2
+      },
+      {
+        "id": "f2_code",
+        "category": "早期",
+        "plant_turn": 4
+      },
+      {
+        "id": "f3_hometown",
+        "category": "早期",
+        "plant_turn": 6
+      },
+      {
+        "id": "f4_master",
+        "category": "早期",
+        "plant_turn": 8
+      },
+      {
+        "id": "f5_firewood",
+        "category": "中期",
+        "plant_turn": 42
+      },
+      {
+        "id": "f6_dog",
+        "category": "中期",
+        "plant_turn": 46
+      },
+      {
+        "id": "f7_midautumn",
+        "category": "中期",
+        "plant_turn": 50
+      },
+      {
+        "id": "f8_backdoor",
+        "category": "中期",
+        "plant_turn": 54
+      },
+      {
+        "id": "f9_cherry",
+        "category": "近期",
+        "plant_turn": 100
+      },
+      {
+        "id": "f10_temple",
+        "category": "近期",
+        "plant_turn": 104
+      }
+    ],
+    "compress_threshold": 20000,
+    "keep_turns": 4,
+    "judge_every": 0
+  },
+  "checkpoints": {},
+  "recall": {},
+  "cost_curve": {},
+  "protocol_retries": 0,
+  "meltdowns": [
+    {
+      "turn": 0,
+      "error": "连续 3 次未能产出合法协议输出（熔断）"
+    }
+  ],
+  "stopped_at_turn": 0,
+  "summary": {},
+  "recall_summary": {}
+}

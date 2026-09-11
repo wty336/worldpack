@@ -124,6 +124,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--days", type=int, default=None, help="日数预算（缺省用 profile）")
     parser.add_argument("--seed", type=int, default=11, help="RNG 种子")
     parser.add_argument("--offline", action="store_true", help="离线模式：内嵌假客户端，不触网")
+    # local-14b 实验（Phase 0）：小窗档与输出隔离；缺省值 = 现生产值，零行为变化
+    parser.add_argument("--compress-threshold", type=int, default=30000,
+                        help="压缩阈值（历史 token 字符估，0=关闭）")
+    parser.add_argument("--keep-turns", type=int, default=6, help="压缩保留的近窗回合数")
+    parser.add_argument("--out-prefix", default="smoke",
+                        help="产出文件名前缀（saves/<out-prefix>-<包>.*，usage 同步）")
     args = parser.parse_args(argv)
 
     pack = load_worldpack(args.pack)
@@ -147,11 +153,12 @@ def main(argv: list[str] | None = None) -> int:
         llm = LLMClient(_OfflineFake(), "offline-fake", build_tools(pack.schedule))
         tracker = None
     else:
-        tracker = UsageTracker(SAVE_DIR / f"usage-smoke-{pack.root.name}.jsonl")
+        tracker = UsageTracker(SAVE_DIR / f"usage-{args.out_prefix}-{pack.root.name}.jsonl")
         llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm, rng=random.Random(args.seed),
-        extract_every=2, compress_threshold=30000, judge_every=5, reflect_every=10,
+        extract_every=2, compress_threshold=args.compress_threshold,
+        judge_every=5, reflect_every=10, keep_turns=args.keep_turns,
     )
 
     transcript: list[str] = []
@@ -231,11 +238,11 @@ def main(argv: list[str] | None = None) -> int:
 
         # 落盘（离线模式也落盘，便于比对）
         SAVE_DIR.mkdir(exist_ok=True)
-        save_game(state, SAVE_DIR / f"smoke-{pack.root.name}.json", game.history)
-        (SAVE_DIR / f"smoke-{pack.root.name}.txt").write_text(
+        save_game(state, SAVE_DIR / f"{args.out_prefix}-{pack.root.name}.json", game.history)
+        (SAVE_DIR / f"{args.out_prefix}-{pack.root.name}.txt").write_text(
             "\n\n".join(transcript), encoding="utf-8"
         )
-        print(f"\n已保存 → saves/smoke-{pack.root.name}.{{json,txt}}")
+        print(f"\n已保存 → saves/{args.out_prefix}-{pack.root.name}.{{json,txt}}")
         if tracker is not None:
             print("\n" + tracker.cost_report())
         return status
