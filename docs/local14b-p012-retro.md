@@ -475,14 +475,12 @@ teacher 带思维链时对 teacher 不公平，Phase 2 盲评需注明产物形�
   但**随会话重启被清空**（教训见踩坑清单 #10）——阶段 3 的 flash condition 重跑版已用
   `saves/condition-<pack>.flash0908.{json,txt}` 后缀副本保护；阶段 4 的 14B condition
   重跑覆盖了 saves 内的 flash 版，原版仍在前述后缀副本与 git 中。
-- 工作区改动（未 commit）：`M scripts/worldpack_smoke.py`、`?? scripts/icr_sampling.py`、
-  `?? scripts/diag_turn.py`（重建入仓）、`?? saves/usage-smoke-ancient_jianghu.jsonl`、
-  阶段 3 新增 `?? saves/smoke-flash-*.{json,txt,jsonl}` ×3、
-  `?? saves/condition-*.flash0908.*` ×4、`M saves/condition-*.{json,txt}` ×2、
-  `M reports/usage-{lore,reflect,dedup}-smoke.jsonl` 等追加；
-  阶段 4 新增 `?? saves/smoke-local14b-*.{json,txt}` ×2 + `?? saves/usage-smoke-local14b-*.jsonl`
-  与 `?? saves/local14b-baseline-report.*`（长局 0 回合报告）、`M saves/railed-fact-check.json`
-  （14B 重跑覆盖，原档在 git）。
+- 工作区改动：**截至 2026-09-11 已全部入库**（阶段 3/4 产物 → `6899fae`；Phase 1 前奏补测 →
+  `0e01b77`；星环之下导入链产物 → `10a9f94`）——本节曾列出的 `scripts/worldpack_smoke.py`、
+  `scripts/icr_sampling.py`、`scripts/diag_turn.py`、`saves/smoke-*.{json,txt,jsonl}`、
+  `saves/condition-*.flash0908.*`、`saves/local14b-baseline-report.*`、`saves/railed-fact-check.json`、
+  `reports/usage-*.jsonl` 等现均在 git 内（`git checkout -- <path>` 可还原任何被覆盖的历史档）；
+  工作区当前干净（`git status` 零改动）。
 - vLLM 服务：后台运行中（Qwen2.5-14B-Instruct-AWQ，32K 窗，prefix caching，端口 8000；
   会话重启会杀死后台任务，复跑前需 `curl /v1/models` + `nvidia-smi` 双确认）。
 - flash API key 已验证可用（最小调用 87+8 token）。
