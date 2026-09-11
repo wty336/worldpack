@@ -20,13 +20,13 @@ from typing import Any, Callable
 
 from openai import OpenAI
 
+from .budgets import TURN_MAX_TOKENS as MAX_OUTPUT_TOKENS
 from .config import Settings
 from .memory import MemoryError
 from .stats import StatChangeError
 from .usage import UsageTracker, usage_fields
 from .worldpack import ScheduleSpec
 
-MAX_OUTPUT_TOKENS = 2048  # 含思考链预算：重回合（抉择后叙事）需要余量，截断会导致无工具调用
 MAX_TURN_ITERATIONS = 3  # 初始 1 次 + 协议失败重试 2 次（design.md §10.1 C6）
 
 

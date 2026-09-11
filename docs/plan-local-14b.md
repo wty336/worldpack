@@ -327,6 +327,11 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   同根因解释 dedup 40-50% 退化（50 预算）——flash 补标一律放大 max_tokens；
   训练数据改分层构造：YAML 程序合成为主干、轨迹限量作锚、flash 只补标合成前缀）
   → 同上复盘文档 §8、§10。
+- 2026-09-11 · 引擎侧落地：**侧信道预算统一**（新增 `game_agent/budgets.py` 单一真源：
+  `MIN_CALL_TOKENS=500` 规则 + `EMPTY_RETRY_TOKENS=2000`；`complete_with_empty_retry`
+  统一空响应升级重试并推广到 dedup/reflect/extract，judge 改走同一实现；compress / turn
+  仅取常量、不纳入重试）→ `docs/local14b-p012-retro.md` §10.4 +
+  `tests/test_sidechannel_budget.py`（5 例）+ 全量 **262 passed**。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |

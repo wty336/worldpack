@@ -12,6 +12,12 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from .budgets import (
+    COMPRESS_MAX_TOKENS,
+    EXTRACT_MAX_TOKENS,
+    REFLECT_MAX_TOKENS,
+    complete_with_empty_retry,
+)
 from .compression import (
     COMPRESS_SYSTEM,
     SUMMARY_MARK,
@@ -313,7 +319,8 @@ class Game:
         numbered = "\n".join(f"{i + 1}. {m.fact}" for i, m in enumerate(recent))
         existing = "；".join(i.text for i in self.state.npc_insights.get(npc_id, []))
         try:
-            output = self.llm.complete(
+            output = complete_with_empty_retry(
+                self.llm,
                 [
                     {"role": "system", "content": REFLECT_SYSTEM},
                     {
@@ -322,9 +329,9 @@ class Game:
                         + (f"\n\n<已有洞察>\n{existing}\n</已有洞察>" if existing else ""),
                     },
                 ],
-                max_tokens=200,
-                temperature=0.0,
                 purpose="reflect",
+                max_tokens=REFLECT_MAX_TOKENS,
+                temperature=0.0,
             )
         except Exception:  # noqa: BLE001
             return  # 反思失败静默：不影响主线
@@ -352,13 +359,14 @@ class Game:
         existing = "；".join(m.fact for m in self.state.player_facts)
         user_content = f"已有事实：{existing}\n\n<回合内容>\n{recent}\n</回合内容>"
         try:
-            output = self.llm.complete(
+            output = complete_with_empty_retry(
+                self.llm,
                 [
                     {"role": "system", "content": EXTRACT_SYSTEM},
                     {"role": "user", "content": user_content},
                 ],
-                max_tokens=400,
                 purpose="extract",
+                max_tokens=EXTRACT_MAX_TOKENS,
             )
         except Exception:  # noqa: BLE001
             return  # 提取失败不影响叙事主线
@@ -414,7 +422,7 @@ class Game:
                         f"{history_text(new_part)}\n</新增历史>",
                     },
                 ],
-                max_tokens=2000,
+                max_tokens=COMPRESS_MAX_TOKENS,
                 purpose="compress",
             )
         except Exception:  # noqa: BLE001

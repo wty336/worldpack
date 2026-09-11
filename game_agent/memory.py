@@ -15,6 +15,11 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from .budgets import (
+    DEDUP_MAX_TOKENS,
+    REFLECT_MAX_TOKENS,
+    complete_with_empty_retry,
+)
 from .state import GameState, MemoryEntry
 from .worldpack import WorldPack
 
@@ -37,7 +42,7 @@ DEDUP_SYSTEM = (
     "你是记忆去重判定器。判断「候选事实」是否与「既有事实」中的某一条语义重复"
     "（含义相同，仅措辞不同）。只输出：重复 或 不重复。"
 )
-DEDUP_MAX_TOKENS = 50
+# 预算常量见 .budgets（单一真源）：DEDUP_MAX_TOKENS / REFLECT_MAX_TOKENS 由该模块导入
 
 # 确定性提取兜底（M2a 迭代 4）：不依赖模型主动 remember，引擎强制提炼
 EXTRACT_SYSTEM = (
@@ -60,7 +65,6 @@ REFLECT_SYSTEM = (
     "编号对应给定记忆列表中的序号）。只依据给定记忆，不得编造；"
     "没有足够信息就只输出「无」。"
 )
-REFLECT_MAX_TOKENS = 200
 REFLECT_MIN_MEMORIES = 8  # 记忆达到该数量才值得反思
 REFLECT_MATERIAL = 12  # 合成素材 = 最近 N 条记忆
 INSIGHT_CAP = 2  # 每 NPC 保留的洞察条数（新替旧）
@@ -194,7 +198,11 @@ class MemorySystem:
     # ------------------------------------------------------------------
 
     def _is_semantic_duplicate(self, bucket: list[MemoryEntry], fact: str) -> bool:
-        """字符串去重未命中后的语义判定。bigram 预筛 + 轻量模型；失败静默（不判重）。"""
+        """字符串去重未命中后的语义判定。bigram 预筛 + 轻量模型。
+
+        异常静默降级为「不重复」（不中断写入路径）；但**空 ≠ 不重复**：空输出先
+        升级预算重试一次（budgets.complete_with_empty_retry）。
+        """
         if self.llm is None or not bucket:
             return False
         candidate = _bigrams(fact)
@@ -202,7 +210,8 @@ class MemorySystem:
         if not similar:  # 无任何字符二元组重叠 → 语义重复概率极低，跳过调用省成本
             return False
         try:
-            output = self.llm.complete(
+            output = complete_with_empty_retry(
+                self.llm,
                 [
                     {"role": "system", "content": DEDUP_SYSTEM},
                     {
@@ -211,9 +220,9 @@ class MemorySystem:
                         + f"\n</既有事实>\n\n<候选事实>\n{fact}\n</候选事实>",
                     },
                 ],
+                purpose="dedup",
                 max_tokens=DEDUP_MAX_TOKENS,
                 temperature=0.0,
-                purpose="dedup",
             )
         except Exception:  # noqa: BLE001
             return False  # 失败静默降级：视为不重复，写入路径不因去重失败而中断

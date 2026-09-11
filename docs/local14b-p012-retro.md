@@ -503,7 +503,14 @@ teacher 带思维链时对 teacher 不公平，Phase 2 盲评需注明产物形�
 4. **flash 小预算侧信道的预算 bug**（思考模式吃光预算，§5.3/§8.2 实锤）：
    - 所有"以 flash 为标准答案"的补标环节一律放大 max_tokens（≥2000）再采标；
    - 建议引擎侧立项：空响应升级重试从 judge 推广到 dedup/reflect/extract；
-   - 修复后 flash 对照线需重测（dedup 大概率恢复 80%+、reflect 恢复产出）。
+     ✅ **2026-09-11 已落地**：`game_agent/budgets.py` 成为预算单一真源
+     （`MIN_CALL_TOKENS=500` 规则 + `EMPTY_RETRY_TOKENS=2000`），升级重试由
+     `complete_with_empty_retry` 统一实现并推广到 dedup/reflect/extract（judge 改走同一实现）；
+     顺带修掉死常量 `REFLECT_MAX_TOKENS`（定义在 memory.py、调用点却用字面量 200，改常量不生效）
+     与 dedup/reflect/extract 预算低于规则下限的问题（50/200/400 → 500）。回归：
+     `tests/test_sidechannel_budget.py` 5 例 + 全量 **262 passed**。注意：离线假客户端恒返回空，
+     故离线档侧信道调用计数会翻倍（longrun 报告 `extract` 15 → 30），属预期行为。
+   - 修复后 flash 对照线需重测（dedup 大概率恢复 80%+、reflect 恢复产出）——**待跑**。
 5. **测量纪律沿用**：flash 命令不带任何 `DEEPSEEK_*` shell 前缀；14B 命令显式带
    `DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1 DEEPSEEK_MODEL=local-14b DEEPSEEK_API_KEY=sk-local`。
 

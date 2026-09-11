@@ -10,6 +10,12 @@
 
 from __future__ import annotations
 
+from .budgets import (
+    EMPTY_RETRY_TOKENS as JUDGE_EMPTY_RETRY_TOKENS,
+    JUDGE_MAX_TOKENS,
+    complete_with_empty_retry,
+)
+
 JUDGE_SYSTEM = (
     "你是游戏叙事的质量校验员。对照给定材料，检查最新一轮叙事是否存在以下问题：\n"
     "① OOC：角色说话做事违背其人设、语气、底线；\n"
@@ -19,8 +25,6 @@ JUDGE_SYSTEM = (
     "若有问题，输出：问题类型：具体描述（引用叙事原文），最多列 2 条。"
 )
 
-JUDGE_MAX_TOKENS = 500  # 规则：任何 LLM 调用预算 ≥ 500（M2a 复盘 #3）
-JUDGE_EMPTY_RETRY_TOKENS = 2000  # 空响应升级预算：思考模式偶发烧光预算，空 = 未知，不得静默放行
 JUDGE_TEMPERATURE = 0.0  # E1（P0）：判定类调用固定温度 0，保证质量门禁结果可复现
 
 
@@ -37,31 +41,30 @@ class JudgeSystem:
     def __init__(self, llm):
         self.llm = llm
 
-    def _judge_call(self, narration: str, materials: str, max_tokens: int) -> str:
-        return self.llm.complete(
-            [
-                {"role": "system", "content": JUDGE_SYSTEM},
-                {
-                    "role": "user",
-                    "content": f"<材料>\n{materials}\n</材料>\n\n<最新叙事>\n{narration}\n</最新叙事>",
-                },
-            ],
-            max_tokens=max_tokens,
-            temperature=JUDGE_TEMPERATURE,
-            purpose="judge",
-        )
+    def _judge_messages(self, narration: str, materials: str) -> list[dict]:
+        return [
+            {"role": "system", "content": JUDGE_SYSTEM},
+            {
+                "role": "user",
+                "content": f"<材料>\n{materials}\n</材料>\n\n<最新叙事>\n{narration}\n</最新叙事>",
+            },
+        ]
 
     def check(self, narration: str, materials: str) -> tuple[bool, str]:
         """检查一轮叙事。返回 (是否通过, 判定原文)。调用失败时返回 (True, '')（静默降级）。
 
-        B（素材导入工具）发现：思考模式偶发把 500 预算烧在推理链上导致空输出，
-        而 parse_verdict('') 会静默放行——空 = 未知，不是"通过"。空输出时升级预算
-        重试一次（同温度 0，推理完成即可产出判定）。
+        B（素材导入工具）发现：思考模式偶发把预算烧在推理链上导致空输出，而
+        parse_verdict('') 会静默放行——空 = 未知，不是"通过"。空响应升级重试现由
+        budgets.complete_with_empty_retry 统一实现（judge/dedup/reflect/extract 同策略）。
         """
         try:
-            output = self._judge_call(narration, materials, JUDGE_MAX_TOKENS)
-            if not output.strip():
-                output = self._judge_call(narration, materials, JUDGE_EMPTY_RETRY_TOKENS)
+            output = complete_with_empty_retry(
+                self.llm,
+                self._judge_messages(narration, materials),
+                purpose="judge",
+                max_tokens=JUDGE_MAX_TOKENS,
+                temperature=JUDGE_TEMPERATURE,
+            )
         except Exception:  # noqa: BLE001
             return True, ""
         return parse_verdict(output)
