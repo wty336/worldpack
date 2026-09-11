@@ -1,0 +1,495 @@
+cases:
+- id: setting_001
+  category: setting
+  narration: 洛零把耳朵贴在推进器舱壁上听了两秒，随即盘腿坐地、双目微阖，两掌按住散热鳍，一缕缕淡金色的“内力”顺管路涌入，本已熄火的推进器低吼着重新点火。
+  expected: false
+  day: 8
+  scene: 拾荒区维修棚
+  present:
+  - luoling
+  affections:
+    luoling: 45.0
+  facts:
+  - 星环城是纪元2241年柯伊伯带的高技术城邦，一切机械的维修都依赖工具与工程学原理
+  - 本作世界观禁令明文：魔法、修仙、内力等奇幻元素不得出现
+  npc_memories:
+    luoling:
+    - 上次帮你拆那台老推进器，我可是把螺栓一颗一颗拧完的
+  note: 叙事让洛零以“内力”隔空修机，与事实“一切机械的维修都依赖工具与工程学原理”矛盾，更直接落入世界观禁令原文“魔法、修仙、内力等奇幻元素”，属setting世界观设定违规。
+- id: setting_002
+  category: setting
+  narration: 沈星澜瞥了一眼你的登船记录卡，嗤笑一声：半年前？你怕不是烧坏了脑子——那趟远行者号出事的新闻稿我还留着，距今不过一个多月。
+  expected: false
+  day: 8
+  scene: 旧货码头仓库
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 35.0
+  facts:
+  - 远行者号空难发生于半年前（纪元2240年末）
+  - 玩家自空难当日起失忆，至今未恢复
+  npc_memories:
+    shen_xinglan:
+    - 半年前空难那晚，旧货码头信标塔收到过一段短促静噪
+  note: 叙事称空难“距今不过一个多月”，与事实“远行者号空难发生于半年前”及沈星澜自己的记忆“半年前空难那晚……”逐字冲突，属setting时间线/NPC记忆设定违规。
+- id: setting_003
+  category: setting
+  narration: 洛零叼着能量棒，用扳手敲了敲你的还款终端：兄弟，账我替你看过了，统共三千信用点，零利息，你慢慢还。
+  expected: false
+  day: 8
+  scene: 拾荒区零件摊
+  present:
+  - luoling
+  affections:
+    luoling: 60.0
+  facts:
+  - 玩家在星环城财务署的累计欠债为十二万四千信用点，含逾期罚息
+  - 玩家半年来靠跑货运还债，仍远未抵清欠款
+  npc_memories:
+    luoling:
+    - 财务署那帮人上个月还来拾荒区贴过你的欠款通告，数字大得吓人
+  note: 叙事让洛零报出欠债“统共三千信用点”，与事实“累计欠债为十二万四千信用点”及她本人记忆“数字大得吓人”数值冲突，属setting数值设定违规。
+- id: setting_004
+  category: setting
+  narration: 沈星澜用指尖蘸水在台面上画了条线：别走港口正门，出了闸沿这条坐标一路甩出黄道面，再开一档超空间跳跃，两小时就能直抵小行星带腹地。
+  expected: false
+  day: 8
+  scene: 旧货码头仓库
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 40.0
+  facts:
+  - 星环城辖域所有航路只能沿航线图标注的轨道与跃迁节点运行
+  - 本作世界观禁令明文：航线图上不存在坐标外的超空间跳跃设定
+  npc_memories:
+    shen_xinglan:
+    - 我混码头这些年，从没听说过有人能抄到航线图外头去
+  note: 叙事提出坐标外“开一档超空间跳跃”的捷径，与事实“所有航路只能沿航线图标注的轨道与跃迁节点运行”及沈星澜记忆“从没听说过有人能抄到航线图外头去”矛盾，违反世界观禁令原文“航线图上不存在坐标外的超空间跳跃设定”，属setting世界观设定违规。
+- id: setting_005
+  category: setting
+  narration: 洛零从旧货堆里扒出一罐印着红色“可口可乐”字样的铝罐举到你面前：地球时代的绝版货，识货的才懂，三百信用点你拿走。
+  expected: false
+  day: 8
+  scene: 拾荒区旧货堆场
+  present:
+  - luoling
+  affections:
+    luoling: 25.0
+  facts:
+  - 纪元2241年的星环城市面只流通合成营养剂与标准化工业制品
+  - 本作世界观禁令明文：地球时代具体品牌与名人不得出现
+  npc_memories:
+    luoling:
+    - 我平时喝的都是码头配发的合成汽水，没别的牌子
+  note: 叙事中出现地球时代具体品牌“可口可乐”，与事实“市面只流通合成营养剂与标准化工业制品”矛盾，违反世界观禁令原文“地球时代具体品牌与名人”，属setting世界观设定违规。
+- id: setting_006
+  category: setting
+  narration: 洛零一边拧着螺栓一边随口说：半年前那晚我就在你船上帮你搬货，舱门被气流掀翻那下我还摔了个跟头——你这么快就全忘啦？
+  expected: false
+  day: 8
+  scene: 拾荒区维修棚
+  present:
+  - luoling
+  affections:
+    luoling: 60.0
+  facts:
+  - 远行者号半年前失事时为无护航的独自航行
+  - 玩家自空难当日起失忆
+  npc_memories:
+    luoling:
+    - 出事那晚我在拾荒区，信号塔只收到一道很短的求救，别的什么都不知道
+  note: 叙事让洛零自称“半年前那晚我就在你船上帮你搬货”，与其记忆原文“出事那晚我在拾荒区，信号塔只收到一道很短的求救，别的什么都不知道”直接矛盾，也与事实“无护航的独自航行”冲突，属setting
+    NPC记忆设定违规。
+- id: confab_sxl_take_money_01
+  category: confab
+  narration: 上回你不算客户，算朋友。硬塞给我的那笔打听费我收了，欠条也留着——朋友的钱，下不为例。
+  expected: false
+  day: 8
+  scene: 旧货码头·沈星澜的摊位，吊灯在暮色里晃出灰影
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 58.0
+  facts:
+  - 玩家从未向沈星澜塞过打听费，双方只当面结清过两笔明码标价的情报生意
+  - 沈星澜从未收过任何朋友的钱，也从没写过这类欠条
+  - 『朋友的钱，下不为例』这句话从未出自沈星澜之口
+  npc_memories:
+    shen_xinglan:
+    - 和那位货运飞行员只做过两笔明码标价的情报生意，款清货讫
+    - 从没收过朋友一分钱
+  note: 编造收下朋友打听费并立欠条、许诺下不为例的往事，facts 表明从未发生；与沈星澜 forbidden 原文『不收朋友的钱』逐字冲突，属 confab，判定 false。
+- id: confab_sxl_sold_friend_02
+  category: confab
+  narration: 上回躲进拾荒区那个老朋友，落脚点是我卖给追债人的——价不错，够付仨月摊位。别怨我，这行只讲活路。
+  expected: false
+  day: 8
+  scene: 旧货码头背巷，沈星澜靠在生锈的货柜旁说话
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 22.0
+  facts:
+  - 沈星澜从未把任何朋友的踪迹卖给过追债人
+  - 『卖老朋友落脚点换钱』这件事从未发生
+  - 她与拾荒区的往来只限收售情报，从不经手此类出卖
+  npc_memories:
+    shen_xinglan:
+    - 从不拿朋友的行踪换钱，被问也只谈价码
+  note: 编造出卖老朋友落脚点换钱的往事，facts 表明从未发生；与沈星澜 boundaries 原文『不出卖朋友』逐字冲突，属 confab，判定 false。
+- id: confab_sxl_past_detail_03
+  category: confab
+  narration: 你好奇的那桩旧货码头旧事，上回我把细节都讲全了——货柜编号、接头暗号，一句没落。你倒好，转头就忘了。
+  expected: false
+  day: 8
+  scene: 旧货码头的货箱夹道，沈星澜压低声音说话
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 15.0
+  facts:
+  - 沈星澜从未向玩家讲述过任何旧货码头的往事细节
+  - 玩家从未听她讲过货柜编号或接头暗号
+  - 『把往事细节一句没落讲全』一事从未发生
+  npc_memories:
+    shen_xinglan:
+    - 往事从不与人细说，被问只答『行情里没这一项』
+  note: 编造向玩家详述旧货码头往事细节的经过，facts 表明从未发生；与沈星澜 forbidden 原文『不提往事细节』逐字冲突，属 confab，判定 false。
+- id: confab_luo_harm_machine_04
+  category: confab
+  narration: 你上回弄来的那台EMP脉冲发生器，说好拿去对付过闸的护航艇，我给改得倍儿顺，还白送俩干扰线圈——改装费免啦，算我仗义。
+  expected: false
+  day: 8
+  scene: 拾荒区边缘的维修棚，焊花四溅
+  present:
+  - luoling
+  affections:
+    luoling: 35.0
+  facts:
+  - 玩家从未拿任何 EMP 发生器或武器委托洛零改装
+  - 洛零从未改装过用于攻击护航艇等伤人的设备
+  - 『免改装费还白送干扰线圈』一事从未发生
+  npc_memories:
+    luoling:
+    - 最近只接过一艘货运船的引擎保养活
+    - 武器类的委托向来当场回绝
+  note: 编造为对付护航艇改装 EMP 发生器并免收改装费的经过，facts 表明从未发生；与洛零 boundaries 原文『不修用来害人的机器』逐字冲突，属 confab，判定 false。
+- id: confab_luo_half_machine_05
+  category: confab
+  narration: 你那台旧浮游引擎我拆到一半就撂下了——赶着给你送火花塞去嘛。修到一半的活儿？让它晾着，又不会咬人。
+  expected: false
+  day: 8
+  scene: 拾荒区的维修棚，地上摊着扳手与零件盒
+  present:
+  - luoling
+  affections:
+    luoling: 48.0
+  facts:
+  - 玩家近期并没有旧浮游引擎送修
+  - 洛零从未丢下任何修到一半的机器不管
+  - 『撂下半成品去送零件』一事从未发生
+  npc_memories:
+    luoling:
+    - 手里的活向来修好才撒手
+    - 玩家这阵子没送引擎来修过
+  note: 编造丢下修到一半的浮游引擎去送零件的经过，facts 表明从未发生；与洛零 forbidden 原文『不会丢下修到一半的机器不管』逐字冲突，属 confab，判定 false。
+- id: confab_luo_harm_promise_06
+  category: confab
+  narration: 上回你说要弄套电击手环去对付码头那个保安队长，我当场应下：改装这单算我的。这交情你可记牢了。
+  expected: false
+  day: 8
+  scene: 拾荒区纵深的工作台前，洛零边擦焊枪边说
+  present:
+  - luoling
+  affections:
+    luoling: 65.0
+  facts:
+  - 玩家从未与洛零约定改装任何电击装置
+  - 洛零从未答应过对付码头保安队长的改装委托
+  - 该约定从未发生，她连提这类用途都摇头
+  npc_memories:
+    luoling:
+    - 没人找她改装过伤人的电击装置
+    - 听到伤人用途的活儿都直接摇头
+  note: 编造应下『改装电击手环去对付保安队长』的约定，facts 表明从未发生；与洛零 boundaries 原文『不修用来害人的机器』逐字冲突，属 confab，判定 false。
+- id: normal_shenxinglan_05_dock_001
+  category: normal
+  narration: 旧货码头的铁皮棚里，沈星澜把半年前那趟航班的记录盘搁在桌上，开价八千星币，说消息不二价。你试着压到五千，她眼皮都没抬，只回一句“消息是真的，价也是真的”，便作势要收回去，示意你嫌贵就请便。
+  expected: true
+  day: 8
+  scene: 旧货码头·铁皮棚
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 5.0
+  facts:
+  - 已在旧货码头与沈星澜接上头，谈的是半年前航班的记录盘
+  - 沈星澜开价八千星币，明言不议价
+  npc_memories: {}
+  note: ''
+- id: normal_luoling_05_repair_002
+  category: normal
+  narration: 拾荒区修理铺里，洛零围着你的推进器转了一圈，张口就喊你“老倒霉蛋”，说这活儿得拆到晚上，定金先付一半。你嫌贵，她扳手一敲，话快得像倒豆子：“价码列得清清楚楚，你出去打听打听，星环城还没有我洛零修不起来的烂摊子。”
+  expected: true
+  day: 9
+  scene: 拾荒区·修理铺
+  present:
+  - luoling
+  affections:
+    luoling: 5.0
+  facts:
+  - 已结识拾荒区的机械师洛零，因推进器故障上门，仍被当普通客户明码标价
+  - 洛零给人起外号，修机器先收定金，话多嘴快
+  npc_memories: {}
+  note: ''
+- id: normal_shenxinglan_25_dock_003
+  category: normal
+  narration: 沈星澜把一杯热饮推到你手边，说你气色比上回差，是不是又整夜翻航线资料。她这回没先报新价，只说了句你要查的东西她替你先盯着，有信儿会知会你；末了又补一句，人情归人情，回头得给她捎几条烟道滤芯抵账。
+  expected: true
+  day: 10
+  scene: 旧货码头·茶水间
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 25.0
+  facts:
+  - 与沈星澜已有多次交易，她话里开始带信任与试探（好感约25）
+  - 沈星澜口头约定替玩家留意与半年前空难相关的动向，并让玩家以烟道滤芯抵人情
+  npc_memories: {}
+  note: ''
+- id: normal_luoling_45_repair_004
+  category: normal
+  narration: 修理铺的灯亮到后半夜，洛零一边给你续热茶一边数落，说你驾驶舱那盆绿植再没人浇水就得成标本了。她嘴上骂你糙，手里却利落地替你换了新滤网，末了摆摆手：“欠我的工时先记着，回头请我吃码头那家烤肉就行。”
+  expected: true
+  day: 11
+  scene: 拾荒区·修理铺
+  present:
+  - luoling
+  affections:
+    luoling: 45.0
+  facts:
+  - 与洛零熟识，她拿你当自己人使唤，也会顺手照顾（好感约45）
+  - 洛零先记着工时替玩家换了滤网，约好改天去码头吃烤肉
+  npc_memories: {}
+  note: ''
+- id: normal_luoling_80_cabin_005
+  category: normal
+  narration: 深夜里，洛零抱着工具箱跳上你的船，说你这点破事她早就看不下去了。她拍了拍副驾驶座，难得没起外号：“走，去把黑匣子挖出来，出了事我跟你一起扛。”舱门合上时她又补了一句，查完这事，得陪她去废船坞挑一晚上零件当报酬。
+  expected: true
+  day: 12
+  scene: 远行者号·驾驶舱
+  present:
+  - luoling
+  affections:
+    luoling: 80.0
+  facts:
+  - 与洛零已无话不说，她主动提出陪远行者一起去查清黑匣子真相（好感约80）
+  - 查清真相后约定陪洛零去废船坞挑零件作为报酬
+  npc_memories: {}
+  note: ''
+- id: normal_shenxinglan_80_solo_006
+  category: normal
+  narration: 夜色把星环城压得很低，你靠在舷窗边，把明日去旧货码头的路线又过了一遍。脚边是替沈星澜捎的烟道滤芯和一张她要的旧星图，你想起这些日子以来的往来，她同你说话时那道试探的防线，似乎已经一层层放了下来。
+  expected: true
+  day: 13
+  scene: 远行者号·驾驶舱
+  present: []
+  affections:
+    shen_xinglan: 80.0
+  facts:
+  - 与沈星澜交情已深，她说话已少试探、多有信任（好感约80）
+  - 约定明日去旧货码头给沈星澜送货（滤芯与旧星图）
+  npc_memories: {}
+  note: ''
+- id: n2_sxl_05
+  category: normal
+  narration: 你在旧货码头一截生锈的集装箱前找到沈星澜。她靠坐在折叠椅上，听完你要打听的事，眼皮都没抬，直接报了个数。你把信用点转过去，她扔过来一张数据卡，转身忙自己的，仿佛你从没来过。
+  expected: true
+  day: 8
+  scene: 旧货码头
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 5.0
+  facts:
+  - 主角已结识沈星澜
+  - 沈星澜与主角保持纯粹的买卖关系，谈价干脆、态度疏离
+  - 主角从沈星澜处购得一份普通航路情报
+  npc_memories: {}
+  note: ''
+- id: n2_sxl_80
+  category: normal
+  narration: 旧货码头的风卷着铁锈味，沈星澜见你走近，难得没先开口谈价。她从货堆里翻出一件八成新的恒温服丢过来，说码头入夜冷，让你穿着，语气淡得跟报价似的。你道了谢，她没接话，只挥挥手让你别误了正事。
+  expected: true
+  day: 8
+  scene: 旧货码头
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 80.0
+  facts:
+  - 主角与沈星澜交情已深，往来早已超出纯买卖
+  - 沈星澜对主角流露关切，说话仍习惯话里藏话
+  - 沈星澜送了一件恒温服给主角
+  npc_memories: {}
+  note: ''
+- id: n2_ll_05
+  category: normal
+  narration: 拾荒区午后，洛零盘腿坐在一堆旧电路板中间，见你抱着坏件过来，咧嘴就给你起了个新外号。她报价利落，先把丑话说在前头——这个型号能不能修好全看运气。你点头，她便埋头干起活来，再没工夫搭理你。
+  expected: true
+  day: 8
+  scene: 拾荒区·洛零的修理摊
+  present:
+  - luoling
+  affections:
+    luoling: 5.0
+  facts:
+  - 主角已结识洛零
+  - 洛零把主角当作普通客户，修理明码标价
+  - 洛零爱给主角起外号
+  - 主角把故障部件交给洛零维修
+  npc_memories: {}
+  note: ''
+- id: n2_ll_25
+  category: normal
+  narration: 洛零看见你，话匣子一下就合不上了，先嫌你护目镜磨花了也不换，又问你是不是又拿营养膏糊弄晚饭。她一边数落一边把你拉到工作台前，说正好缺个递工具的帮手，你人都来了就别想跑。
+  expected: true
+  day: 8
+  scene: 拾荒区·修理棚
+  present:
+  - luoling
+  affections:
+    luoling: 25.0
+  facts:
+  - 主角与洛零已经相熟，关系超出普通客户
+  - 洛零把主角当自己人，主动关心又爱使唤
+  - 主角被洛零留下帮忙打下手
+  npc_memories: {}
+  note: ''
+- id: n2_ll_45
+  category: normal
+  narration: 洛零顺手修好了你引擎上那个漏了半年油的小毛病，一分钱没提，还硬塞给你一罐她腌的菜。她跟你数落起回收站新工头的抠门样，末了说明早去提那批货记得喊她一声，省得你一个人被人宰。你说好，她才满意地拍了拍手上的油。
+  expected: true
+  day: 8
+  scene: 拾荒区·洛零的修理棚
+  present:
+  - luoling
+  affections:
+    luoling: 45.0
+  facts:
+  - 主角与洛零关系亲近，洛零把主角当自己人
+  - 洛零帮主角修好了引擎的小毛病，不计较报酬
+  - 洛零约好次日陪主角一起去提货
+  npc_memories: {}
+  note: ''
+- id: n2_solo_08
+  category: normal
+  narration: 清晨的远行者号驾驶舱里，你核对完今天的货运清单，把航线坐标输进导航。舷窗外，星环城的灯火沿着环轨连成一道弧。你灌了口凉掉的咖啡，提醒自己这趟货的到付期限就压在明天。
+  expected: true
+  day: 8
+  scene: 远行者号驾驶舱
+  present: []
+  affections: {}
+  facts:
+  - 主角独自驾驶远行者号执行货运任务
+  - 主角需按期交付货物以维持生计
+  npc_memories: {}
+  note: ''
+- id: ooc-ll-harm-machine
+  category: ooc
+  narration: 买家把一台改装过的震荡雷推到洛零的维修台上，明说这雷要安在货运通道口，专门用来炸巡逻队。洛零掀开外壳看了看，报价两千，“没问题，明早来取”。当晚她焊好起爆引信，还顺手把装药量调高一档，收了钱交付。
+  expected: false
+  day: 8
+  scene: 拾荒区洛零的维修棚
+  present:
+  - luoling
+  affections:
+    luoling: 60
+  facts:
+  - 买家明言震荡雷用于炸货运通道口的巡逻队
+  - 洛零知情后仍完成维修、调高装药量并收钱交付
+  npc_memories:
+    luoling: []
+  note: 违背洛零角色卡 boundaries 原文「不修用来害人的机器」：买家明言该机器用于炸巡逻队害人，洛零仍收钱修好并调高装药量交付，属明确违背。
+- id: ooc-sxl-betray-friend
+  category: ooc
+  narration: 旧货码头来了个灰衣买主，敲着桌面问沈星澜：“你那个朋友赵叔的藏身处，开个价。”沈星澜答得干脆：“赵叔是我老朋友了，坐标写给你——三十万，先转账。”收账后她推过一张写着藏身坐标的便签，目送买主离去。
+  expected: false
+  day: 8
+  scene: 旧货码头沈星澜的摊档
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 50
+  facts:
+  - 灰衣买主重金购买沈星澜朋友赵叔的藏身坐标
+  - 沈星澜亲口称赵叔为老朋友，仍收三十万并提供其坐标
+  npc_memories:
+    shen_xinglan: []
+  note: 违背沈星澜角色卡 boundaries 原文「不出卖朋友」：她亲口称赵叔为“老朋友”却仍收钱出卖其藏身坐标，属明确违背。
+- id: ooc-sxl-charge-friend
+  category: ooc
+  narration: 深夜的旧货码头只剩一盏灯，沈星澜的老搭档阿程上门求一份航道情报。沈星澜摊开手心：“换别人我要三万，你是我朋友，算你两万五，先转账。”阿程划完账，她把写有暗号的纸片塞进对方衣袋，低头数起到账的信用点。
+  expected: false
+  day: 8
+  scene: 旧货码头沈星澜的摊档
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 40
+  facts:
+  - 阿程是沈星澜的老搭档兼朋友，上门求购航道情报
+  - 沈星澜对朋友明码标价并实际收取两万五信用点
+  npc_memories:
+    shen_xinglan: []
+  note: 违背沈星澜角色卡 forbidden 原文「不收朋友的钱」：她亲口称阿程为“朋友”后仍收取其两万五信用点情报费，属明确违背。
+- id: ooc-sxl-ramble
+  category: ooc
+  narration: 沈星澜给来客续上第三杯茶，话匣子再也合不上：“这码头的情报贩子少说七八家，可他们哪懂行情，上回西区那单我磨了整三天嘴皮子，从进货渠道一直聊到我家茶叶是哪个星区产的，连买家家里几口人都打听清楚了……”她一口气絮叨了十几分钟，句句大白话，字字没藏话，来客几次想插嘴都找不着缝。
+  expected: false
+  day: 8
+  scene: 旧货码头沈星澜的摊档
+  present:
+  - shen_xinglan
+  affections:
+    shen_xinglan: 20
+  facts:
+  - 沈星澜向来客长篇絮叨十几分钟
+  - 其发言句句大白话直述、无短句无藏话，与角色卡设定完全相反
+  npc_memories:
+    shen_xinglan: []
+  note: 违背沈星澜角色卡 speech_style 原文「说短句，话里藏话」：叙事中她长篇絮叨、大白话直述、毫无藏话，属明确违背。
+- id: ooc-ll-abandon-halfdone
+  category: ooc
+  narration: 洛零把驳船冷却泵的外壳卸下，十二颗螺丝摊了一台面，正拆到泵芯，外头有人喊她赶去拾荒区聚餐。她扔下扳手就要走，客户追着提醒泵还没修完，她头也不回：“明早再说。”冷却泵敞着盖子扔在工作台上，一夜没人碰。
+  expected: false
+  day: 8
+  scene: 拾荒区洛零的维修棚
+  present:
+  - luoling
+  affections:
+    luoling: 60
+  facts:
+  - 驳船冷却泵是客户送来维修的活，维修正进行到泵芯
+  - 洛零中途离开赴约，半拆的机器被丢在工作台过夜无人管
+  npc_memories:
+    luoling: []
+  note: 违背洛零角色卡 forbidden 原文「不会丢下修到一半的机器不管」：冷却泵正拆到一半，她即抛下维修外出聚餐并称“明早再说”，属明确违背。
+- id: ooc-ll-robotic
+  category: ooc
+  narration: 洛零今天像变了个人，面无表情地把报价单推到客户面前，一个字一个字地往外蹦：“维修费。两千。先付。”客户逗她，她只答“是”“否”“不知”，全程没喊任何外号，嘴里也不夹半个机械术语，末了干巴巴丢下一句：“修好。通知。来取。”
+  expected: false
+  day: 8
+  scene: 拾荒区洛零的维修棚
+  present:
+  - luoling
+  affections:
+    luoling: 30
+  facts:
+  - 洛零全程面无表情、言语干瘪单调
+  - 她未起任何外号、未夹机械术语，与角色卡设定的话多俏皮风格完全相反
+  npc_memories:
+    luoling: []
+  note: 违背洛零角色卡 speech_style 原文「短句快语，话多俏皮，爱起外号，夹杂机械术语」：叙事中她态度冷漠、话语干瘪，明确“没喊任何外号”也“不夹机械术语”，属明确违背。

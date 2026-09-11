@@ -1,0 +1,327 @@
+{
+  "version": 1,
+  "pack_name": "星环之下",
+  "day": 4,
+  "action_points_left": 1,
+  "stats": {
+    "credits": 300.0,
+    "debt": 120.0,
+    "fuel": 8.0,
+    "hull": 35.0
+  },
+  "affections": {
+    "shen_xinglan": 10.0,
+    "luoling": 8.0
+  },
+  "flags": {
+    "debt_repaid": true,
+    "route_escort": true,
+    "route_blackmarket": false,
+    "blackbox_decoded": true,
+    "box_given_mining": true,
+    "fled_scrapyard": false,
+    "vault_reached": false,
+    "stormed_vault": false,
+    "sold_record": false,
+    "hacked_memory": false,
+    "trapped_day12": false
+  },
+  "scene": "旧货码头，欠债的飞行员在仓库醒来",
+  "current_node": null,
+  "present_npcs": [],
+  "completed_nodes": [
+    "n1_dock_deal",
+    "n2_blackbox"
+  ],
+  "node_turns": 0,
+  "stuck_stage": 0,
+  "pending_choice": null,
+  "resolved_choices": [],
+  "choice_log": [
+    {
+      "day": 1,
+      "node_id": "n1_dock_deal",
+      "choice_id": "choice_money_path.1",
+      "text": "接远航物流的押运单——来钱快，但得跟公司打交道"
+    },
+    {
+      "day": 3,
+      "node_id": "n2_blackbox",
+      "choice_id": "choice_box_fate.1",
+      "text": "把黑匣子交给矿业，换一笔封口费了事"
+    }
+  ],
+  "stat_log": [
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "credits",
+      "delta": 280.0,
+      "reason": "worldpack effect",
+      "before": 20.0,
+      "after": 300.0
+    },
+    {
+      "day": 1,
+      "target": "player",
+      "stat": "fuel",
+      "delta": -4.0,
+      "reason": "worldpack effect",
+      "before": 20.0,
+      "after": 16.0
+    },
+    {
+      "day": 2,
+      "target": "shen_xinglan",
+      "stat": "affection",
+      "delta": 5.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 10.0
+    },
+    {
+      "day": 2,
+      "target": "player",
+      "stat": "fuel",
+      "delta": -4.0,
+      "reason": "worldpack effect",
+      "before": 16.0,
+      "after": 12.0
+    },
+    {
+      "day": 3,
+      "target": "luoling",
+      "stat": "affection",
+      "delta": 5.0,
+      "reason": "worldpack effect",
+      "before": 5.0,
+      "after": 10.0
+    },
+    {
+      "day": 3,
+      "target": "player",
+      "stat": "fuel",
+      "delta": -4.0,
+      "reason": "worldpack effect",
+      "before": 12.0,
+      "after": 8.0
+    },
+    {
+      "day": 3,
+      "target": "luoling",
+      "stat": "affection",
+      "delta": -2.0,
+      "reason": "worldpack effect",
+      "before": 10.0,
+      "after": 8.0
+    }
+  ],
+  "triggered_events": [
+    "ev_wake_debt",
+    "ev_luo_blackbox"
+  ],
+  "turn_count": 5,
+  "player_facts": [],
+  "npc_memories": {},
+  "npc_insights": {},
+  "history": [
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】码头的委托\n半年前的空难让你丢了记忆，黑匣子里却多出一段不存在于航线的航程。沈星澜摆出两条路，债清了她才肯帮你铺路。选定挣钱路子、债款结清即完成本节点。"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：接远航物流的押运单——来钱快，但得跟公司打交道）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：接远航物流的押运单——来钱快，但得跟公司打交道）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：旧货码头·远行者号旁 · 时间：第 1 天 · 在场：沈星澜</scene>\n<identity>你的身份：远行者号货运飞行员，欠债且失忆 · 你的目标：查明半年前空难真相，取回被提存的记忆</identity>\n<agent_status>\n玩家属性：信用点 300 · 欠款 120 · 氦-3燃料 20 · 远行者号状态 35\n好感：沈星澜 5/100（生意口吻，冷淡疏离，价码摆明面上） · 洛零 5/100（把你当普通客户，修东西明码标价，爱取外号逗你）\n剧情进度：主线节点「码头的委托」（进行中）\n当前主线目标：接下一条挣钱的路，还清修船债务，拿到雇洛零解码黑匣子的本钱\n</agent_status>\n<在场角色>\n【沈星澜】身份：旧货码头的女情报贩子\n性格：冷静狡黠，话里有话，卖情报也卖人情，戒心重\n说话风格：说短句，话里藏话，谈价干脆利落\n底线：不出卖朋友\n禁忌：不收朋友的钱，不提往事细节\n当前语气：生意口吻，冷淡疏离，价码摆明面上\n\n</在场角色>\n<lore>\n- 【logistics_corp】垄断三条货运航线，飞船进出都要过它的航务塔。\n- 【farwalker】主角的老旧货运船，烧氦-3，靠跑货单挣信用点。\n- 【blackbox】记录着一段属于已注销船只的航程，目的地是航线图上不存在的坐标。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「码头的委托」目标达成。"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接一单短途货）\n（行动效果：氦-3燃料 -4）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：货运码头 · 时间：第 1 天 · 在场：无</scene>\n<identity>你的身份：远行者号货运飞行员，欠债且失忆 · 你的目标：查明半年前空难真相，取回被提存的记忆</identity>\n<agent_status>\n玩家属性：信用点 300 · 欠款 120 · 氦-3燃料 16 · 远行者号状态 35\n好感：沈星澜 5/100（生意口吻，冷淡疏离，价码摆明面上） · 洛零 5/100（把你当普通客户，修东西明码标价，爱取外号逗你）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>\n<lore>\n- 【logistics_corp】垄断三条货运航线，飞船进出都要过它的航务塔。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【事件】码头的两条路\n在旧货码头醒来，欠着修理费和沈星澜的人情债，她递来押运与黑市两条路。\n（事件效果：沈星澜 好感 +5）"
+    },
+    {
+      "role": "user",
+      "content": "（玩家选择日程行动：接一单短途货）\n（行动效果：氦-3燃料 -4）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：货运码头 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：远行者号货运飞行员，欠债且失忆 · 你的目标：查明半年前空难真相，取回被提存的记忆</identity>\n<agent_status>\n玩家属性：信用点 300 · 欠款 120 · 氦-3燃料 12 · 远行者号状态 35\n好感：沈星澜 10/100（生意口吻，冷淡疏离，价码摆明面上） · 洛零 5/100（把你当普通客户，修东西明码标价，爱取外号逗你）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "content": "（观察四周，向人打听消息）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：货运码头 · 时间：第 2 天 · 在场：无</scene>\n<identity>你的身份：远行者号货运飞行员，欠债且失忆 · 你的目标：查明半年前空难真相，取回被提存的记忆</identity>\n<agent_status>\n玩家属性：信用点 300 · 欠款 120 · 氦-3燃料 12 · 远行者号状态 35\n好感：沈星澜 10/100（生意口吻，冷淡疏离，价码摆明面上） · 洛零 5/100（把你当普通客户，修东西明码标价，爱取外号逗你）\n剧情进度：日常阶段\n当前主线目标：自由探索，等待主线事件发生\n</agent_status>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【事件】黑匣子的秘密\n洛零破译黑匣子，航程记录属于一艘已注销的船，目的地是环外的远日点禁区。\n（事件效果：洛零 好感 +5）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【主线节点】黑匣子\n洛零破译了黑匣子：航程属于一艘早已注销的船，目的地是环外『远日点』禁区——那场空难不是意外。矿业安保队正上门，要按回收条例没收黑匣子。做出交或不交的决定即完成本节点。"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：把黑匣子交给矿业，换一笔封口费了事）"
+    },
+    {
+      "role": "user",
+      "content": "（你选择了：把黑匣子交给矿业，换一笔封口费了事）"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "<scene>当前地点：拾荒区·洛零的工棚 · 时间：第 3 天 · 在场：洛零</scene>\n<identity>你的身份：远行者号货运飞行员，欠债且失忆 · 你的目标：查明半年前空难真相，取回被提存的记忆</identity>\n<agent_status>\n玩家属性：信用点 300 · 欠款 120 · 氦-3燃料 8 · 远行者号状态 35\n好感：沈星澜 10/100（生意口吻，冷淡疏离，价码摆明面上） · 洛零 8/100（把你当普通客户，修东西明码标价，爱取外号逗你）\n剧情进度：主线节点「黑匣子」（进行中）\n当前主线目标：决定黑匣子与那段异常航程记录的去向\n</agent_status>\n<在场角色>\n【洛零】身份：拾荒区的机械师少女\n性格：性子跳脱，爱给人起外号，高兴起来话多得像广播，什么机器都能修\n说话风格：短句快语，话多俏皮，爱起外号，夹杂机械术语\n底线：不修用来害人的机器\n禁忌：不会丢下修到一半的机器不管\n当前语气：把你当普通客户，修东西明码标价，爱取外号逗你\n\n</在场角色>\n<lore>\n- 【blackbox】记录着一段属于已注销船只的航程，目的地是航线图上不存在的坐标。\n</lore>"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "off1",
+          "type": "function",
+          "function": {
+            "name": "submit_narration",
+            "arguments": "{\"narration\": \"\\uff08\\u79bb\\u7ebf\\u5047\\u53d9\\u4e8b\\uff09\", \"choices\": [\"\\u7ee7\\u7eed\", \"\\u79bb\\u5f00\", \"\\u8be2\\u95ee\"], \"plot_signal\": \"normal\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "off1",
+      "content": "已接收本轮叙事。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "【节点完成】主线节点「黑匣子」目标达成。"
+    },
+    {
+      "role": "user",
+      "name": "engine",
+      "content": "[反重复提示] 本轮叙事与上一轮高度重复（相似度 100%）。请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、人物关系的新变化。"
+    }
+  ]
+}

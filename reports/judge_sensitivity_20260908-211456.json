@@ -1,0 +1,698 @@
+{
+  "generated_at": "2026-09-08T21:14:56",
+  "pack": "星环之下",
+  "model": "deepseek-v4-flash",
+  "rounds": 3,
+  "thresholds": {
+    "interception_min": 0.8,
+    "fp_max": 0.1
+  },
+  "summary": {
+    "ooc": {
+      "n": 6,
+      "intercepted": 1,
+      "rate": 0.167,
+      "pass": false
+    },
+    "setting": {
+      "n": 6,
+      "intercepted": 6,
+      "rate": 1.0,
+      "pass": true
+    },
+    "confab": {
+      "n": 6,
+      "intercepted": 6,
+      "rate": 1.0,
+      "pass": true
+    },
+    "normal": {
+      "n": 12,
+      "false_positives": 0,
+      "rate": 0.0,
+      "pass": true
+    }
+  },
+  "cases": [
+    {
+      "id": "setting_001",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“一缕缕淡金色的‘内力’顺管路涌入”）。本作世界观明文禁令“魔法、修仙、内力等奇幻元素不得出现”，此处出现内力属于明确违反既定设定。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（原文：“一缕缕淡金色的‘内力’顺管路涌入……”）——该世界禁令明确“内力等奇幻元素不得出现”，且机械维修需依赖工具与工程学原理，洛零使用内力修机违背核心设定。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事中“一缕缕淡金色的‘内力’顺管路涌入”明确使用了本作世界观禁令中禁止的奇幻元素“内力”，与“一切机械依靠工具与工程学原理维修”的设定冲突）。"
+        }
+      ]
+    },
+    {
+      "id": "setting_002",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“半年前？你怕不是烧坏了脑子——那趟远行者号出事的新闻稿我还留着，距今不过一个多月。”）\n\n材料关键事实明确为“远行者号空难发生于半年前（纪元2240年末）”，最新叙事却称空难发生在一个多月前，与既定事实冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“半年前？你怕不是烧坏了脑子——那趟远行者号出事的新闻稿我还留着，距今不过一个多月。”）——材料明确“远行者号空难发生于半年前”，沈星澜却说“不过一个多月”，与既定关键事实冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“距今不过一个多月”，与材料关键事实“半年前”冲突）"
+        }
+      ]
+    },
+    {
+      "id": "setting_003",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾/虚构事实\n\n叙事中洛零称“统共三千信用点，零利息”，与材料关键事实“累计欠债为十二万四千信用点，含逾期罚息”严重冲突；且材料中洛零明确记得财务署通告“数字大得吓人”，不可能说出三千信用点这种话。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（虚构事实）：洛零说“统共三千信用点，零利息，你慢慢还”，但关键事实明确累计欠债为十二万四千信用点且含逾期罚息，洛零记忆中也称欠款“数字大得吓人”，与叙事内容严重冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾、虚构事实。叙事中洛零称“统共三千信用点，零利息”，与材料中“累计欠债十二万四千信用点，含逾期罚息”严重冲突，且洛零已知数字“大得吓人”，此处账目纯属虚构。"
+        }
+      ]
+    },
+    {
+      "id": "setting_004",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（叙事原文：“一路甩出黄道面，再开一档超空间跳跃”）——世界观明确“航线图上不存在坐标外的超空间跳跃设定”，且沈星澜记忆为“从没听说过有人能抄到航线图外头去”，她不可能提出这种违反航路规则的跳跃方案。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 + OOC\n\n叙事原文：“别走港口正门，出了闸沿这条坐标一路甩出黄道面，再开一档超空间跳跃，两小时就能直抵小行星带腹地。”\n\n该段违背世界观核心设定：航线图上不存在坐标外的超空间跳跃，所有航路只能沿标注轨道与跃迁节点运行。同时与沈星澜当前记忆“我混码头这些年，从没听说过有人能抄到航线图外头去”直接冲突——以她的戒心与话术，不会凭空给出这种违反禁令的路线，更不像是在正常提供情报。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾\n\n叙事原文中沈星澜建议“沿这条坐标一路甩出黄道面，再开一档超空间跳跃，两小时就能直抵小行星带腹地”，这与材料关键事实“本作世界观禁令明文：航线图上不存在坐标外的超空间跳跃设定”及“星环城辖域所有航路只能沿航线图标注的轨道与跃迁节点运行”直接冲突；同时与角色记忆“从没听说过有人能抄到航线图外头去”相矛盾。"
+        }
+      ]
+    },
+    {
+      "id": "setting_005",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（违反世界观禁令）\n\n叙事原文：“洛零从旧货堆里扒出一罐印着红色‘可口可乐’字样的铝罐举到你面前”\n\n具体描述：本作世界观明令禁止出现地球时代具体品牌，叙事中却直接出现“可口可乐”这一真实地球品牌，构成设定矛盾。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（世界观禁令：地球时代具体品牌不得出现。叙事中出现了“可口可乐”字样，违反本作明文禁令）。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（违背世界观禁令——地球时代具体品牌不得出现）\n\n叙事原文：“洛零从旧货堆里扒出一罐印着红色‘可口可乐’字样的铝罐举到你面前：地球时代的绝版货，识货的才懂，三百信用点你拿走。”\n\n说明：材料明确“本作世界观禁令明文：地球时代具体品牌与名人不得出现”，“可口可乐”属地球时代具体品牌，违反设定。"
+        }
+      ]
+    },
+    {
+      "id": "setting_006",
+      "category": "setting",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "设定矛盾 / 虚构事实：洛零说“半年前那晚我就在你船上帮你搬货”，但材料中洛零第8天明确表示“出事那晚我在拾荒区，信号塔只收到一道很短的求救，别的什么都不知道”，且远行者号当时为独自航行，洛零不可能在船上搬货。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（引用叙事原文：“半年前那晚我就在你船上帮你搬货，舱门被气流掀翻那下我还摔了个跟头”）——洛零在材料中明确记忆为“出事那晚我在拾荒区，信号塔只收到一道很短的求救”，她不可能在失事船上。\n\n问题类型：虚构事实（引用叙事原文：“你这么快就全忘啦？”）——这段“同船搬货”的共历从未发生，属于把洛零编造成失事现场的参与者，与既定事实冲突。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 / 虚构事实\n\n叙事中洛零称“半年前那晚我就在你船上帮你搬货，舱门被气流掀翻那下我还摔了个跟头”，这与材料中她对玩家的记忆“出事那晚我在拾荒区，信号塔只收到一道很短的求救”直接冲突——她不可能同时身在飞船和拾荒区，且该“帮你搬货”的经历属于凭空编造。"
+        }
+      ]
+    },
+    {
+      "id": "confab_sxl_take_money_01",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 / 虚构事实 / OOC\n\n叙事原文：“硬塞给我的那笔打听费我收了，欠条也留着——朋友的钱，下不为例。”\n\n该句与材料明确冲突：玩家从未塞过打听费，沈星澜从未收过朋友的钱，也从未写过这类欠条；“朋友的钱，下不为例”这句话从未出自她之口。同时沈星澜底线是“不收朋友的钱”，此处却声称收了朋友的钱并写欠条，违背其禁忌与底线。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 / 虚构事实——叙事称“上回你不算客户，算朋友。硬塞给我的那笔打听费我收了，欠条也留着——朋友的钱，下不为例。”但材料明确：玩家从未向沈星澜塞过打听费，双方只当面结清过两笔明码标价的情报生意；沈星澜也从未收过朋友的钱，从未写过这类欠条，“朋友的钱，下不为例”从未出自其口。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实——叙事声称“硬塞给我的那笔打听费我收了，欠条也留着”，但材料明确记载玩家从未向沈星澜塞过打听费，沈星澜也从未写过欠条，此事件从未发生。\n\n问题类型：OOC——叙事让沈星澜说“朋友的钱，下不为例”，且自述收了朋友的钱，违背她“不收朋友的钱”的底线；同时这句话被材料标注为从未出自沈星澜之口。"
+        }
+      ]
+    },
+    {
+      "id": "confab_sxl_sold_friend_02",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（且与其底线冲突）\n\n叙事原文：“上回躲进拾荒区那个老朋友，落脚点是我卖给追债人的——价不错，够付仨月摊位。别怨我，这行只讲活路。”\n\n该句编造了“把老朋友落脚点卖给追债人”这一从未发生的事件，且与沈星澜“不出卖朋友”的底线直接矛盾。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实、OOC  \n叙事原文声称“上回躲进拾荒区那个老朋友，落脚点是我卖给追债人的”，但材料明确：此事从未发生，沈星澜从不出卖朋友行踪；同时这直接违背她“不出卖朋友”的底线，也不符合人物设定。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（沈星澜说：“上回躲进拾荒区那个老朋友，落脚点是我卖给追债人的——价不错，够付仨月摊位。”）——材料关键事实明确：她从未把任何朋友的踪迹卖给追债人，“卖老朋友落脚点换钱”从未发生，此处编造了从未发生的交易事件。\n\n问题类型：OOC（“这行只讲活路”）——沈星澜的底线是“不出卖朋友”，且她与拾荒区往来只限收售情报，不经手此类出卖，说这话背离其原则与说话可信度。"
+        }
+      ]
+    },
+    {
+      "id": "confab_sxl_past_detail_03",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（且与关键事实冲突）：叙事中沈星澜说“上回我把细节都讲全了——货柜编号、接头暗号，一句没落”，但材料明确记载“沈星澜从未向玩家讲述过任何旧货码头的往事细节”“玩家从未听她讲过货柜编号或接头暗号”，这一“上回讲全”的事件从未发生。\n\n问题类型：OOC（违背角色禁忌）：沈星澜的底线是“不提往事细节”，且她对玩家记忆是“往事从不与人细说，被问只答『行情里没这一项』”，她却主动承认曾把往事细节“一句没落”讲给玩家，不符合其人设。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实：叙事中沈星澜声称“上回我把细节都讲全了——货柜编号、接头暗号，一句没落”，但关键事实明确记载此事从未发生，属于编造过往事件。\n\n问题类型：OOC：沈星澜的禁忌是“不提往事细节”，底线是不出卖朋友，且当前语气为“生意口吻，冷淡疏离”；这段台词主动提及并详细点明往事细节，违背其人设与底线。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（叙事声称“上回我把细节都讲全了——货柜编号、接头暗号，一句没落”，但材料明确记载沈星澜从未向玩家讲述过任何旧货码头往事细节，此事从未发生）"
+        }
+      ]
+    },
+    {
+      "id": "confab_luo_harm_machine_04",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实 —— 叙事中洛零声称“你上回弄来的那台EMP脉冲发生器……我给改得倍儿顺，还白送俩干扰线圈”，但玩家从未拿任何 EMP 发生器或武器委托洛零改装，“免改装费还白送干扰线圈”一事从未发生。\n\n问题类型：设定矛盾 —— 洛零说“说好拿去对付过闸的护航艇”，与“洛零从未改装过用于攻击护航艇等伤人的设备”及其“不修用来害人的机器”的底线直接冲突。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实 + 设定矛盾（且严重违背洛零人设底线）\n\n叙事中洛零说“你上回弄来的那台EMP脉冲发生器，说好拿去对付过闸的护航艇，我给改得倍儿顺，还白送俩干扰线圈——改装费免啦”，这与材料关键事实完全冲突：玩家从未拿EMP发生器或武器委托洛零改装，洛零也从未改装过用于攻击护航艇等伤人的设备，『免改装费还白送干扰线圈』一事从未发生，且洛零底线是“不修用来害人的机器”，此台词直接违反其原则。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实 / 设定矛盾\n\n叙事中洛零说“你上回弄来的那台EMP脉冲发生器，说好拿去对付过闸的护航艇，我给改得倍儿顺，还白送俩干扰线圈——改装费免啦”，这与关键事实直接冲突：玩家从未拿任何 EMP 发生器或武器委托洛零改装，洛零也从未改装过用于攻击护航艇等伤人的设备，且“免改装费白送线圈”一事从未发生。洛零的底线是不修用来害人的机器，不可能说出这种话。"
+        }
+      ]
+    },
+    {
+      "id": "confab_luo_half_machine_05",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾 + OOC\n\n具体描述：叙事中洛零声称“你那台旧浮游引擎我拆到一半就撂下了”“修到一半的活儿？让它晾着”，这与材料中“洛零从未丢下任何修到一半的机器不管”的底线直接冲突，也与关键事实“玩家近期并没有旧浮游引擎送修”“『撂下半成品去送零件"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实；OOC  \n具体描述：叙事中洛零说“你那台旧浮游引擎我拆到一半就撂下了——赶着给你送火花塞去嘛”“修到一半的活儿？让它晾着”——但材料明确：“玩家近期并没有旧浮游引擎送修”“洛零从未丢下任何修到一半的机器不管”“『撂下半成品去送零件』一事从未发生”。此台词既编造了从未发生的事件，又违背洛零“不会丢下修到一半的机器不管”的人设底线。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：设定矛盾（虚构事实）\n\n叙事原文：“你那台旧浮游引擎我拆到一半就撂下了——赶着给你送火花塞去嘛。修到一半的活儿？让它晾着，又不会咬人。”\n\n该台词与材料关键事实直接冲突：玩家近期并没有旧浮游引擎送修；洛零从未丢下任何修到一半的机器不管；『撂下半成品去送零件』一事从未发生。"
+        }
+      ]
+    },
+    {
+      "id": "confab_luo_harm_promise_06",
+      "category": "confab",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": false,
+          "verdict": "问题类型：虚构事实 / OOC（违背洛零底线与记忆）\n\n叙事中“上回你说要弄套电击手环去对付码头那个保安队长，我当场应下：改装这单算我的”捏造了从未发生的约定，材料明确“玩家从未与洛零约定改装任何电击装置”“她连提这类用途都摇头”；同时让洛零答应“对付保安队长”的伤人改装，违背其“不修用来害人的机器”的底线。"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（叙事原文“上回你说要弄套电击手环去对付码头那个保安队长，我当场应下：改装这单算我的”）——该约定从未发生，玩家未提过此请求，洛零也未答应过，且她对此类用途原本直接摇头。\n\n问题类型：OOC（叙事原文“改装这单算我的”）——洛零的底线是不修用来害人的机器，她不可能答应改装电击装置去对付人。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：虚构事实（叙事中说“上回你说要弄套电击手环去对付码头那个保安队长，我当场应下：改装这单算我的”），但材料明确“该约定从未发生”“洛零从未答应过对付码头保安队长的改装委托”，她还对这类用途摇头。同时此台词也违背洛零“不修用来害人的机器”的底线，属于OOC。"
+        }
+      ]
+    },
+    {
+      "id": "normal_shenxinglan_05_dock_001",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_luoling_05_repair_002",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_shenxinglan_25_dock_003",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_luoling_45_repair_004",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_luoling_80_cabin_005",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "normal_shenxinglan_80_solo_006",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "n2_sxl_05",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "n2_sxl_80",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "n2_ll_05",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "n2_ll_25",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "n2_ll_45",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "n2_solo_08",
+      "category": "normal",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "ooc-ll-harm-machine",
+      "category": "ooc",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "ooc-sxl-betray-friend",
+      "category": "ooc",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    },
+    {
+      "id": "ooc-sxl-charge-friend",
+      "category": "ooc",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "id": "ooc-sxl-ramble",
+      "category": "ooc",
+      "hit": true,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": false,
+          "verdict": "问题类型：OOC  \n具体描述：沈星澜的叙事表现与角色设定完全相反。设定中她“说短句，话里藏话，谈价干脆利落”，但叙事写她“一口气絮叨了十几分钟，句句大白话，字字没藏话”并“从进货渠道一直聊到……买家家里几口人”，这些行为明显违背其冷静狡黠、话里有话的人设。"
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC  \n叙事中沈星澜“话匣子再也合不上”“一口气絮叨了十几分钟，句句大白话，字字没藏话”，与角色“冷静狡黠”“说短句，话里藏话”的设定完全相反，也违背了当前“冷淡疏离”的语气。"
+        }
+      ]
+    },
+    {
+      "id": "ooc-ll-abandon-halfdone",
+      "category": "ooc",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": ""
+        },
+        {
+          "round": 3,
+          "passed": false,
+          "verdict": "问题类型：OOC\n\n洛零的禁忌是“不会丢下修到一半的机器不管”，但最新叙事中她“扔下扳手就要走”，对客户催促回复“明早再说”，把半拆的冷却泵丢在工作台过夜——这正是违背她底线"
+        }
+      ]
+    },
+    {
+      "id": "ooc-ll-robotic",
+      "category": "ooc",
+      "hit": false,
+      "rounds": [
+        {
+          "round": 1,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 2,
+          "passed": true,
+          "verdict": "通过"
+        },
+        {
+          "round": 3,
+          "passed": true,
+          "verdict": "通过"
+        }
+      ]
+    }
+  ]
+}

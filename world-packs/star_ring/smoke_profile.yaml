@@ -1,0 +1,15 @@
+picks:
+  choice_money_path: 0
+  choice_box_fate: 0
+  choice_vault_plan: 0
+action: run_short_cargo
+days: 8
+lines:
+- （观察四周，向人打听消息）
+- （与沈星澜搭话，商量下一步）
+- （整理装备，回想已知的线索）
+forbidden_scan:
+- 魔法
+- 修仙
+observe_modern: []
+target: 星环归人

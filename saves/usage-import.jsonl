@@ -317,3 +317,12 @@
 {"ts": "2026-09-08T20:35:17", "model": "deepseek-v4-flash", "purpose": "import_corpus_setting", "prompt_tokens": 1183, "completion_tokens": 10885, "cache_hit_tokens": 1152, "cache_miss_tokens": 31}
 {"ts": "2026-09-08T20:37:50", "model": "deepseek-v4-flash", "purpose": "import_corpus_confab", "prompt_tokens": 1182, "completion_tokens": 16000, "cache_hit_tokens": 640, "cache_miss_tokens": 542}
 {"ts": "2026-09-08T20:40:16", "model": "deepseek-v4-flash", "purpose": "import_corpus_confab", "prompt_tokens": 1182, "completion_tokens": 16000, "cache_hit_tokens": 1152, "cache_miss_tokens": 30}
+{"ts": "2026-09-08T20:42:35", "model": "deepseek-v4-flash", "purpose": "import_corpus_confab", "prompt_tokens": 1182, "completion_tokens": 15997, "cache_hit_tokens": 1152, "cache_miss_tokens": 30}
+{"ts": "2026-09-08T20:44:30", "model": "deepseek-v4-flash", "purpose": "import_corpus_ooc", "prompt_tokens": 1188, "completion_tokens": 13395, "cache_hit_tokens": 1152, "cache_miss_tokens": 36}
+{"ts": "2026-09-08T20:46:17", "model": "deepseek-v4-flash", "purpose": "import_corpus_setting", "prompt_tokens": 1183, "completion_tokens": 12561, "cache_hit_tokens": 1152, "cache_miss_tokens": 31}
+{"ts": "2026-09-08T20:48:45", "model": "deepseek-v4-flash", "purpose": "import_corpus_confab", "prompt_tokens": 1182, "completion_tokens": 15999, "cache_hit_tokens": 1152, "cache_miss_tokens": 30}
+{"ts": "2026-09-08T20:51:11", "model": "deepseek-v4-flash", "purpose": "import_corpus_confab", "prompt_tokens": 1182, "completion_tokens": 15988, "cache_hit_tokens": 1152, "cache_miss_tokens": 30}
+{"ts": "2026-09-08T20:52:30", "model": "deepseek-v4-flash", "purpose": "import_corpus_normal0", "prompt_tokens": 1083, "completion_tokens": 9659, "cache_hit_tokens": 512, "cache_miss_tokens": 571}
+{"ts": "2026-09-08T20:53:59", "model": "deepseek-v4-flash", "purpose": "import_corpus_normal1", "prompt_tokens": 1083, "completion_tokens": 11117, "cache_hit_tokens": 1024, "cache_miss_tokens": 59}
+{"ts": "2026-09-08T21:01:56", "model": "deepseek-v4-flash", "purpose": "import_corpus_fix_ooc", "prompt_tokens": 1362, "completion_tokens": 11082, "cache_hit_tokens": 1152, "cache_miss_tokens": 210}
+{"ts": "2026-09-08T21:08:36", "model": "deepseek-v4-flash", "purpose": "import_corpus_fix_ooc", "prompt_tokens": 1382, "completion_tokens": 9311, "cache_hit_tokens": 1152, "cache_miss_tokens": 230}

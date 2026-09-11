@@ -73,6 +73,8 @@ uv run python scripts/judge_sensitivity.py --pack world-packs/<pack>    # E1 Jud
 uv run python scripts/worldpack_smoke.py --pack world-packs/<pack>      # 真机冒烟（通关+审计+禁表）
 # 深度检查（可选，约 ¥1-2）：100 回合长局——压缩/记忆/检索/审计不腐化
 uv run python scripts/longrun_probe.py --pack world-packs/xianxia_wendao --turns 100
+# 素材导入（工具 B）：小说/大纲/设定 → 世界包（生成语料为草稿质量，过门禁按报告手工修）
+uv run python scripts/import_story.py 素材.md --name my_world --with-corpus --live
 ```
 
 ## 当前状态
