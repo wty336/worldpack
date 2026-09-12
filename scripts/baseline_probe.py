@@ -20,6 +20,7 @@ from pathlib import Path
 
 from game_agent.config import load_settings
 from game_agent.compression import history_tokens, locate_summary
+from game_agent.endpoint import fingerprint_for
 from game_agent.game import Game
 from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.state import GameState
@@ -249,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         "meta": {
             "seed": args.seed,
             "model": settings.model,
+            "endpoint": fingerprint_for(settings, "turn"),
             "max_turns": args.max_turns,
             "checkpoints": list(checkpoints),
             "facts": [{"id": f[0], "category": f[1], "plant_turn": f[2]} for f in FACTS],

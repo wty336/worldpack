@@ -24,6 +24,7 @@ import yaml
 
 from game_agent.budgets import EXTRACT_MAX_TOKENS, complete_with_empty_retry
 from game_agent.config import load_settings
+from game_agent.endpoint import fingerprint_for
 from game_agent.llm import LLMClient
 from game_agent.memory import EXTRACT_SYSTEM, parse_facts
 from game_agent.usage import UsageTracker
@@ -209,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "model": model,
+        "endpoint": fingerprint_for(settings, "extract"),
         "baseline": "zero-shot",
         "temperature": args.temperature,
         "note_temperature": "评测侧钉 0 以稳定尺子；生产 _extract_facts 未传 temperature（供应商默认 → 实测运行间方差 ±13pp）",

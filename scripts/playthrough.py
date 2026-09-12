@@ -17,6 +17,7 @@ from pathlib import Path
 
 from game_agent.audit import audit_stats
 from game_agent.config import load_settings
+from game_agent.endpoint import fingerprint_for
 from game_agent.game import Game
 from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.save import save_game
@@ -167,6 +168,7 @@ def main() -> int:
             "seed": args.seed,
             "strategy": args.strategy,
             "model": settings.model,
+            "endpoint": fingerprint_for(settings, "turn"),
         }
         save_path.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"

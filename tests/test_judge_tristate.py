@@ -177,6 +177,30 @@ def test_gate_summary_counts_unknown_separately():
     assert summary2["ooc"]["pass"] is False and failed2 is True
 
 
+def test_partial_category_run_is_not_a_gate():
+    """`--category confab` 之类的部分运行：只统计跑到的类别，不作门禁口径。
+
+    动机（2026-09-12）：语料只改了 confab，重测两侧却要付整包 flash 的钱
+    （整包 ≈¥0.83~1.67，单类 ≈¥0.25~0.5）；但部分运行绝不能被误读成"门禁通过"。
+    """
+    mod = _load_script("judge_sensitivity_under_test3", "judge_sensitivity.py")
+    results = [
+        {"id": "c1", "category": "confab", "hit": True, "rounds": []},
+        {"id": "c2", "category": "confab", "hit": False, "rounds": []},
+    ]
+
+    summary, failed = mod._summarize(results, ["confab"])
+
+    assert set(summary) == {"confab"}  # 没跑的类别既不判过也不判不过
+    assert summary["confab"]["pass"] is False and failed is True
+
+    # 单类满分也不代表门禁通过（其他类别根本没测）
+    ok_summary, _ = mod._summarize(
+        [{"id": "c3", "category": "confab", "hit": True, "rounds": []}], ["confab"]
+    )
+    assert "normal" not in ok_summary and "ooc" not in ok_summary
+
+
 def test_import_story_repair_skips_unknown_cases():
     mod = _load_script("import_story_under_test", "import_story.py")
     report = {

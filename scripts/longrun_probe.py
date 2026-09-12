@@ -27,6 +27,7 @@ from types import SimpleNamespace
 
 from game_agent.audit import audit_stats
 from game_agent.config import load_settings
+from game_agent.endpoint import fingerprint_for
 from game_agent.game import Game
 from game_agent.llm import LLMClient, LLMTurnError, build_tools
 from game_agent.save import save_game
@@ -286,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         report = {
             "pack": pack.world.name,
             "seed": args.seed,
+            "endpoint": fingerprint_for(settings, "turn"),
             "turns": state.turn_count,
             "day": state.day,
             "offline": args.offline,

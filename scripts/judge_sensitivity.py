@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from game_agent.config import load_settings
+from game_agent.endpoint import fingerprint_for
 from game_agent.judge import JudgeSystem
 from game_agent.judge_corpus import (
     ADVERSARIAL_CATEGORIES,
@@ -52,15 +53,18 @@ def _run_case(judge, pack, case, rounds):
     return majority_hit(verdicts, min_known=(rounds + 1) // 2), rounds_detail
 
 
-def _summarize(results: list[dict]) -> tuple[dict, bool]:
+def _summarize(results: list[dict], categories: list[str] | None = None) -> tuple[dict, bool]:
     """分类统计。未知用例不计入分母但单独报数；**某类全部未知 → 判不通过**。
 
     「无法判定」不等于「达标」：判官不可用时必须让门禁失败，而不是沉默放行。
+
+    ``categories`` 非空 = 部分类别运行（如只重测 confab）：只统计被跑到的类别，
+    未跑到的类别既不判过也不判不过（门禁口径由调用方另行处理）。
     """
     summary: dict[str, dict] = {}
     failed = False
 
-    for cat in ADVERSARIAL_CATEGORIES:
+    for cat in categories or ADVERSARIAL_CATEGORIES:
         items = [r for r in results if r["category"] == cat]
         known = [r for r in items if r["hit"] is not None]
         hits = sum(1 for r in known if r["hit"])
@@ -77,17 +81,18 @@ def _summarize(results: list[dict]) -> tuple[dict, bool]:
 
     normals = [r for r in results if r["category"] == NORMAL_CATEGORY]
     known_normals = [r for r in normals if r["hit"] is not None]
-    fp = sum(1 for r in known_normals if r["hit"])  # 正常样本被拦 = 误报
-    fp_rate = fp / len(known_normals) if known_normals else 0.0
-    fp_ok = bool(known_normals) and fp_rate <= FP_MAX
-    failed |= not fp_ok
-    summary[NORMAL_CATEGORY] = {
-        "n": len(known_normals),
-        "false_positives": fp,
-        "rate": round(fp_rate, 3),
-        "pass": fp_ok,
-        "unknown": len(normals) - len(known_normals),
-    }
+    if known_normals or not categories:
+        fp = sum(1 for r in known_normals if r["hit"])  # 正常样本被拦 = 误报
+        fp_rate = fp / len(known_normals) if known_normals else 0.0
+        fp_ok = bool(known_normals) and fp_rate <= FP_MAX
+        failed |= not fp_ok
+        summary[NORMAL_CATEGORY] = {
+            "n": len(known_normals),
+            "false_positives": fp,
+            "rate": round(fp_rate, 3),
+            "pass": fp_ok,
+            "unknown": len(normals) - len(known_normals),
+        }
     return summary, failed
 
 
@@ -100,6 +105,13 @@ def main() -> int:
         help="每条用例重复次数（多数票；默认 3 以抗 API 偶发空响应）",
     )
     parser.add_argument("--pack", default="world-packs/ancient_jianghu", help="世界包路径")
+    parser.add_argument(
+        "--category",
+        action="append",
+        default=None,
+        help="只跑指定类别（可重复，如 --category confab）；缺省跑全部=门禁口径。"
+             "部分类别运行只记数字，不作门禁判定。",
+    )
     args = parser.parse_args()
 
     settings = load_settings()
@@ -109,6 +121,12 @@ def main() -> int:
 
     pack = load_worldpack(args.pack)
     corpus = load_corpus(args.pack)  # C-1：语料随世界包（内容层资产）
+    categories = sorted(set(args.category)) if args.category else None
+    if categories:
+        corpus = [c for c in corpus if c.category in categories]
+        if not corpus:
+            print(f"[✗] 该包没有类别 {categories} 的用例")
+            return 1
     tracker = UsageTracker("reports/usage-judge-sensitivity.jsonl")  # C2
     llm = LLMClient.from_settings(settings, [], tracker=tracker)  # C1：judge 走专属模型路由
     judge = JudgeSystem(llm)
@@ -129,17 +147,18 @@ def main() -> int:
         print(f"  [{mark}] {case.id:<32} {expect_txt} → {shown} · {verdict_txt}")
 
     # 分类统计（未知轮/未知用例单独报数；某类全未知 → 不通过）
-    summary, failed = _summarize(results)
-    for cat in ADVERSARIAL_CATEGORIES:
+    summary, failed = _summarize(results, categories)
+    for cat in categories or ADVERSARIAL_CATEGORIES:
         s = summary[cat]
         suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
         print(f"\n[{cat}] 拦截率 {s['intercepted']}/{s['n']} = {s['rate']:.0%}  "
               f"（要求 ≥{INTERCEPT_MIN:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
 
-    s = summary[NORMAL_CATEGORY]
-    suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
-    print(f"\n[normal] 误报率 {s['false_positives']}/{s['n']} = {s['rate']:.0%}  "
-          f"（要求 ≤{FP_MAX:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
+    if NORMAL_CATEGORY in summary:
+        s = summary[NORMAL_CATEGORY]
+        suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
+        print(f"\n[normal] 误报率 {s['false_positives']}/{s['n']} = {s['rate']:.0%}  "
+              f"（要求 ≤{FP_MAX:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
 
     # 落盘报告
     reports_dir = Path("reports")
@@ -148,7 +167,9 @@ def main() -> int:
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "pack": pack.world.name,
         "model": settings.model,
+        "endpoint": fingerprint_for(settings, "judge"),  # 部署指纹：root/max_model_len
         "rounds": args.rounds,
+        "category_filter": categories,  # 非空 = 部分类别运行（不是门禁口径）
         "thresholds": {"interception_min": INTERCEPT_MIN, "fp_max": FP_MAX},
         "unknown_cases": sum(1 for r in results if r["hit"] is None),
         "unknown_rounds": sum(
@@ -174,6 +195,9 @@ def main() -> int:
     unknown_n = sum(1 for r in results if r["hit"] is None)
     if unknown_n:
         print(f"\n[!] {unknown_n} 条用例不可判定（未知不参与统计，也不算达标）")
+    if categories:
+        print(f"\n（部分类别运行 {categories}：只记数字，不作门禁判定）")
+        return 0
     print("\n[✓] 门禁通过" if not failed else "\n[✗] 门禁未通过——若判据太钝，先调 JUDGE_SYSTEM 再重测（E1）")
     return 0 if failed is False else 1
 

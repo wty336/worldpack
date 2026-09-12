@@ -26,6 +26,7 @@ import yaml
 
 from game_agent.budgets import DEDUP_MAX_TOKENS
 from game_agent.config import load_settings
+from game_agent.endpoint import fingerprint_for
 from game_agent.llm import LLMClient
 from game_agent.memory import MemorySystem
 from game_agent.state import GameState
@@ -114,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "model": llm.model_for("dedup"),
+        "endpoint": fingerprint_for(settings, "dedup"),
         "baseline": "zero-shot",
         "temperature": 0.0,
         "budget_policy": f"game_agent/budgets.py DEDUP_MAX_TOKENS={DEDUP_MAX_TOKENS}",
