@@ -1,0 +1,171 @@
+note: 轴覆盖声明表：机械字段由 scripts/axis_coverage_check.py --write-table 生成，勿手改；split/notes 人工维护（train=供训练数据 / eval=仅评测）
+holdout_axes:
+- era
+- stats
+- npc_band
+- mainline_band
+packs:
+  ancient_jianghu:
+    split: train
+    notes: 生产锚（供给真实轨迹 ≤30%）
+    world_name: 江湖旧梦
+    era: 大盛王朝·长安城（架空，唐风）
+    stats:
+    - charm
+    - martial
+    - silver
+    n_stat_tracks: 3
+    npc_count: 1
+    npc_band: 1-2
+    mainline_nodes: 2
+    mainline_band: 4-6
+    lore_count: 6
+    forbidden_count: 4
+    relation_tones:
+    - 亲密无间，愿为对方破例
+    - 亲近信任，主动分享
+    - 冷淡疏离，公事公办
+    - 客气有礼，偶有关切
+  P1_school_letters:
+    split: eval
+    notes: 跨包留出包（校园·书信体）
+    world_name: 校园·信笺
+    era: 现代·城南中学（高二学年）
+    stats:
+    - money
+    - social
+    - study
+    n_stat_tracks: 3
+    npc_count: 3
+    npc_band: 3-5
+    mainline_nodes: 4
+    mainline_band: 4-6
+    lore_count: 3
+    forbidden_count: 2
+    relation_tones:
+    - 交心，愿为你破例
+    - 例行公事，只谈纪律
+    - 信任，主动托付事情
+    - 关照，遇事替你周旋
+    - 客套，只聊作业
+    - 客气疏离，公事公办
+    - 熟络，愿意分享零食
+    - 熟络，愿意多说两句
+    - 视如己出，为你争取名额
+    - 认可，愿意多提点一句
+    - 过命交情，替你扛事
+    - 铁哥们，主动帮腔
+  P2_era_dual:
+    split: eval
+    notes: 跨包留出包（年代·双轨数值·6 NPC·敌对型）
+    world_name: 年代·机油与粮票
+    era: 一九八〇年代·红星机械厂家属院
+    stats:
+    - credit
+    - money
+    - standing
+    n_stat_tracks: 3
+    npc_count: 6
+    npc_band: 6+
+    mainline_nodes: 6
+    mainline_band: 4-6
+    lore_count: 5
+    forbidden_count: 2
+    relation_tones:
+    - 信任，遇事找你商量
+    - 公事公办，不多说一句
+    - 冷脸，处处卡你
+    - 只谈生产任务
+    - 器重，把难活交给你
+    - 客套，只在班上说话
+    - 客气，只聊粮票
+    - 愿意跟你多说两句
+    - 把你当可用的人，偶尔松口
+    - 把你当自家小辈，替你担责
+    - 把守门的分寸交给你
+    - 护你到底，肯为你担名声
+    - 拿你当自家人，替你说话
+    - 拿你当自己人，肯透个信
+    - 按章办事，不带私情
+    - 掏心窝子，什么都跟你说
+    - 点头算招呼
+    - 熟络，下班一起走
+    - 熟络，爱招呼你吃饭
+    - 表面客气，暗里试探
+    - 视作接班人，替你担事
+    - 认可，愿意教两手
+    - 认可，愿意替你登记排号
+    - 过命交情，替你扛事
+  star_ring:
+    split: train
+    notes: 旧包（语料 30 条未扩域，未达配额；作历史锚）
+    world_name: 星环之下
+    era: 纪元2241年·柯伊伯带星环城
+    stats:
+    - credits
+    - debt
+    - fuel
+    - hull
+    n_stat_tracks: 4
+    npc_count: 2
+    npc_band: 1-2
+    mainline_nodes: 3
+    mainline_band: 4-6
+    lore_count: 8
+    forbidden_count: 4
+    relation_tones:
+    - 把你当普通客户，修东西明码标价，爱取外号逗你
+    - 熟了以后话更多，主动关心你，拿你当自己人使唤
+    - 生意口吻，冷淡疏离，价码摆明面上
+    - 话里带信任，偶尔流露关切与试探
+    - 跟你无话不说，愿意陪你一起逃进拾荒区、查清黑匣子真相
+  urban_neon:
+    split: train
+    notes: 生产锚（供给真实轨迹 ≤30%）
+    world_name: 霓虹深处
+    era: 新纪 2077 · 夜澜市（近未来赛博都市，架空）
+    stats:
+    - credits
+    - cyber
+    - intel
+    n_stat_tracks: 3
+    npc_count: 2
+    npc_band: 1-2
+    mainline_nodes: 3
+    mainline_band: 4-6
+    lore_count: 7
+    forbidden_count: 4
+    relation_tones:
+    - 信赖依赖，掏心掏肺
+    - 公事公办，保持距离
+    - 好奇打量，保持警觉
+    - 推心置腹，主动相帮
+    - 熟络亲近，话多起来
+    - 生死不离，唯你一人
+    - 生死相托，愿为你破例
+    - 语气渐软，偶有关切
+  xianxia_wendao:
+    split: train
+    notes: 生产锚（供给真实轨迹 ≤30%）
+    world_name: 问道长生
+    era: 苍梧界·青云仙宗（架空仙侠）
+    stats:
+    - dao_xin
+    - ling_shi
+    - xiu_wei
+    n_stat_tracks: 3
+    npc_count: 2
+    npc_band: 1-2
+    mainline_nodes: 3
+    mainline_band: 4-6
+    lore_count: 7
+    forbidden_count: 5
+    relation_tones:
+    - 亲近信任，主动分享
+    - 信赖依赖，掏心掏肺
+    - 冷淡疏离，公事公办
+    - 好奇打量，随口玩笑
+    - 客气有礼，偶有关切
+    - 情根深种，愿为你破例
+    - 熟络亲近，缠着说话
+    - 芳心暗许，患得患失

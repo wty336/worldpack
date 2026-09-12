@@ -30,6 +30,18 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKS = ("ancient_jianghu", "xianxia_wendao", "urban_neon", "P1_school_letters", "P2_era_dual")
 
+# 语料内容版本（写进生成物顶层，报告据此自证"这批数字来自哪一版"）：
+#   v1-2026-09-07  三包扩域初版（confab 种子为卡中性设计，其中 8 条词面撞卡，见 card_hook_check）
+#   v2-2026-09-12  P1/P2 初版（confab 种子 7/10 撞卡 —— 报数虚高，已废）
+#   v3-2026-09-12  P1/P2 confab 全部改卡中性（同难重测用，§3.5.6c）
+CONTENT_VERSIONS = {
+    "ancient_jianghu": "v1-2026-09-07",
+    "xianxia_wendao": "v1-2026-09-07",
+    "urban_neon": "v1-2026-09-07",
+    "P1_school_letters": "v3-2026-09-12",
+    "P2_era_dual": "v3-2026-09-12",
+}
+
 # ===========================================================================
 # 每包种子
 #   facts: (事实, [与该事实矛盾的叙事…])     —— 事实写进用例的 facts 字段
@@ -509,8 +521,13 @@ def build_pack(seed: dict) -> dict:
         ))
 
     # ⑤ confab：材料中不存在的承诺/约定（每个种子 × 2 种载体：直接引语 / 转述）
+    #    种子可写第 4 个元素声明 tier：T1 = 纯缺席（材料零信号）；T2 = 材料自带语气/关系
+    #    线索与承诺口气相悖（低好感却主动示好）。不写则留空 —— 由 scripts/tier_slice.py
+    #    按机械规则判定并在报告里分切片（两档混报 = 重蹈"多通路"覆辙）。
     m = 0
-    for npc_id, name, line in seed["confab"]:
+    for entry in seed["confab"]:
+        npc_id, name, line = entry[0], entry[1], entry[2]
+        tier = entry[3] if len(entry) > 3 else ""
         for variant, suffix, note in (
             ("quote", "", "叙事直接断言对方许下承诺"),
             ("report", f"——这是你后来回想起来的，{name}确实这样答应过你。", "叙事把不存在的事后回忆当作既成事实"),
@@ -519,7 +536,7 @@ def build_pack(seed: dict) -> dict:
             cases.append(_case(
                 f"gen_confab_promise_{m:02d}", "confab", line + suffix,
                 f"程序化：材料 facts 为空，{name} 的任何承诺/约定均不存在（{note}）。", seed,
-                {"present": [npc_id]},
+                {"present": [npc_id], **({"tier": tier} if tier else {})},
             ))
 
     # ⑥ ooc：手工卡面锚定
@@ -538,6 +555,7 @@ def build_pack(seed: dict) -> dict:
 
     return {
         "version": 1,
+        "content_version": CONTENT_VERSIONS.get(seed.get("_pack", ""), ""),
         "generated_by": "scripts/build_judge_corpus.py",
         "note": "机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）",
         "cases": cases,
@@ -549,7 +567,7 @@ def _dump(data: dict) -> str:
 
 
 def targets() -> dict[str, dict]:
-    return {pack: build_pack(SEEDS[pack]) for pack in PACKS}
+    return {pack: build_pack({**SEEDS[pack], "_pack": pack}) for pack in PACKS}
 
 
 def main(argv: list[str] | None = None) -> int:

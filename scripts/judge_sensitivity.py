@@ -20,11 +20,13 @@ from pathlib import Path
 
 from game_agent.config import load_settings
 from game_agent.endpoint import fingerprint_for
+from game_agent.evalmeta import case_set_digest, interval_is_conclusive, wilson_interval
 from game_agent.judge import JudgeSystem
 from game_agent.judge_corpus import (
     ADVERSARIAL_CATEGORIES,
     NORMAL_CATEGORY,
     build_materials,
+    corpus_version,
     load_corpus,
     majority_hit,
 )
@@ -71,10 +73,15 @@ def _summarize(results: list[dict], categories: list[str] | None = None) -> tupl
         rate = hits / len(known) if known else 0.0
         ok = bool(known) and rate >= INTERCEPT_MIN
         failed |= not ok
+        lo, hi = wilson_interval(hits, len(known))
         summary[cat] = {
             "n": len(known),
             "intercepted": hits,
             "rate": round(rate, 3),
+            "ci95_lo": round(lo, 3),
+            "ci95_hi": round(hi, 3),
+            # 样本量够不够下这个判据（点估计达标 ≠ 可判；见 evalmeta）
+            "conclusive": interval_is_conclusive(hits, len(known), INTERCEPT_MIN, side="lower"),
             "pass": ok,
             "unknown": len(items) - len(known),
         }
@@ -86,10 +93,14 @@ def _summarize(results: list[dict], categories: list[str] | None = None) -> tupl
         fp_rate = fp / len(known_normals) if known_normals else 0.0
         fp_ok = bool(known_normals) and fp_rate <= FP_MAX
         failed |= not fp_ok
+        lo, hi = wilson_interval(fp, len(known_normals))
         summary[NORMAL_CATEGORY] = {
             "n": len(known_normals),
             "false_positives": fp,
             "rate": round(fp_rate, 3),
+            "ci95_lo": round(lo, 3),
+            "ci95_hi": round(hi, 3),
+            "conclusive": interval_is_conclusive(fp, len(known_normals), FP_MAX, side="upper"),
             "pass": fp_ok,
             "unknown": len(normals) - len(known_normals),
         }
@@ -148,17 +159,30 @@ def main() -> int:
 
     # 分类统计（未知轮/未知用例单独报数；某类全未知 → 不通过）
     summary, failed = _summarize(results, categories)
+    inconclusive: list[str] = []
     for cat in categories or ADVERSARIAL_CATEGORIES:
         s = summary[cat]
         suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
+        ci = f" [95%CI {s['ci95_lo']:.0%}~{s['ci95_hi']:.0%}]"
+        if s["pass"] and not s["conclusive"]:
+            inconclusive.append(cat)
+            ci += " ⚠样本不足"
         print(f"\n[{cat}] 拦截率 {s['intercepted']}/{s['n']} = {s['rate']:.0%}  "
-              f"（要求 ≥{INTERCEPT_MIN:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
+              f"（要求 ≥{INTERCEPT_MIN:.0%}）{'✓' if s['pass'] else '✗'}{ci}{suffix}")
 
     if NORMAL_CATEGORY in summary:
         s = summary[NORMAL_CATEGORY]
         suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
+        ci = f" [95%CI {s['ci95_lo']:.0%}~{s['ci95_hi']:.0%}]"
+        if s["pass"] and not s["conclusive"]:
+            inconclusive.append(NORMAL_CATEGORY)
+            ci += " ⚠样本不足"
         print(f"\n[normal] 误报率 {s['false_positives']}/{s['n']} = {s['rate']:.0%}  "
-              f"（要求 ≤{FP_MAX:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
+              f"（要求 ≤{FP_MAX:.0%}）{'✓' if s['pass'] else '✗'}{ci}{suffix}")
+
+    if inconclusive:
+        print(f"\n[!] 以下类别**点估计达标但样本量不足、判据不可判**：{', '.join(inconclusive)}"
+              f" —— 需按配额补语料（见 scripts/eval_quota_check.py），别把'没测出来'读成'没问题'")
 
     # 落盘报告
     reports_dir = Path("reports")
@@ -168,6 +192,8 @@ def main() -> int:
         "pack": pack.world.name,
         "model": settings.model,
         "endpoint": fingerprint_for(settings, "judge"),  # 部署指纹：root/max_model_len
+        "content_version": corpus_version(args.pack),  # 语料内容版本（自证数字来源）
+        "case_set_digest": case_set_digest(r["id"] for r in results),  # 实际跑到的用例集
         "rounds": args.rounds,
         "category_filter": categories,  # 非空 = 部分类别运行（不是门禁口径）
         "thresholds": {"interception_min": INTERCEPT_MIN, "fp_max": FP_MAX},

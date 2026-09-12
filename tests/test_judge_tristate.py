@@ -157,12 +157,15 @@ def test_gate_summary_counts_unknown_separately():
     ]
     summary, failed = mod._summarize(results)
     # 未知用例不进分母，单独报数
-    assert summary["ooc"] == {
+    assert {k: summary["ooc"][k] for k in ("n", "intercepted", "rate", "pass", "unknown")} == {
         "n": 1, "intercepted": 1, "rate": 1.0, "pass": True, "unknown": 1,
     }
-    assert summary["normal"] == {
+    # 并报 95% Wilson 区间与"样本量是否够下判据"（0/18 的假完美教训，见 evalmeta）
+    assert summary["ooc"]["conclusive"] is False  # 1/1 点估计满分但样本远不够
+    assert {k: summary["normal"][k] for k in ("n", "false_positives", "rate", "pass", "unknown")} == {
         "n": 1, "false_positives": 0, "rate": 0.0, "pass": True, "unknown": 0,
     }
+    assert summary["normal"]["ci95_hi"] > 0.5  # 单例正常样本给不出"误报率很低"的结论
     assert failed is False
 
     # 某类全部不可判定 → 该类不通过（"无法验证" ≠ "达标"，门禁不得沉默放行）

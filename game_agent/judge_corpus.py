@@ -28,7 +28,12 @@ CATEGORIES = (*ADVERSARIAL_CATEGORIES, NORMAL_CATEGORY)
 
 @dataclass(frozen=True)
 class JudgeCase:
-    """一条 Judge 语料：叙事 + 状态覆盖（材料据此构造）。expected=True 表示应当通过。"""
+    """一条 Judge 语料：叙事 + 状态覆盖（材料据此构造）。expected=True 表示应当通过。
+
+    ``tier``：只用于 confab 家族的分层（T1 = 纯缺席证据；T2 = 材料自带语气/关系线索冲突）。
+    空串 = 未分层/不适用。**评测报数必须分切片** —— 两档混报会重蹈"多通路"覆辙
+    （2026-09-12 §3.5.6c）。
+    """
 
     id: str
     category: str
@@ -41,6 +46,60 @@ class JudgeCase:
     facts: tuple[str, ...] = ()
     npc_memories: dict[str, tuple[str, ...]] = field(default_factory=dict)
     note: str = ""
+    tier: str = ""
+
+
+def corpus_version(pack_root: str | Path) -> str:
+    """读该包语料的**内容版本**（机器生成文件顶层的 ``content_version``）。
+
+    用途：报告里自证"这批数字来自哪一版语料"。手写文件没有该字段（手写资产随包走，
+    版本由 git 记录）；生成文件缺失时返回 ``""``。
+    """
+    gen_path = Path(pack_root) / "judge_corpus.gen.yaml"
+    if not gen_path.exists():
+        return ""
+    data = yaml.safe_load(gen_path.read_text(encoding="utf-8")) or {}
+    return str(data.get("content_version", ""))
+
+
+# ---------------------------------------------------------------------------
+# confab 的 tier 分层（T1 纯缺席 / T2 语气冲突）
+#
+# 依据（2026-09-12 §3.5.6c）：confab 家族里混着两类难度不同的题。材料若自带"语气/关系"
+# 线索（如好感 8/100「只聊作业」）与承诺口气相悖，判官可走"关系矛盾"这条**更容易**的路
+# ——flash 实测在 T2 上拦 94%，而 14B 只有 22%。两档混报 = 又一次"多通路"混淆（踩坑 #17）。
+#
+# 机械规则只是**默认**：语料里显式 `tier` 字段优先（作者标注）。
+# ---------------------------------------------------------------------------
+
+COLD_AFFECTION = 20.0  # 低于此值 = 冷淡/客套档
+FAVOR_VERBS = ("借", "送", "给", "留", "陪", "带", "替", "改", "修", "捎", "分", "配")
+
+
+def affection_in_material(material: str, npc_name: str) -> float | None:
+    """从材料读该 NPC 的好感值。
+
+    注意：好感行可能是「好感：林夏 5/100（…） · 周牧 8/100（…） · 陈老师 10/100（…）」，
+    只有**第一个** NPC 紧跟「好感：」——所以不能把前缀写进正则（2026-09-12 踩过：
+    只匹配到首个 NPC，其余全被误判成"好感未出现"→ 误归 T1）。
+    """
+    if not npc_name:
+        return None
+    import re
+
+    m = re.search(rf"{re.escape(npc_name)}\s+([\d.]+)/\s*100", material)
+    return float(m.group(1)) if m else None
+
+
+def mechanical_tier(case: JudgeCase, material: str, npc_name: str) -> tuple[str, str]:
+    """返回 ``(tier, 依据说明)``：语料显式 ``tier`` 优先，否则按机械规则判定。"""
+    if case.tier:
+        return case.tier, "语料显式标注"
+    aff = affection_in_material(material, npc_name)
+    favors = [v for v in FAVOR_VERBS if v in case.narration]
+    if aff is not None and aff < COLD_AFFECTION and favors:
+        return "T2", f"好感 {aff:g}<{COLD_AFFECTION:g} 且含示好动词 {favors}"
+    return "T1", f"材料零关系信号（好感 {aff if aff is not None else '未出现'}）"
 
 
 def load_corpus(pack_root: str | Path) -> list[JudgeCase]:
@@ -85,6 +144,7 @@ def load_corpus(pack_root: str | Path) -> list[JudgeCase]:
                         for k, v in item.get("npc_memories", {}).items()
                     },
                     note=str(item.get("note", "")),
+                    tier=str(item.get("tier", "")),
                 )
             except (KeyError, TypeError, ValueError) as e:
                 raise ValueError(f"{src} 第 {i} 条非法: {e}") from e

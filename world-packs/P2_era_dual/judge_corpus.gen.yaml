@@ -1,4 +1,5 @@
 version: 1
+content_version: v3-2026-09-12
 generated_by: scripts/build_judge_corpus.py
 note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
 cases:
