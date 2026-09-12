@@ -1,11 +1,11 @@
-"""confab 用例"卡中性"筛查（词面）：防止 promise 撞说话人角色卡。
+﻿"""confab 用例"卡中性"筛查（词面）：防止 promise 撞说话人角色卡。
 
 **为什么**（2026-09-12 实证）：judge 语料的 confab 家族靠"材料中不存在该承诺"这一条
 **缺席证据**通路拦截。若 promise 恰好撞上说话人角色卡的 boundaries / forbidden /
 speech_style，判官就多一条"设定矛盾"通路 —— 拦截率被系统性抬高、跨包不可比。实测：
 P1/P2 初版语料 10 条种子里 7 条撞卡 → 14B 拦 88%；改成卡中性后同一批用例拦 27.5%。
 
-**口径**：叙事与角色卡（persona / speech_style / boundaries / forbidden）的**二字重合**。
+**口径**：叙事与角色卡（personality / speech_style / boundaries / forbidden）的**二字重合**。
 二字重合 = 强信号（同一实词），但**只是必要条件**：
 - 词面无关仍可能语义撞卡（如「名次给你留着」×「不私下透露其他学生的排名」——零共同二字），
   这类只能人读；故本工具是**筛查**，不是证明。
@@ -28,7 +28,7 @@ from game_agent.judge_corpus import load_corpus
 from game_agent.worldpack import load_worldpack
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-CARD_FIELDS = ("persona", "speech_style", "boundaries", "forbidden")
+CARD_FIELDS = ("personality", "speech_style", "boundaries", "forbidden")
 HOOK_N = 2  # 二字重合即视为词面撞卡（中文实词最短粒度）
 
 

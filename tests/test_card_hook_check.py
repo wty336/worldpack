@@ -28,6 +28,19 @@ def test_detects_boundary_collision():
     card = "身份：文学社主编 底线：不替他人的稿子署名；不把社里的稿子外传"
     hooked = mod.card_hook("林夏说：『周三广播的稿子我替你留了一栏，你署自己的名字。』", card)
     assert "稿子" in hooked and hooked
+
+
+def test_card_fields_are_real_npcspec_fields():
+    """防死字段回归（2026-09-12 修复）：CARD_FIELDS 每项必须是 NpcSpec 的真实字段。
+
+    背景：原写 `persona`，而 NpcSpec 的字段是 `personality` → `model_dump().get("persona")`
+    恒为 `None`、`str(None)` 进文本 → **该路从未参与撞卡判定**（声明查四路、实际只查三路）。
+    """
+    from game_agent.worldpack import NpcSpec
+
+    fields = set(NpcSpec.model_fields)
+    unknown = [f for f in mod.CARD_FIELDS if f not in fields]
+    assert not unknown, f"CARD_FIELDS 含 NpcSpec 不存在的字段（死字段）：{unknown}"
     # 注意：本条只共享「稿子」——「署自己的名字」与「代他人署名」是语义撞卡而非词面，
     # 本筛查抓不到（见模块 docstring 的必要条件声明）。
 
