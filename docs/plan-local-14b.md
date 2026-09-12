@@ -346,6 +346,13 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   相对原方案的两处修正：① **先造尺子再造数据**（现评测每类仅 6 条，1 条 = 16.7pp，
   分辨不出训练效果——"flash dedup 40-50%"的错误对照线就是坏尺子产物）；
   ② **dedup 不进训练集**（基座与 flash 实测均 100%），只作冻结回归护栏。
+  四项拍板（reflect 第一批不训 / G1=民国谍战 / 适配器方案 A / 评测集抽检 20%）见该文档 §9。
+- 2026-09-12 · **Phase 1 · Step 0 完成：extract 提示词去域化**（`memory.py` `EXTRACT_SYSTEM`）
+  —— 原稿类型清单写死「剑名、师承」（提示词层面把题材钉成武侠，而 extract 是必训模块）。
+  改 10 类中性枚举 + 跨题材示例；`prompt_version=99668791ed5957fc`；守卫测试
+  `tests/test_extract_prompt.py`（4 例）+ 真机三题材验证（民国谍战/太空科幻/现代都市
+  分别抽出 3/5/4 条事实，细节保全与去重纪律均生效）；全量 **279 passed**。
+  详见 `docs/plan-phase1-data.md` §2、证据 `reports/step0-extract-dedomain-verify-20260912.log`。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |
