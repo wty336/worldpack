@@ -286,14 +286,16 @@ DIGEST_FILE = "digests.json"
 
 
 def write_digests() -> dict:
-    import hashlib
     import json
+
+    from game_agent.evalmeta import file_digest
 
     files = {}
     for rel in TARGETS:
         path = EVAL_DIR / rel
         rel_from_root = path.relative_to(REPO_ROOT).as_posix()
-        files[rel_from_root] = hashlib.sha256(path.read_bytes()).hexdigest()
+        # file_digest：换行归一化后再摘要（跨平台/跨 autocrlf 稳定，见 evalmeta 说明）
+        files[rel_from_root] = file_digest(path)
     payload = {
         "version": 1,
         "note": "由 scripts/build_eval_sets.py --digests 生成；改评测集须重跑生成器并同步本文件",

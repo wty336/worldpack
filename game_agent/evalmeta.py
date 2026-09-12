@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
+from pathlib import Path
 
 WILSON_Z = 1.96  # 95% 置信
 DIGEST_LEN = 16
@@ -61,6 +62,26 @@ def case_set_digest(case_ids: Iterable[str]) -> str:
     """
     joined = "\n".join(sorted({str(c) for c in case_ids}))
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:DIGEST_LEN]
+
+
+def file_digest(path: str | Path) -> str:
+    """文本评测工件的**内容摘要**（换行归一化后取 sha256）。
+
+    为什么必须归一化（2026-09-12 实证）：摘要原先直接对 `read_bytes()` 取 sha256，
+    而工作区字节随 `core.autocrlf` 变化 —— 同一份 `eval-sets/extract/direct.yaml`
+    在 Windows 检出是 CRLF（sha `9a552245cd9a…`）、在 Linux 检出是 LF（sha `c4214adf42e8…`）。
+    两处后果：
+
+    1. `tests/test_eval_frozen.py` 在 Linux/macOS 上**必红** —— 守卫实际只在 Windows 成立；
+    2. 报告里的 `eval_set_sha256` 跨机不可对账（GPU 机是 Linux，记的是 LF 形态）——
+       恰好废掉了"版本自证"的意义（同一文件被读成两个版本）。
+
+    故统一口径：读字节 → `\\r\\n` / `\\r` 归一为 `\\n` → sha256。
+    这样摘要只反映**内容**，与检出平台/换行配置无关；历史报告里的旧值可按
+    "CRLF 形态 vs LF 形态" 成对识别（见 `eval-sets/MANIFEST.md` §5 注）。
+    """
+    data = Path(path).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def interval_is_conclusive(hits: int, n: int, threshold: float, *, side: str = "upper") -> bool:

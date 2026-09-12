@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from datetime import datetime
@@ -27,6 +26,7 @@ import yaml
 from game_agent.budgets import DEDUP_MAX_TOKENS
 from game_agent.config import load_settings
 from game_agent.endpoint import fingerprint_for
+from game_agent.evalmeta import file_digest
 from game_agent.llm import LLMClient
 from game_agent.memory import MemorySystem
 from game_agent.state import GameState
@@ -70,7 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     pairs = yaml.safe_load(EVAL_SET.read_text(encoding="utf-8"))["pairs"]
     if args.limit:
         pairs = pairs[: args.limit]
-    eval_sha = hashlib.sha256(EVAL_SET.read_bytes()).hexdigest()
+    # 换行归一化摘要（跨平台稳定，与 tests/test_eval_frozen.py 同源）
+    eval_sha = file_digest(EVAL_SET)
     n_pos = sum(1 for p in pairs if p["expect_duplicate"])
     print(f"评测集 {EVAL_SET.relative_to(REPO_ROOT)} · {len(pairs)} 对"
           f"（正例 {n_pos} / 负例 {len(pairs) - n_pos}）· sha256={eval_sha[:12]}")

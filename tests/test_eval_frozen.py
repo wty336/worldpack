@@ -9,7 +9,6 @@ scripts/extract_eval.py）；只测"尺子本身没被偷偷改过、且结构�
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -38,11 +37,18 @@ def _load_yaml(rel: str) -> dict:
 
 
 def test_eval_set_files_match_digests():
-    """磁盘上的评测文件必须与 digests.json 完全一致（防手改/防漂移）。"""
+    """磁盘上的评测文件必须与 digests.json 完全一致（防手改/防漂移）。
+
+    摘要口径 = `game_agent.evalmeta.file_digest`（**换行归一化**后取 sha256）：
+    原先直接对 `read_bytes()` 取摘要，会让同一文件在 Windows(CRLF) 与 Linux(LF) 上
+    得到两个不同的 sha，本守卫因此在 Linux 上必红（2026-09-12 修复）。
+    """
+    from game_agent.evalmeta import file_digest
+
     digests = json.loads((EVAL_DIR / "digests.json").read_text(encoding="utf-8"))
     assert digests["files"], "digests.json 为空——请跑 scripts/build_eval_sets.py --digests"
     for rel, expected in digests["files"].items():
-        actual = hashlib.sha256((REPO_ROOT / rel).read_bytes()).hexdigest()
+        actual = file_digest(REPO_ROOT / rel)
         assert actual == expected, f"{rel} 与冻结指纹不符：手改了评测集？请改生成器种子并重跑"
 
 

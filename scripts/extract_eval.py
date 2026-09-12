@@ -25,6 +25,7 @@ import yaml
 from game_agent.budgets import EXTRACT_MAX_TOKENS, complete_with_empty_retry
 from game_agent.config import load_settings
 from game_agent.endpoint import fingerprint_for
+from game_agent.evalmeta import file_digest
 from game_agent.llm import LLMClient
 from game_agent.memory import EXTRACT_SYSTEM, parse_facts
 from game_agent.usage import UsageTracker
@@ -135,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
 
     data = yaml.safe_load(EVAL_SET.read_text(encoding="utf-8"))
     cases = data["cases"][: args.limit] if args.limit else data["cases"]
-    eval_sha = hashlib.sha256(EVAL_SET.read_bytes()).hexdigest()
+    # 换行归一化摘要（跨平台稳定：Windows CRLF 与 Linux LF 得同一 sha，见 evalmeta.file_digest）
+    eval_sha = file_digest(EVAL_SET)
     print(f"评测集 {EVAL_SET.relative_to(REPO_ROOT)} · {len(cases)} 例 · sha256={eval_sha[:12]}")
     print(f"prompt_version={PROMPT_VERSION} · 预算 EXTRACT_MAX_TOKENS={EXTRACT_MAX_TOKENS}\n")
 

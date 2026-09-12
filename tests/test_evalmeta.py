@@ -11,6 +11,7 @@ import pytest
 
 from game_agent.evalmeta import (
     case_set_digest,
+    file_digest,
     interval_is_conclusive,
     rate_with_interval,
     wilson_interval,
@@ -55,3 +56,22 @@ def test_case_set_digest_is_order_independent_and_sensitive():
     b = case_set_digest(["c3", "c1", "c2", "c2"])  # 顺序无关、重复无害
     assert a == b and len(a) == 16
     assert case_set_digest(["c1", "c2"]) != a  # 少一条就变
+
+
+def test_file_digest_is_line_ending_independent(tmp_path):
+    """冻结守卫的摘要必须与换行无关（2026-09-12 修复）。
+
+    原先直接对 `read_bytes()` 取 sha256：同一份 `direct.yaml` 在 Windows 检出（CRLF）得到
+    `9a552245cd9a…`、在 Linux 检出（LF）得到 `c4214adf42e8…` → `test_eval_frozen` 在 Linux 上必红，
+    且报告里的 `eval_set_sha256` 跨机不可对账（GPU 机是 Linux，记的就是 LF 形态）。
+    """
+    crlf = tmp_path / "crlf.yaml"
+    lf = tmp_path / "lf.yaml"
+    crlf.write_bytes("a: 1\r\nb: 2\r\n".encode("utf-8"))
+    lf.write_bytes("a: 1\nb: 2\n".encode("utf-8"))
+    assert file_digest(crlf) == file_digest(lf)
+
+    # 内容变了摘要必须变（归一化不得把不同内容抹平）
+    other = tmp_path / "other.yaml"
+    other.write_bytes("a: 1\nb: 3\n".encode("utf-8"))
+    assert file_digest(other) != file_digest(lf)

@@ -1,7 +1,7 @@
 {
   "files": {
-    "eval-sets/dedup/pairs.yaml": "c7bff13457e83d9f85d915d4046ded49363ee08febb77a3bbb8404edefb22905",
-    "eval-sets/extract/direct.yaml": "f365ebb8d8328e17542bcb3fcff5d86e07b0bcdcb5477e265946170395f2a9f4"
+    "eval-sets/dedup/pairs.yaml": "531fbac7cfb6095ff2a07add3f22f00860ba465be8f9c6823cdff2c267f9b7f2",
+    "eval-sets/extract/direct.yaml": "b3d918e53d900c762cfe55b794aaee010e8c208518d8f240795c269e02470ca8"
   },
   "note": "由 scripts/build_eval_sets.py --digests 生成；改评测集须重跑生成器并同步本文件",
   "version": 1
