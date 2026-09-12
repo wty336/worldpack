@@ -1,0 +1,379 @@
+version: 1
+generated_by: scripts/build_eval_sets.py
+note: must_recall=关键实体须被抽出的事实覆盖；must_not_output=已有事实不得重复输出；expect_empty=true 表示该回合无长期事实，应输出「无」(parse_facts → 空列表)
+cases:
+- id: x_sword
+  genre: 仙侠
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 2 日）你把师父临终所传的佩剑擦净，鞘口云纹里刻着两个字：听雨。
+  must_recall:
+  - 听雨
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: x_master
+  genre: 仙侠
+  axis_kind: 身份身世
+  expect_empty: false
+  existing: []
+  turn: （叙旧）我师父姓陆，早年在镖局走镖，脾气倔得很，临终前只留了这柄剑。
+  must_recall:
+  - 陆
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: x_tea
+  genre: 仙侠
+  axis_kind: 承诺与约定
+  expect_empty: false
+  existing: []
+  turn: （第 4 日）你与沈清秋在茶寮说定：每月初一替她从西市捎一斤龙井。
+  must_recall:
+  - 龙井
+  - 初一
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: x_dedup
+  genre: 仙侠
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing:
+  - 玩家的佩剑名叫听雨
+  turn: （第 6 日）你拍了拍剑鞘说：这柄听雨，跟了我三年了。
+  must_recall:
+  - 听雨
+  must_not_output:
+  - 玩家的佩剑名叫听雨
+  importance_range:
+  - 3
+  - 10
+- id: x_none
+  genre: 仙侠
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （闲谈）今日天气不错，晨起在院中练了趟剑，院里的桂花开了。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
+- id: x_relation
+  genre: 仙侠
+  axis_kind: 关系变化
+  expect_empty: false
+  existing: []
+  turn: （第 8 日）沈清秋替你挡下了沈祭酒的追问，事后只说了一句：往后小心些。
+  must_recall:
+  - 沈清秋
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: u_debt
+  genre: 现代都市
+  axis_kind: 债务与人情
+  expect_empty: false
+  existing: []
+  turn: （第 3 日）你向老周借了两千块钱，说好月底还，条件是替他跑一趟夜车。
+  must_recall:
+  - 老周
+  - 两千
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: u_truck
+  genre: 现代都市
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 1 日）你接手了那辆报废的捷达货车，车牌京A·7H2B9，发动机还得修。
+  must_recall:
+  - 捷达
+  - 京A·7H2B9
+  must_not_output: []
+  importance_range:
+  - 4
+  - 8
+- id: u_promise
+  genre: 现代都市
+  axis_kind: 承诺与约定
+  expect_empty: false
+  existing: []
+  turn: （第 5 日）你答应老周：周五前把三箱货送到城南环宇仓库，报酬两千。
+  must_recall:
+  - 周五
+  - 环宇
+  - 两千
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: u_dedup
+  genre: 现代都市
+  axis_kind: 债务与人情
+  expect_empty: false
+  existing:
+  - 玩家欠老周两千块钱
+  turn: （第 7 日）老周又提起那两千块，你摆摆手说月底一并还清。
+  must_recall:
+  - 老周
+  must_not_output:
+  - 玩家欠老周两千块钱
+  importance_range:
+  - 3
+  - 9
+- id: u_ability
+  genre: 现代都市
+  axis_kind: 能力与技艺
+  expect_empty: false
+  existing: []
+  turn: （第 4 日）老同学说你在刑警队那几年练出的眼力还在，一眼就看出货单是假的。
+  must_recall:
+  - 刑警队
+  must_not_output: []
+  importance_range:
+  - 4
+  - 8
+- id: u_none
+  genre: 现代都市
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （闲谈）楼下早餐铺的豆浆还是老味道，你站着喝完，顺手把伞忘在了门口。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
+- id: s_ship
+  genre: 太空科幻
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 1 日）你签下接收单，飞船「渡鸦号」正式挂在你名下，编号 KX-2291。
+  must_recall:
+  - 渡鸦号
+  - KX-2291
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: s_registry
+  genre: 太空科幻
+  axis_kind: 所属与来历
+  expect_empty: false
+  existing: []
+  turn: （第 5 日）你把渡鸦号的船籍改挂在赫利俄斯矿业名下，换来一张通行许可。
+  must_recall:
+  - 赫利俄斯
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: s_debt
+  genre: 太空科幻
+  axis_kind: 债务与人情
+  expect_empty: false
+  existing: []
+  turn: （第 5 日）你用一块旧能源电池抵了 1200 信用点的债务，还剩下 300 点缺口。
+  must_recall:
+  - '1200'
+  - '300'
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: s_teach
+  genre: 太空科幻
+  axis_kind: 承诺与约定
+  expect_empty: false
+  existing: []
+  turn: （第 6 日）轮机长洛桑答应返航后教你读星图，条件是替他隐瞒货单。
+  must_recall:
+  - 洛桑
+  - 星图
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: s_dedup
+  genre: 太空科幻
+  axis_kind: 身份身世
+  expect_empty: false
+  existing:
+  - 玩家是退役领航员
+  turn: （第 2 日）领航员出身这件事，你没跟船上的人提过，退役证还压在箱底。
+  must_recall:
+  - 领航员
+  must_not_output:
+  - 玩家是退役领航员
+  importance_range:
+  - 3
+  - 9
+- id: s_none
+  genre: 太空科幻
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （日常）舱内的循环风有点燥，你调低了湿度，又给水箱补了氧。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
+- id: n_cipher
+  genre: 民国谍战
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 3 日）你把密码本塞进留声机夹层，又把唱针摆回原处。
+  must_recall:
+  - 密码本
+  - 留声机
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: n_contact
+  genre: 民国谍战
+  axis_kind: 关系变化
+  expect_empty: false
+  existing: []
+  turn: （第 3 日）你与联络员「白鸮」约定：次日在申报馆后门用《大公报》第三版夹纸条接头。
+  must_recall:
+  - 白鸮
+  - 大公报
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: n_funds
+  genre: 民国谍战
+  axis_kind: 债务与人情
+  expect_empty: false
+  existing: []
+  turn: （第 4 日）站长训示：这个月的经费只剩四十块大洋，别再乱花。
+  must_recall:
+  - 四十块
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: n_cover
+  genre: 民国谍战
+  axis_kind: 身份身世
+  expect_empty: false
+  existing: []
+  turn: （第 1 日）组织给你办的身份证上写着「沈砚」，职业是《申报》校对员。
+  must_recall:
+  - 沈砚
+  - 校对
+  must_not_output: []
+  importance_range:
+  - 7
+  - 10
+- id: n_dedup
+  genre: 民国谍战
+  axis_kind: 身份身世
+  expect_empty: false
+  existing:
+  - 玩家化名「沈砚」
+  turn: （第 5 日）有人喊你沈砚，你应了，心里却想起自己的本名。
+  must_recall:
+  - 沈砚
+  must_not_output:
+  - 玩家化名「沈砚」
+  importance_range:
+  - 3
+  - 9
+- id: n_none
+  genre: 民国谍战
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （日常）弄堂口的煤炉烧得正旺，你买了两个粢饭团，站在檐下吃完。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
+- id: t_arm
+  genre: 蒸汽朋克
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 2 日）你抬起右臂，那只机械义肢的黄铜齿轮咬合着转了两圈，发出细响。
+  must_recall:
+  - 黄铜齿轮
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: t_airship
+  genre: 蒸汽朋克
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 1 日）码头登记簿上写着：灰雀号，载重三十吨，锅炉三级。
+  must_recall:
+  - 灰雀号
+  must_not_output: []
+  importance_range:
+  - 7
+  - 10
+- id: t_license
+  genre: 蒸汽朋克
+  axis_kind: 能力与技艺
+  expect_empty: false
+  existing: []
+  turn: （第 3 日）稽查员验过你的三级锅炉操作执照，才放你进锅炉舱。
+  must_recall:
+  - 三级
+  must_not_output: []
+  importance_range:
+  - 6
+  - 9
+- id: t_debt
+  genre: 蒸汽朋克
+  axis_kind: 债务与人情
+  expect_empty: false
+  existing: []
+  turn: （第 4 日）你欠码头帮会十五枚银币的停泊费，限三日内结清。
+  must_recall:
+  - 十五枚
+  - 三日
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: t_dedup
+  genre: 蒸汽朋克
+  axis_kind: 负例
+  expect_empty: true
+  existing:
+  - 玩家的飞艇名叫灰雀号
+  turn: （第 6 日）灰雀号停在三号泊位，船身新刷了一遍漆。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
+- id: t_none
+  genre: 蒸汽朋克
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （日常）雨下了整夜，你听着屋顶铁皮的响动，把炉火拨旺了些。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
