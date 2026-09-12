@@ -16,6 +16,37 @@
 
 ---
 
+## 进度（执行侧维护：**每完成一个 Task 就更新本表 + 勾掉该 Task 的 Step 复选框 + 补执行记录**）
+
+| Task | 状态 | 提交 | 与计划的偏差 |
+| --- | --- | --- | --- |
+| 1 卡 schema + §3.3 校验 | ✅ 完成 | `d0b7195` | 发现并修正 3 处计划缺陷（见 Task 1 执行记录） |
+| 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b` | 发现并修正 3 处计划缺陷（见 Task 2 执行记录） |
+| 3 材料装配器 + 校验①②③ | ⬜ 待做 | — | — |
+| 4 演绎器 + 反向校验 | ⬜ 待做 | — | 计划已预修 confab 的矛盾逻辑（见 Task 4） |
+| 5 rubric 评委四模式 | ⬜ 待做 | — | — |
+| 6 样本构建三分支 + 拒绝采样 | ⬜ 待做 | — | — |
+| 7 质量门 + 门禁接线 + 人读清单 | ⬜ 待做 | — | — |
+| 8 配额/去重/出库 CLI | ⬜ 待做 | — | 出库摘要须走 `file_digest`（见下） |
+| 9 轨道 2 批跑 + 定 X | ⬜ 待做 | — | — |
+| 10 EXTRACT_SYSTEM 收紧实验 | ⬜ 待做 | — | 需 GPU 机；不阻塞 M1~M4 |
+| 11 总装验收 + 成本回填 | ⬜ 待做 | — | — |
+
+**Task 外的既有改动（已落地，供后续 Task 参考）**
+
+- `5fc17ad` **冻结摘要换行归一化**：新增 `game_agent/evalmeta.file_digest`
+  （读字节 → `\r\n`/`\r` 归一为 `\n` → sha256），四处调用点同源
+  （`build_eval_sets` / `test_eval_frozen` / `extract_eval` / `dedup_test`）。
+  起因：原摘要随 `core.autocrlf` 变化 → 冻结守卫在 Linux 上必红、报告 sha 跨机不可对账。
+  `digests.json` 已按新口径重算（`direct.yaml` = `b3d918e53d90…`）。
+- `15096de` 计划文档同步（Task 2/4/8/10/11 的条款与计数）。
+- `aa78893` Task 3 Step 5 由"顺手修 spec"改为"核验 spec 已修订"（spec 修正已先行落地）。
+
+**测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
+Task 2 守卫 **7** + `evalmeta` 换行守卫 **1** = **359 passed**。
+
+---
+
 ## 文件结构（分解锁定）
 
 | 文件 | 职责 |
@@ -40,7 +71,7 @@
 - Create: `scripts/scenario_factory/cards.py`
 - Test: `tests/test_scenario_factory.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_scenario_factory.py`：
 
@@ -143,12 +174,12 @@ def test_ooc_target_fact_may_be_null():
     ScenarioCard(**card)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: FAIL（`ModuleNotFoundError: scripts.scenario_factory`）
 
-- [ ] **Step 3: 实现 cards.py 模型部分**
+- [x] **Step 3: 实现 cards.py 模型部分**
 
 `scripts/scenario_factory/__init__.py`：`"""场景卡数据工厂（spec: docs/plan-route-a-factory.md）。"""`
 
@@ -276,17 +307,34 @@ class ScenarioCard(BaseModel):
         return self
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: 9 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/scenario_factory tests/test_scenario_factory.py
 git commit -m "feat(factory): 场景卡 schema 与 §3.3 校验规则（Task 1）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成** —— 提交 `d0b7195`
+>
+> - Step 2 确认失败 ✓：`ModuleNotFoundError: No module named 'scripts.scenario_factory'`
+> - Step 4 确认通过 ✓：**9 passed**；全量 342 → **351 passed**
+> - 落地文件：`scripts/scenario_factory/__init__.py`、`cards.py`（119 行）、
+>   `tests/test_scenario_factory.py`
+>
+> **执行中发现并修正的 3 处计划缺陷**（都会让 Step 4 直接红，已同步进本文档）：
+>
+> 1. **本 Task 的测试导入行引用了尚不存在的符号**：原写 `import ScenarioCard, generate_card, layer_of`，
+>    而 `generate_card` 要到 Task 2 才落地 → 实际会是 collection error，不是"9 passed"。
+>    已改为只导入 `ScenarioCard`，并注明由 Task 2 扩行（**扩行须保留 `ScenarioCard`**，见 Task 2）。
+> 2. **Task 2 的测试块原本完全没有导入行** —— 用到 `generate_card`/`layer_of`/`PACK_BY_GENRE`
+>    却一个都没 import。已补。
+> 3. `test_extract_card_accepts_existing_for_dedup_discipline` **漏了 `ScenarioCard(...)` 包装**
+>    （直接对 dict 取 `.existing` → `AttributeError`）。测试与计划已同步修正。
 
 ---
 
@@ -296,7 +344,7 @@ git commit -m "feat(factory): 场景卡 schema 与 §3.3 校验规则（Task 1�
 - Modify: `scripts/scenario_factory/cards.py`（追加）
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加到测试文件）**
+- [x] **Step 1: 写失败测试（追加到测试文件）**
 
 ```python
 # 本 Task 起把 Task 1 的那行导入**扩为**下面这行（保留 ScenarioCard，追加三个符号）：
@@ -380,12 +428,12 @@ def test_corruption_detail_quotes_are_parseable():
             assert quoted == [], cor.detail
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k "layer or generate or axis"`
 Expected: FAIL（`ImportError: cannot import name 'generate_card'`）
 
-- [ ] **Step 3: 实现生成器（追加到 cards.py）**
+- [x] **Step 3: 实现生成器（追加到 cards.py）**
 
 ```python
 # ---- 轴空间（§8 + 决策 19：留出轴值只对 eval 开放，dev 配同类孪生） ----
@@ -524,17 +572,43 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
 
 注：`_FACT_TPL`/`_NAME_POOL` 为最小可用内容池，扩池不改逻辑；配额矩阵（plan-phase1-data.md §4.4）在 Task 8 装配侧按层计数落实。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: 16 passed（Task 1 的 9 + Task 2 的 7）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/scenario_factory/cards.py tests/test_scenario_factory.py
 git commit -m "feat(factory): 轴空间/种子空间与确定性生成器（Task 2）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成** —— 提交 `f81a40b`
+>
+> - Step 2 确认失败 ✓：`ImportError: cannot import name 'generate_card'`
+> - Step 4 确认通过 ✓：**16 passed**（Task 1 的 9 + Task 2 的 7）；全量 351 → **358 passed**
+> - 落地：`cards.py` 追加 136 行（轴空间 / `NPC_BY_PACK` / `_axes_for` / `_names` /
+>   `generate_card`），`tests/test_scenario_factory.py` 追加 7 个守卫
+>
+> **执行中发现并修正的 3 处计划缺陷**（都会造成**静默良率损失**，已同步进本文档）：
+>
+> 1. **compress 分支同时传 `axes=` 与 `**base`**（`base` 已含 `axes`）→
+>    `TypeError: got multiple values for keyword argument 'axes'`。
+>    改为"先改 `base` 再解包"。
+> 2. **confab 的 `detail` 把整条 `text` 引进去** → `text` 自带「」造成**嵌套引用**，
+>    Task 4 的正则 `「([^」]+)」` 会解出残缺串 → **该卡恒被丢弃**；
+>    而 confab 占 judge 配额 **≥40%**，是重大静默损失。改为只引被断言的 anchor 一个「」，
+>    并加守卫 `test_corruption_detail_quotes_are_parseable` 钉住
+>    （setting 两引 / confab 一引 / ooc 无引）。
+> 3. **事实模板共用 `{n1}`** 会让同一张卡上两张事实带同一 anchor →
+>    setting 卡的「原 anchor 不得出现」反向校验**永远不成立**，该类卡同样永久产出不了样本。
+>    改为每张事实独占 2 个专名槽，并加守卫 `test_fact_anchors_are_pairwise_disjoint`。
+>
+> **连带发现**：第 2 条暴露出 **Task 4 对 confab 的逻辑本身自相矛盾**
+> （同一条 anchor 既要求"在位"、又列为"不得出现"）——已在 Task 4 预先修正
+> `_corruption_swap` 为按 category 返回 `(下标, 须在位, 须缺席)`，并补齐 confab 守卫。
+> 执行 Task 4 时按修正后的版本走即可。
 
 ---
 
