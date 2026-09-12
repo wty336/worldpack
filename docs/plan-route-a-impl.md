@@ -23,7 +23,7 @@
 | 1 卡 schema + §3.3 校验 | ✅ 完成 | `d0b7195` | 发现并修正 3 处计划缺陷（见 Task 1 执行记录） |
 | 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b`（+ 评审补修，见执行记录） | 共修正 **6 处**计划/实现缺陷（执行 3 + 评审 3） |
 | 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 1 处计划缺陷（`-k material` 过滤器两头不准） |
-| 4 演绎器 + 反向校验 | ⬜ 待做 | — | 计划已预修 confab 的矛盾逻辑（见 Task 4） |
+| 4 演绎器 + 反向校验 | ✅ 完成 | 见 Task 4 执行记录 | 修正 1 处（自然化指令对 confab 原稿是反的） |
 | 5 rubric 评委四模式 | ⬜ 待做 | — | — |
 | 6 样本构建三分支 + 拒绝采样 | ⬜ 待做 | — | — |
 | 7 质量门 + 门禁接线 + 人读清单 | ⬜ 待做 | — | — |
@@ -43,7 +43,7 @@
 - `aa78893` Task 3 Step 5 由"顺手修 spec"改为"核验 spec 已修订"（spec 修正已先行落地）。
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
-Task 2 守卫 **10** + Task 3 守卫 **5** + `evalmeta` 换行守卫 **1** = **367 passed**。
+Task 2 守卫 **10** + Task 3 守卫 **5** + Task 4 守卫 **5** + `evalmeta` 换行守卫 **1** = **372 passed**。
 
 ---
 
@@ -934,7 +934,7 @@ git commit -m "feat(factory): 材料装配器与校验①②③（Task 3）"
 - Create: `scripts/scenario_factory/verbalize.py`
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 import re
@@ -1030,12 +1030,12 @@ def test_verbalize_confab_requires_the_fabricated_anchor():
     assert verbalize_card(StubLLM([missing_claim]), card).dropped
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k verbalize`
 Expected: FAIL（`ModuleNotFoundError`）
 
-- [ ] **Step 3: 实现 verbalize.py**
+- [x] **Step 3: 实现 verbalize.py**
 
 ```python
 """演绎器：卡 → 自然文本（spec §4）。只写表面形态；标签永不从文本反推。"""
@@ -1098,19 +1098,36 @@ def _originals_present(card: ScenarioCard, text: str) -> list[str]:
     return [a for a in absent if a in text]
 
 
+def _judge_hint(card: ScenarioCard) -> str:
+    """矛盾自然化指令——**按 category 分派**（一句话指令无法同时适配三类）。
+
+    原稿只有一句"「」内的值必须出现、被改写事实的原词不得出现"，对 confab 是**反的**
+    （confab 的 anchor 恰恰必须出现），会把 confab 的演绎引到错方向。
+    """
+    c = card.corruptions[0]
+    if c.category == "setting":
+        hint = ("把被命中事实换个说法写进叙事：detail 中「」内的**新值必须出现**，"
+                "**原值不得出现**（这是要考的设定矛盾）。")
+    elif c.category == "confab":
+        hint = ("把 detail 提到的那件事**当作既成事实直接断言**（材料里从未有过它，"
+                "这正是要考的点）；不得写成「听说 / 可能 / 似乎」。")
+    else:
+        hint = "改写说话人的语气或底线，使其贴合 detail 的描述（不涉及具体专名）。"
+    return f"\n矛盾自然化：{hint}\n（category={c.category}；detail：{c.detail}）"
+
+
 def verbalize_card(llm, card: ScenarioCard) -> VerbalizeResult:
+    """卡 → 自然文本。缺要素重演一次，仍缺则 dropped=True（调用方计数）。"""
     user = (
         f"语体：{card.axes.style}；长度约 {card.history_spec.target_tokens} token；"
         f"可掺入的闲笔：{card.history_spec.noise}\n场景卡 JSON：\n"
         + card.model_dump_json()
     )
     if card.module == "judge":
-        c = card.corruptions[0]
-        user += (f"\n矛盾自然化：按「{c.method}」处理——{c.detail}；"
-                 "detail 中「」内的值必须出现在文中，被改写事实的原词不得出现。")
+        user += _judge_hint(card)
     msgs = [{"role": "system", "content": VERBALIZE_SYSTEM},
             {"role": "user", "content": user}]
-    max_tokens = int(card.history_spec.target_tokens * 1.2)
+    max_tokens = int(card.history_spec.target_tokens * 1.2)  # spec §4 的 ×1.2 上限
     for attempt in range(1, MAX_ATTEMPTS + 1):
         text, finish = complete_checked(llm, msgs, purpose="aux",
                                         max_tokens=max_tokens,
@@ -1122,17 +1139,41 @@ def verbalize_card(llm, card: ScenarioCard) -> VerbalizeResult:
     return VerbalizeResult(text="", attempts=MAX_ATTEMPTS, dropped=True)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k verbalize`
 Expected: 5 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/scenario_factory/verbalize.py tests/test_scenario_factory.py
 git commit -m "feat(factory): 演绎器与 anchors 在位/反向校验（Task 4）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成**
+>
+> - Step 2 确认失败 ✓：`ModuleNotFoundError: No module named 'scripts.scenario_factory.verbalize'`
+> - Step 4 确认通过 ✓：`-k verbalize` **5 passed**；整文件 **29 passed**（9+10+5+5）；
+>   全量 367 → **372 passed**
+> - 落地：新增 `scripts/scenario_factory/verbalize.py`
+>
+> **执行中发现并修正的 1 处计划缺陷**：
+>
+> 1. **自然化指令对 confab 是反的**（原稿一句话适配三类，但三类方向本就不同）：
+>    原句"detail 中「」内的值必须出现在文中，**被改写事实的原词不得出现**"——
+>    对 setting 正确，对 confab 却**自相矛盾**（confab 的 anchor 恰恰**必须**出现，
+>    否则"缺席证据"这条通路不成立；且 confab 并无"被改写"的事实）。
+>    照原句写会把 confab（占 judge 配额 ≥40%）的演绎引向错方向。
+>    修法：抽出 `_judge_hint()` **按 category 分派**。
+>
+> **功能性核验**（stub 演绎器，三类各取真实卡）：
+>
+> | category | 须在位 | 须缺席 | 行为 |
+> | --- | --- | --- | --- |
+> | setting | 新值（`听雨`） | 原值（`环宇`） | 新值在位 → 收下；原值也写回 → 丢弃 ✓ |
+> | confab | 被断言的 anchor（`密码本`） | （无） | 说出编造 → 收下；没说 → 丢弃 ✓ |
+> | ooc | 无（hit_idx=None） | （无） | 全部事实 anchors 须在位 ✓ |
 
 ---
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -15,6 +16,7 @@ from scripts.scenario_factory.cards import (
     layer_of,
 )
 from scripts.scenario_factory.materialize import MaterializeError, build_material
+from scripts.scenario_factory.verbalize import verbalize_card
 
 
 def _judge_card(**over):
@@ -288,3 +290,93 @@ def test_present_npc_must_be_in_pack():
     card.material.present = ["ghost_npc"]
     with pytest.raises(MaterializeError, match="不在包里"):
         build_material(card)
+
+
+# --- Task 4：演绎器（anchors 在位 + 反向校验 + 重演丢弃） --------------------
+
+
+class StubLLM:
+    """budgets._complete 的轻量替身协议：complete_with_meta(messages, **kw)。
+
+    **队列语义：末条粘滞**（取到最后一条后重复使用）。原因是有两处会多吃一条队列，
+    夹具若给"刚好够"的条数就会 `IndexError: pop from empty list`：
+      ① `complete_checked` 在空响应/截断（`finish_reason="length"`）时会用
+         **升级预算重试一次**（`budgets.py:70-81`）；
+      ② `verbalize_card` 自身有 `MAX_ATTEMPTS` 循环。
+    调用次数仍由 `self.calls` 精确可数，故断言不受影响。
+    """
+
+    def __init__(self, texts, finish="stop"):
+        self.texts = list(texts)
+        self.finish = finish
+        self.calls = []
+
+    def complete_with_meta(self, messages, **kw):
+        self.calls.append(kw)
+        text = self.texts.pop(0) if len(self.texts) > 1 else self.texts[0]
+        return SimpleNamespace(text=text, finish_reason=self.finish)
+
+
+def _extract_card():
+    return generate_card(10231, 6, "extract")   # 正例位（必有 anchors 可校验）
+
+
+def test_verbalize_ok_first_try():
+    card = _extract_card()
+    anchors = [a for f in card.facts for a in f.anchors]
+    llm = StubLLM(["渡口茶棚里，" + "，".join(anchors) + "，闲谈收尾。"])
+    r = verbalize_card(llm, card)
+    assert not r.dropped and r.attempts == 1 and llm.calls[0]["temperature"] == 0.9
+
+
+def test_verbalize_retry_then_drop_when_anchor_missing():
+    card = _extract_card()
+    llm = StubLLM(["没有专名的文本", "还是没有"])
+    r = verbalize_card(llm, card)
+    assert r.dropped and r.attempts == 2
+
+
+def test_verbalize_truncated_discards():
+    llm = StubLLM(["半截文本"], finish="length")
+    assert verbalize_card(llm, _extract_card()).dropped
+
+
+def _setting_card_from_generator():
+    """取一张 setting 卡：反向校验（原词不得出现）只对它有意义。"""
+    return next(c for s in range(20)
+                if (c := generate_card(10231, s, "judge")).corruptions[0].category == "setting")
+
+
+def test_verbalize_corruption_reverse_check():
+    card = _setting_card_from_generator()
+    hit, rest = card.facts[0], card.facts[1:]
+    quoted = re.findall(r"「([^」]+)」", card.corruptions[0].detail)  # [原值, 新值]
+    rest_anchors = [a for f in rest for a in f.anchors]
+
+    # 好样本：其余事实 anchors 在位 + corruption 新值在位 + 被命中事实的**原 anchor 不在**
+    good = "叙事：" + "、".join(rest_anchors + [quoted[-1]])
+    assert not verbalize_card(StubLLM([good]), card).dropped
+
+    # 坏样本：把原 anchor 写回去 → 必须丢弃（这就是反向校验）
+    bad = "叙事：" + "、".join(rest_anchors + [quoted[-1], hit.anchors[0]])
+    assert verbalize_card(StubLLM([bad]), card).dropped
+
+
+def test_verbalize_confab_requires_the_fabricated_anchor():
+    """confab：叙事**必须**把编造的 anchor 说出来 —— 与 setting 的"原词不得出现"方向相反。
+
+    早先一版把 confab 也按 setting 处理（同一条 anchor 既要求在位、又列为不得出现），
+    结果 confab 卡恒被丢弃；而 confab 占 judge 配额 ≥40%，是重大静默损失。
+    """
+    card = next(c for s in range(20)
+                if (c := generate_card(10231, s, "judge")).corruptions[0].category == "confab")
+    cor = card.corruptions[0]
+    assert cor.target_fact is not None
+    wanted = re.findall(r"「([^」]+)」", cor.detail)      # 被断言的 anchor
+    rest = [a for i, f in enumerate(card.facts) if i != cor.target_fact for a in f.anchors]
+
+    good = "叙事：" + "、".join(rest + wanted)            # 说出了编造 → 收下
+    assert not verbalize_card(StubLLM([good]), card).dropped
+
+    missing_claim = "叙事：" + "、".join(rest)            # 没说出编造 → 丢弃
+    assert verbalize_card(StubLLM([missing_claim]), card).dropped
