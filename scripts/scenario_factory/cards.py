@@ -1,11 +1,14 @@
 """场景卡：卡即标签——真值由程序拥有，LLM 只做表面演绎（spec §3）。"""
 from __future__ import annotations
 
+import pathlib
 import random
 import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # judge.py ①②③ 的类别词（expect 与之对齐，§3.3）
 CATEGORY_EXPECT = {"setting": "设定矛盾", "confab": "虚构事实", "ooc": "OOC"}
@@ -150,12 +153,34 @@ _FACT_TPL = [  # (type, importance, text 模板, anchors 模板)
     ("目标与线索", 5, "玩家在打听「{n0}」的下落", ["{n0}"]),
     ("承诺与约定", 7, "玩家答应把{n0}转交给{n1}", ["{n0}", "{n1}"]),
 ]
-_NAME_POOL = ["听雨", "白鸮", "断刃崖", "灰雀号", "密码本", "环宇", "旧书店", "青瓷"]
+# 10 个：前 8 给事实（4 事实 × 2 槽），后 2 给情节骨架/检索上下文 —— **两段不得重叠**
+_NAME_POOL = ["听雨", "白鸮", "断刃崖", "灰雀号", "密码本", "环宇", "旧书店", "青瓷",
+              "沈砚", "罗九"]
+FACT_SLOTS = 8          # 事实占用 pool[0:FACT_SLOTS]，其余留给情节骨架
+RECENT_TEXT = "玩家近日独自打理杂物，未与旁人来往"   # 材料检索上下文：**去专名**
+# 去专名的原因：recent 虽不渲染进材料（只作 rank_facts/select_lore 的打分输入），
+# 但若带上本卡专名，就会污染检索命中、且语义上与"材料代表最近玩家发言"不符；
+# 对 confab 卡更是要保持"材料对该承诺零信号"。
 
 # judge 卡必带 pack 的题材 → 该包现有 NPC（材料装配用；无映射的用中性占位）
 NPC_BY_PACK = {"xianxia_wendao": "bai_zhi", "urban_neon": "lin_che",
                "ancient_jianghu": "shen_qingqiu"}
 DEFAULT_JUDGE_NPC = "station_chief"  # G1 待造，先用占位（材料装配排在 G1 之后）
+
+
+def judge_genres_for(layer: str) -> list[str]:
+    """可出 judge 卡的题材 = **有真实包可物化**的题材（§4.1）+ 留出轴纪律（决策 19）。
+
+    两条约束缺一不可：
+
+    1. **包必须存在**：judge 卡的材料要由真实世界包物化，映射到不存在的包（如 G1 待造）
+       只会在材料装配时炸 —— 出了卡也是废卡；
+    2. **留出轴只对 eval 开放**：`PACK_BY_GENRE` 里含留出轴「民国谍战」，若把它放进
+       train/dev 的重映射候选，约 14% 的 train judge 卡会变成留出轴（违反决策 19）。
+       **G1 就绪前 eval 也拿不到**（第 1 条已把它滤掉）——judge 侧的留出轴覆盖等 G1。
+    """
+    avail = [g for g, p in PACK_BY_GENRE.items() if (REPO_ROOT / p).is_dir()]
+    return avail if layer == "eval" else [g for g in avail if g != GENRE_EVAL_ONLY]
 
 
 def _axes_for(layer: str, rng: random.Random) -> AxesSpec:
@@ -176,7 +201,9 @@ def _axes_for(layer: str, rng: random.Random) -> AxesSpec:
 
 
 def _names(rng: random.Random) -> list[str]:
-    """整池打乱（8 个）：每张事实独占 2 个槽（4 事实 × 2 = 8），保证 anchors 互不相交。"""
+    """整池打乱（10 个）：每张事实独占 2 个槽（4 事实 × 2 = 8），保证 anchors 互不相交；
+    余下 2 个槽专供情节骨架/检索上下文 —— 早先版让它们复用 pool[0]/pool[1]，
+    等于撞上 facts[0] 的槽（见 generate_card 注释）。"""
     pool = list(_NAME_POOL)
     rng.shuffle(pool)
     return pool
@@ -188,7 +215,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
     rng = random.Random(f"{seed}:{seq}:{module}")
     axes = _axes_for(layer, rng)
     pool = _names(rng)
-    n2, n3 = pool[0], pool[1]          # events（情节骨架）用的公共专名
+    n2, n3 = pool[FACT_SLOTS], pool[FACT_SLOTS + 1]   # 情节骨架专用槽：**不与任何事实槽重叠**
     g1 = {"古代武侠": "佩剑", "仙侠": "佩剑"}.get(axes.genre, "装备")
     facts = []
     for k, (t, i, x, al) in enumerate(rng.sample(_FACT_TPL, k=4)):
@@ -217,8 +244,12 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
         return ScenarioCard(events=[f"玩家与{n2}提起{n3}", f"玩家按{g1}起誓"],
                             facts=facts, **base)
     if module == "judge":
-        genre = axes.genre if axes.genre in PACK_BY_GENRE else rng.choice(
-            list(PACK_BY_GENRE))
+        # 候选题材 = 有包可物化 + 留出轴只对 eval 开放（决策 19；见 judge_genres_for）
+        cands = judge_genres_for(layer)
+        if not cands:
+            raise ValueError(
+                "没有任何可物化的世界包，无法出 judge 卡——先造 G1 或补 PACK_BY_GENRE")
+        genre = axes.genre if axes.genre in cands else rng.choice(cands)
         base["axes"] = axes = axes.model_copy(update={"genre": genre})
         category = rng.choice(["setting", "confab", "ooc"])
         if category == "setting":
@@ -241,7 +272,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
         npc = NPC_BY_PACK.get(PACK_BY_GENRE[genre].rsplit("/", 1)[-1], DEFAULT_JUDGE_NPC)
         return ScenarioCard(pack=PACK_BY_GENRE[genre], facts=kept, corruptions=[cor],
             material=MaterialSpec(day=rng.randint(2, 15), scene=f"{genre}·场景",
-                present=[npc], affections={npc: 45}, recent=f"玩家向{n2}问起{n3}"),
+                present=[npc], affections={npc: 45}, recent=RECENT_TEXT),
             **base)
     if module == "compress":
         # input_form（spec §3.2）：首压 = 无旧摘要；增量合并 = 带旧摘要（生产 user 模板首段）

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from scripts.scenario_factory.cards import (
+    GENRE_EVAL_ONLY,
     PACK_BY_GENRE,
     ScenarioCard,
     generate_card,
@@ -176,3 +178,61 @@ def test_corruption_detail_quotes_are_parseable():
             assert len(quoted) == 1, f"confab 只应引被断言的 anchor 一个「」: {cor.detail}"
         else:  # ooc：改写语气/底线，不涉及具体值 → 无引用
             assert quoted == [], cor.detail
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_judge_genre_never_leaks_holdout_and_pack_must_exist():
+    """judge 分支的题材重映射有两条硬约束（原版只按 PACK_BY_GENRE 的键随机取 → 两条都破）：
+
+    1. **留出轴只对 eval 开放**（决策 19）：`PACK_BY_GENRE` 含留出轴「民国谍战」，
+       若把它放进 train/dev 的重映射候选，约 14% 的 train judge 卡会变成留出轴；
+    2. **包必须存在**：judge 卡材料要由真实包物化，映射到 G1（待造）只会让该卡在
+       材料装配时炸 —— 出了卡也是废卡。
+    """
+    for layer, base in (("train", 10000), ("dev", 20000), ("eval", 30000)):
+        for seq in range(60):
+            card = generate_card(base + seq, seq, "judge")
+            genre = card.axes.genre
+            if layer != "eval":
+                assert genre != GENRE_EVAL_ONLY, f"{layer} 的 judge 卡漏了留出轴: {card.card_id}"
+            assert (REPO_ROOT / PACK_BY_GENRE[genre]).is_dir(), (
+                f"{card.card_id} 映射到不存在的包: {PACK_BY_GENRE[genre]}")
+
+
+def test_judge_recent_carries_no_fact_anchor():
+    """`material.recent` 不得带本卡任何事实的 anchor。
+
+    recent 虽不渲染进材料（只作 rank_facts / select_lore 的打分输入），但带上本卡专名会
+    污染检索命中，语义上也与"材料代表最近玩家发言"不符；对 confab 卡更需保持
+    "材料对该承诺零信号"。原版 `recent=f"玩家向{n2}问起{n3}"` 而 n2/n3 正是 facts[0] 的槽。
+    """
+    for seq in range(60):
+        card = generate_card(10231, seq, "judge")
+        anchors = [a for f in card.facts for a in f.anchors]
+        assert not any(a in card.material.recent for a in anchors), (
+            f"{card.card_id} 的 recent 撞了 anchors: {card.material.recent}")
+
+
+def test_corruption_new_value_does_not_collide_with_card_entities():
+    """corruption 的「新值」不得落在任何事实的文本/anchors 里。
+
+    否则材料里同时出现"原值"与"新值"，"材料说 A、叙述说 B"的陷阱纯度被稀释。
+    原版 20% 的 setting 卡中招：facts[0] 恰为「承诺与约定」模板时 n0/n1 都被用上，
+    而重映射的 n3 = pool[1] 正是 facts[0] 的第二个槽。
+    """
+    seen_setting = 0
+    for seq in range(60):
+        card = generate_card(10231, seq, "judge")
+        cor = card.corruptions[0]
+        if cor.category != "setting":
+            continue
+        seen_setting += 1
+        quoted = re.findall(r"「([^」]+)」", cor.detail)   # [原值, 新值]
+        assert quoted[0] != quoted[1], f"{card.card_id}: 原值 = 新值: {cor.detail}"
+        new_val = quoted[-1]
+        for f in card.facts:
+            assert new_val not in f.text, f"{card.card_id}: 新值 {new_val} 已在事实文本里"
+            assert all(new_val not in a for a in f.anchors), card.card_id
+    assert seen_setting, "样本里没有 setting 卡，守卫没生效"

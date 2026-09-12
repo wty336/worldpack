@@ -21,7 +21,7 @@
 | Task | 状态 | 提交 | 与计划的偏差 |
 | --- | --- | --- | --- |
 | 1 卡 schema + §3.3 校验 | ✅ 完成 | `d0b7195` | 发现并修正 3 处计划缺陷（见 Task 1 执行记录） |
-| 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b` | 发现并修正 3 处计划缺陷（见 Task 2 执行记录） |
+| 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b`（+ 评审补修，见执行记录） | 共修正 **6 处**计划/实现缺陷（执行 3 + 评审 3） |
 | 3 材料装配器 + 校验①②③ | ⬜ 待做 | — | — |
 | 4 演绎器 + 反向校验 | ⬜ 待做 | — | 计划已预修 confab 的矛盾逻辑（见 Task 4） |
 | 5 rubric 评委四模式 | ⬜ 待做 | — | — |
@@ -43,7 +43,7 @@
 - `aa78893` Task 3 Step 5 由"顺手修 spec"改为"核验 spec 已修订"（spec 修正已先行落地）。
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
-Task 2 守卫 **7** + `evalmeta` 换行守卫 **1** = **359 passed**。
+Task 2 守卫 **10** + `evalmeta` 换行守卫 **1** = **362 passed**。
 
 ---
 
@@ -189,11 +189,14 @@ Expected: FAIL（`ModuleNotFoundError: scripts.scenario_factory`）
 """场景卡：卡即标签——真值由程序拥有，LLM 只做表面演绎（spec §3）。"""
 from __future__ import annotations
 
+import pathlib
 import random
 import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # judge.py ①②③ 的类别词（expect 与之对齐，§3.3）
 CATEGORY_EXPECT = {"setting": "设定矛盾", "confab": "虚构事实", "ooc": "OOC"}
@@ -347,8 +350,9 @@ git commit -m "feat(factory): 场景卡 schema 与 §3.3 校验规则（Task 1�
 - [x] **Step 1: 写失败测试（追加到测试文件）**
 
 ```python
-# 本 Task 起把 Task 1 的那行导入**扩为**下面这行（保留 ScenarioCard，追加三个符号）：
+# 本 Task 起把 Task 1 的那行导入**扩为**下面这行（保留 ScenarioCard，追加四个符号）：
 from scripts.scenario_factory.cards import (
+    GENRE_EVAL_ONLY,
     PACK_BY_GENRE,
     ScenarioCard,
     generate_card,
@@ -426,6 +430,49 @@ def test_corruption_detail_quotes_are_parseable():
             assert len(quoted) == 1, f"confab 只应引被断言的 anchor 一个「」: {cor.detail}"
         else:  # ooc：改写语气/底线，不涉及具体值 → 无引用
             assert quoted == [], cor.detail
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_judge_genre_never_leaks_holdout_and_pack_must_exist():
+    """judge 分支重映射的两条硬约束（原版只按 PACK_BY_GENRE 的键随机取 → 两条都破）：
+
+    1. **留出轴只对 eval 开放**（决策 19）：含留出轴的候选会让 ~14% 的 train judge 卡
+       变成「民国谍战」；
+    2. **包必须存在**：映射到 G1（待造）的卡在材料装配时必炸。
+    """
+    for layer, base in (("train", 10000), ("dev", 20000), ("eval", 30000)):
+        for seq in range(60):
+            card = generate_card(base + seq, seq, "judge")
+            if layer != "eval":
+                assert card.axes.genre != GENRE_EVAL_ONLY, card.card_id
+            assert (REPO_ROOT / PACK_BY_GENRE[card.axes.genre]).is_dir(), card.card_id
+
+
+def test_judge_recent_carries_no_fact_anchor():
+    """`material.recent` 不得带本卡任何事实的 anchor（原版 n2/n3 正是 facts[0] 的槽）。"""
+    for seq in range(60):
+        card = generate_card(10231, seq, "judge")
+        anchors = [a for f in card.facts for a in f.anchors]
+        assert not any(a in card.material.recent for a in anchors), card.card_id
+
+
+def test_corruption_new_value_does_not_collide_with_card_entities():
+    """corruption 的「新值」不得落在任何事实的文本/anchors 里，否则材料里原值与新值并存、
+    "材料说 A、叙述说 B"的陷阱被稀释（原版 20% 的 setting 卡中招）。"""
+    seen = 0
+    for seq in range(60):
+        card = generate_card(10231, seq, "judge")
+        cor = card.corruptions[0]
+        if cor.category != "setting":
+            continue
+        seen += 1
+        quoted = re.findall(r"「([^」]+)」", cor.detail)
+        assert quoted[0] != quoted[1], card.card_id
+        for f in card.facts:
+            assert quoted[-1] not in f.text, f"{card.card_id}: {quoted[-1]} 已在事实文本里"
+    assert seen, "样本里没有 setting 卡"
 ```
 
 - [x] **Step 2: 跑测试确认失败**
@@ -458,6 +505,20 @@ NPC_BY_PACK = {"xianxia_wendao": "bai_zhi", "urban_neon": "lin_che",
                "ancient_jianghu": "shen_qingqiu"}
 DEFAULT_JUDGE_NPC = "station_chief"  # G1 待造，先用占位（材料装配排在 G1 之后）
 
+
+def judge_genres_for(layer: str) -> list[str]:
+    """可出 judge 卡的题材 = **有真实包可物化**的题材（§4.1）+ 留出轴纪律（决策 19）。
+
+    两条约束缺一不可（原版只写 `rng.choice(list(PACK_BY_GENRE))`，两条都破）：
+
+    1. **包必须存在**：材料要由真实包物化，映射到 G1（待造）只会在装配时炸 —— 出了卡也是废卡；
+    2. **留出轴只对 eval 开放**：`PACK_BY_GENRE` 含留出轴「民国谍战」，放进 train/dev 的候选
+       会让约 **14%** 的 train judge 卡变成留出轴。**G1 就绪前 eval 也拿不到**（第 1 条已滤掉）
+       —— judge 侧的留出轴覆盖等 G1。
+    """
+    avail = [g for g, p in PACK_BY_GENRE.items() if (REPO_ROOT / p).is_dir()]
+    return avail if layer == "eval" else [g for g in avail if g != GENRE_EVAL_ONLY]
+
 _FACT_TPL = [  # (type, importance, text 模板, anchors 模板)
     # {g1} = 流派词；{n0}/{n1} = **本事实独占**的专名槽（不可跨模板共用！
     # 共用会让两张事实带同一 anchor，则 setting 卡的「原词不得出现」反向校验永远不成立，
@@ -468,7 +529,11 @@ _FACT_TPL = [  # (type, importance, text 模板, anchors 模板)
     ("目标与线索", 5, "玩家在打听「{n0}」的下落", ["{n0}"]),
     ("承诺与约定", 7, "玩家答应把{n0}转交给{n1}", ["{n0}", "{n1}"]),
 ]
-_NAME_POOL = ["听雨", "白鸮", "断刃崖", "灰雀号", "密码本", "环宇", "旧书店", "青瓷"]
+# 10 个：前 8 给事实（4 事实 × 2 槽），后 2 给情节骨架/检索上下文 —— **两段不得重叠**
+_NAME_POOL = ["听雨", "白鸮", "断刃崖", "灰雀号", "密码本", "环宇", "旧书店", "青瓷",
+              "沈砚", "罗九"]
+FACT_SLOTS = 8          # 事实占用 pool[0:FACT_SLOTS]，其余留给情节骨架
+RECENT_TEXT = "玩家近日独自打理杂物，未与旁人来往"   # 材料检索上下文：**去专名**
 
 
 def _axes_for(layer: str, rng: random.Random) -> AxesSpec:
@@ -489,7 +554,9 @@ def _axes_for(layer: str, rng: random.Random) -> AxesSpec:
 
 
 def _names(rng: random.Random) -> list[str]:
-    """整池打乱（8 个）：每张事实独占 2 个槽（4 事实 × 2 = 8），保证 anchors 互不相交。"""
+    """整池打乱（10 个）：每张事实独占 2 个槽（4 事实 × 2 = 8），保证 anchors 互不相交；
+    余下 2 个槽专供情节骨架/检索上下文 —— 早先版让它们复用 pool[0]/pool[1]，
+    等于撞上 facts[0] 的槽。"""
     pool = list(_NAME_POOL)
     rng.shuffle(pool)
     return pool
@@ -501,7 +568,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
     rng = random.Random(f"{seed}:{seq}:{module}")
     axes = _axes_for(layer, rng)
     pool = _names(rng)
-    n2, n3 = pool[0], pool[1]          # events（情节骨架）用的公共专名
+    n2, n3 = pool[FACT_SLOTS], pool[FACT_SLOTS + 1]   # 情节骨架专用槽：**不与任何事实槽重叠**
     g1 = {"古代武侠": "佩剑", "仙侠": "佩剑"}.get(axes.genre, "装备")
     facts = []
     for k, (t, i, x, al) in enumerate(rng.sample(_FACT_TPL, k=4)):
@@ -530,8 +597,12 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
         return ScenarioCard(events=[f"玩家与{n2}提起{n3}", f"玩家按{g1}起誓"],
                             facts=facts, **base)
     if module == "judge":
-        genre = axes.genre if axes.genre in PACK_BY_GENRE else rng.choice(
-            list(PACK_BY_GENRE))
+        # 候选题材 = 有包可物化 + 留出轴只对 eval 开放（决策 19；见 judge_genres_for）
+        cands = judge_genres_for(layer)
+        if not cands:
+            raise ValueError(
+                "没有任何可物化的世界包，无法出 judge 卡——先造 G1 或补 PACK_BY_GENRE")
+        genre = axes.genre if axes.genre in cands else rng.choice(cands)
         base["axes"] = axes = axes.model_copy(update={"genre": genre})
         category = rng.choice(["setting", "confab", "ooc"])
         if category == "setting":
@@ -554,7 +625,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
         npc = NPC_BY_PACK.get(PACK_BY_GENRE[genre].rsplit("/", 1)[-1], DEFAULT_JUDGE_NPC)
         return ScenarioCard(pack=PACK_BY_GENRE[genre], facts=kept, corruptions=[cor],
             material=MaterialSpec(day=rng.randint(2, 15), scene=f"{genre}·场景",
-                present=[npc], affections={npc: 45}, recent=f"玩家向{n2}问起{n3}"),
+                present=[npc], affections={npc: 45}, recent=RECENT_TEXT),
             **base)
     if module == "compress":
         # input_form（spec §3.2）：首压 = 无旧摘要；增量合并 = 带旧摘要（生产 user 模板首段）
@@ -575,7 +646,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
 - [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
-Expected: 16 passed（Task 1 的 9 + Task 2 的 7）
+Expected: 19 passed（Task 1 的 9 + Task 2 的 10）
 
 - [x] **Step 5: Commit**
 
@@ -609,6 +680,33 @@ git commit -m "feat(factory): 轴空间/种子空间与确定性生成器（Task
 > （同一条 anchor 既要求"在位"、又列为"不得出现"）——已在 Task 4 预先修正
 > `_corruption_swap` 为按 category 返回 `(下标, 须在位, 须缺席)`，并补齐 confab 守卫。
 > 执行 Task 4 时按修正后的版本走即可。
+>
+> **评审补修（2026-09-12，第二轮）✅ 已修** —— 由外部评审指出、经实测确认的 3 处缺陷，
+> 均已修 + 补守卫（守卫由 7 → **10**，全量 359 → **362 passed**）：
+>
+> 4. **judge 分支的题材重映射会把留出轴漏进 train/dev**：原 `rng.choice(list(PACK_BY_GENRE))`
+>    的候选含留出轴「民国谍战」，实测 **train 27/200 = 14%、dev 25/200 = 12%** 的 judge 卡
+>    变成留出轴 → **违反决策 19**（`test_eval_only_axis_never_leaks_to_train_dev` 只测了
+>    extract 路径，没兜住 judge 分支）。**连带**：映射目标是 `world-packs/G1_republic_spy`，
+>    而该包**待造** → 这批卡走到材料装配必炸（好在 Task 3 才发现，等于白产）。
+>    修法：新增 `judge_genres_for(layer)` —— 候选**先按包是否存在过滤**，再对非 eval 层
+>    剔除留出轴；G1 就绪前 eval 也拿不到留出轴（无包则无法物化，出了卡也是废卡）。
+>    守卫 `test_judge_genre_never_leaks_holdout_and_pack_must_exist`。
+> 5. **`material.recent` 撞 `facts[0]` 的专名**：`n2, n3 = pool[0], pool[1]` 恰是 facts[0]
+>    的独占槽（每事实 2 槽，k=0 → pool[0]/pool[1]），实测 25/30 的 judge 卡 recent 含
+>    facts[0] 的 anchor。**注意机理**：`recent` **不渲染进材料**（只作 `rank_facts` /
+>    `select_lore` 的打分输入，`context.py:181/202`），所以**不会**触发 Task 3 的校验③泄漏、
+>    也不会成批报废 confab 卡；真后果是**污染检索命中 + 语义不自洽**。
+>    修法：`_NAME_POOL` 扩到 **10** 个（`FACT_SLOTS = 8`：事实占前 8，情节骨架用后 2），
+>    `recent` 改为**去专名**常量 `RECENT_TEXT`。
+>    守卫 `test_judge_recent_carries_no_fact_anchor`。
+> 6. **setting 卡的改写「新值」撞事实原文**（第 5 条的同源后果，评审未点出、实测发现）：
+>    新值取 `n3 = pool[1]`，而 facts[0] 若恰为「承诺与约定」模板（同时用 n0 与 n1），
+>    该新值**本来就写在 facts[0].text 里** → 材料中"原值"与"新值"并存，
+>    "材料说 A、叙述说 B"的陷阱纯度被稀释。实测 **8/40 = 20%** 的 setting 卡中招
+>    （样例：`facts[0].text='玩家答应把青瓷转交给密码本'` 而新值就是 `'密码本'`）。
+>    修法同第 5 条（新值与事实槽彻底分离）。
+>    守卫 `test_corruption_new_value_does_not_collide_with_card_entities`。
 
 ---
 
@@ -2371,13 +2469,14 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - [ ] **Step 1: 全量测试**
 
 Run: `uv run pytest -q`
-Expected: **341 存量** + 本计划新增 **52 个守卫**（Task 1~9：9+7+5+5+6+9+3+5+3）+ Task 10 的 1 个
-prompt 守卫 = **394 全绿**
+Expected: **341 存量** + 本计划新增 **55 个守卫**（Task 1~9：9+10+5+5+6+9+3+5+3）+ Task 10 的 1 个
+prompt 守卫 = **397 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 当前 **341**（原稿写 279，是 Step 0 之后的旧数）；
-> 计划枚举的守卫数逐个数为 52（原稿写 30 也不对）。Task 2 加了 anchors 不相交 + detail 可解析
-> 两条守卫（执行时发现的两处真缺陷）、Task 3 的夹具拆分把 4 变 5、Task 4 加了 confab 反向校验守卫、
-> Task 5 加了质检员、Task 6 加了三条模板/负例守卫、Task 8 加了 judge 去重守卫、Task 9 加了报告指纹守卫。
+> 计划枚举的守卫数逐个数为 55（原稿写 30 也不对）。Task 2 加了 5 条守卫（anchors 不相交、
+> corruption detail 可解析、judge 留出轴不漏+包必存在、recent 不撞 anchor、新值不撞事实）、
+> Task 3 的夹具拆分把 4 变 5、Task 4 加了 confab 反向校验守卫、Task 5 加了质检员、
+> Task 6 加了三条模板/负例守卫、Task 8 加了 judge 去重守卫、Task 9 加了报告指纹守卫。
 
 - [ ] **Step 2: M1~M4 验收项核对（对照 spec §10.3 逐项打勾）**
 
