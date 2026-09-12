@@ -129,8 +129,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="压缩阈值（历史 token 字符估，0=关闭）")
     parser.add_argument("--keep-turns", type=int, default=6, help="压缩保留的近窗回合数")
     parser.add_argument("--out-prefix", default="smoke",
-                        help="产出文件名前缀（saves/<out-prefix>-<包>.*，usage 同步）")
+                        help="产出文件名前缀（<out-dir>/<out-prefix>-<包>.*，usage 同步）")
+    parser.add_argument("--out-dir", default=str(SAVE_DIR),
+                        help="产出目录（默认 saves/；离线测试传临时目录，避免写脏仓库产物）")
     args = parser.parse_args(argv)
+    out_dir = Path(args.out_dir)
 
     pack = load_worldpack(args.pack)
     profile = PROFILES.get(pack.root.name) or _profile_from_file(pack)
@@ -153,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         llm = LLMClient(_OfflineFake(), "offline-fake", build_tools(pack.schedule))
         tracker = None
     else:
-        tracker = UsageTracker(SAVE_DIR / f"usage-{args.out_prefix}-{pack.root.name}.jsonl")
+        tracker = UsageTracker(out_dir / f"usage-{args.out_prefix}-{pack.root.name}.jsonl")
         llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm, rng=random.Random(args.seed),
@@ -237,12 +240,12 @@ def main(argv: list[str] | None = None) -> int:
             log("[观察] 古风残留标记（含子串误报可能）: " + (str(arch) or "（无）"))
 
         # 落盘（离线模式也落盘，便于比对）
-        SAVE_DIR.mkdir(exist_ok=True)
-        save_game(state, SAVE_DIR / f"{args.out_prefix}-{pack.root.name}.json", game.history)
-        (SAVE_DIR / f"{args.out_prefix}-{pack.root.name}.txt").write_text(
+        out_dir.mkdir(parents=True, exist_ok=True)
+        save_game(state, out_dir / f"{args.out_prefix}-{pack.root.name}.json", game.history)
+        (out_dir / f"{args.out_prefix}-{pack.root.name}.txt").write_text(
             "\n\n".join(transcript), encoding="utf-8"
         )
-        print(f"\n已保存 → saves/{args.out_prefix}-{pack.root.name}.{{json,txt}}")
+        print(f"\n已保存 → {out_dir}/{args.out_prefix}-{pack.root.name}.{{json,txt}}")
         if tracker is not None:
             print("\n" + tracker.cost_report())
         return status

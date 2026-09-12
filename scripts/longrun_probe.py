@@ -97,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--turns", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--offline", action="store_true", help="离线循环回归（不测召回/压缩）")
+    parser.add_argument("--out-dir", default=str(SAVE_DIR),
+                        help="产出目录（默认 saves/；离线测试传临时目录，避免写脏仓库产物）")
     args = parser.parse_args(argv)
 
     pack = load_worldpack(args.pack)
@@ -106,11 +108,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     state = GameState.from_pack(pack)
+    out_dir = Path(args.out_dir)
     if args.offline:
         llm = LLMClient(_OfflineFake(), "offline-fake", build_tools(pack.schedule))
         tracker = None
     else:
-        tracker = UsageTracker(SAVE_DIR / f"usage-longrun-{pack.root.name}.jsonl")
+        tracker = UsageTracker(out_dir / f"usage-longrun-{pack.root.name}.jsonl")
         llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm, rng=random.Random(args.seed),
@@ -277,9 +280,9 @@ def main(argv: list[str] | None = None) -> int:
             log(f"[✓] 数值零偏差审计通过（{len(state.stat_log)} 条变更记录）")
 
         # 落盘
-        SAVE_DIR.mkdir(exist_ok=True)
-        save_game(state, SAVE_DIR / f"longrun-{pack.root.name}.json", game.history)
-        (SAVE_DIR / f"longrun-{pack.root.name}.txt").write_text("\n\n".join(transcript), encoding="utf-8")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        save_game(state, out_dir / f"longrun-{pack.root.name}.json", game.history)
+        (out_dir / f"longrun-{pack.root.name}.txt").write_text("\n\n".join(transcript), encoding="utf-8")
         report = {
             "pack": pack.world.name,
             "seed": args.seed,
@@ -294,10 +297,10 @@ def main(argv: list[str] | None = None) -> int:
             "audit_deviations": audit_stats(pack, state),
             "exit": status,
         }
-        (SAVE_DIR / f"longrun-{pack.root.name}-report.json").write_text(
+        (out_dir / f"longrun-{pack.root.name}-report.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        print(f"\n已保存 → saves/longrun-{pack.root.name}.{{json,txt,-report.json}}")
+        print(f"\n已保存 → {out_dir}/longrun-{pack.root.name}.{{json,txt,-report.json}}")
         if tracker is not None:
             print("\n" + tracker.cost_report())
         return status

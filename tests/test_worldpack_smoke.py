@@ -1,6 +1,10 @@
 """③ 统一冒烟脚本测试（离线）：三包 profile 完整性 + --offline 全流程回归。
 
 质量门命令链中的 `worldpack_smoke --pack` 环节在此离线验证（不触网）。
+
+纪律：离线 run 一律用 `--out-dir <tmp_path>` —— 脚本默认写 `saves/`，而那是
+**被 git 跟踪的产物目录**，直接跑会让每次 pytest 都改写仓库产物
+（历史问题：`saves/longrun-xianxia_wendao-report.json` 每次全量回归都被改写）。
 """
 
 from __future__ import annotations
@@ -23,9 +27,12 @@ def _load_module():
     return mod
 
 
-def _run_offline(pack: str, days: int = 3) -> subprocess.CompletedProcess:
+def _run_offline(pack: str, out_dir: Path, days: int = 3) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SMOKE), "--pack", f"world-packs/{pack}", "--offline", "--days", str(days)],
+        [
+            sys.executable, str(SMOKE), "--pack", f"world-packs/{pack}",
+            "--offline", "--days", str(days), "--out-dir", str(out_dir),
+        ],
         capture_output=True,
         text=True,
         timeout=300,
@@ -47,30 +54,38 @@ def test_profiles_cover_all_packs_with_required_keys():
         )
 
 
-def test_offline_smoke_all_three_packs():
+def test_offline_smoke_all_three_packs(tmp_path):
     """--offline 全流程：三个包用同一脚本跑通（协议闭环 + 审计零偏差 + 禁表扫描）。"""
     for pack in ("ancient_jianghu", "xianxia_wendao", "urban_neon"):
-        r = _run_offline(pack)
+        r = _run_offline(pack, tmp_path)
         assert r.returncode == 0, f"{pack} 离线冒烟失败:\n{r.stdout}\n{r.stderr}"
         assert "审计通过" in r.stdout
         assert "禁表扫描通过" in r.stdout
+        # 产物落在指定目录（不写脏仓库 saves/）
+        assert (tmp_path / f"smoke-{pack}.json").exists()
+        assert (tmp_path / f"smoke-{pack}.txt").exists()
 
 
-def test_offline_unknown_pack_reports_missing_profile():
+def test_offline_unknown_pack_reports_missing_profile(tmp_path):
     """未配置 profile 的包（如 baseline_probe）应报错而非静默错跑。"""
-    r = _run_offline("baseline_probe")
+    r = _run_offline("baseline_probe", tmp_path)
     assert r.returncode != 0
 
 
-def test_longrun_probe_offline_loop_regression():
-    """④ 长局脚本 --offline：30 回合循环完整跑通（无结局路线 + 审计零偏差）。"""
+def test_longrun_probe_offline_loop_regression(tmp_path):
+    """④ 长局脚本 --offline：30 回合循环完整跑通（无结局路线 + 审计零偏差）。
+
+    `--out-dir` 指向 tmp_path：离线回归不得改写被跟踪的 saves/ 产物。
+    """
     r = subprocess.run(
         [
             sys.executable, str(REPO_ROOT / "scripts" / "longrun_probe.py"),
             "--pack", "world-packs/xianxia_wendao", "--offline", "--turns", "30",
+            "--out-dir", str(tmp_path),
         ],
         capture_output=True, text=True, timeout=300, cwd=REPO_ROOT,
     )
     assert r.returncode == 0, f"longrun 离线回归失败:\n{r.stdout}\n{r.stderr}"
     assert "审计通过" in r.stdout
     assert "意外提前结局" not in r.stdout  # 无结局路线在离线 30 回合内不被突破
+    assert (tmp_path / "longrun-xianxia_wendao-report.json").exists()
