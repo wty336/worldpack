@@ -87,6 +87,7 @@ def main() -> int:
     print(f"\n===== 关系洞察（{sum(len(v) for v in state.npc_insights.values())} 条） =====")
     insight_total = 0
     insight_bad = 0
+    insight_unknown = 0
     for npc_id, insights in state.npc_insights.items():
         mat_state = state.copy()
         mat_state.npc_insights = {}  # 材料不含洞察自身，防循环对照
@@ -94,15 +95,22 @@ def main() -> int:
         for ins in insights:
             insight_total += 1
             ok, verdict = JudgeSystem(game.llm).check(ins.text, materials)
-            insight_bad += 0 if ok else 1
+            if ok is None:
+                insight_unknown += 1
+            else:
+                insight_bad += 0 if ok else 1
             print(f"  - {ins.text}")
             print(f"    来源: {'；'.join(ins.sources[:2])}")
-            print(f"    Judge 复核: {'✓ 无矛盾' if ok else f'✗ {verdict}'}")
+            if ok is None:
+                print("    Judge 复核: ? 不可判定（未知 ≠ 无矛盾）")
+            else:
+                print(f"    Judge 复核: {'✓ 无矛盾' if ok else f'✗ {verdict}'}")
     if insight_total == 0:
         print("  （未产生洞察——NPC 记忆不足 8 条或回合未达反思点）")
-    print(f"\n洞察矛盾率：{insight_bad}/{insight_total}（要求 0）")
+    print(f"\n洞察矛盾率：{insight_bad}/{insight_total}（要求 0）"
+          + (f" · 另有 {insight_unknown} 条不可判定" if insight_unknown else ""))
     print("\n" + tracker.cost_report())
-    return 0 if insight_total > 0 and insight_bad == 0 else 1
+    return 0 if insight_total > 0 and insight_bad == 0 and insight_unknown == 0 else 1
 
 
 if __name__ == "__main__":

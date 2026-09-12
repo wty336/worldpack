@@ -5,6 +5,8 @@
 - 对语料每条用例构造生产同款材料（status_text），调用真实 Judge；
 - 按类统计拦截率（对抗样本应被拦）与误报率（正常样本应通过）；
 - 阈值：每类拦截率 ≥80%、正常误报率 ≤10%，不达标退出码 1（可作 CI 门禁）；
+- 判定三态：通过 / 有问题 / **未知**（空响应或截断、升级重试后仍不可用）——
+  未知轮不进多数票分母，未知用例不进分类分母（单独报数），某类全未知判不通过；
 - 结果写入 reports/judge_sensitivity_<时间戳>.json。
 """
 
@@ -23,6 +25,7 @@ from game_agent.judge_corpus import (
     NORMAL_CATEGORY,
     build_materials,
     load_corpus,
+    majority_hit,
 )
 from game_agent.llm import LLMClient
 from game_agent.usage import UsageTracker
@@ -33,17 +36,59 @@ FP_MAX = 0.10  # 正常样本误报率上限
 
 
 def _run_case(judge, pack, case, rounds):
-    """跑一条用例 rounds 次，返回逐轮明细与多数票结论。"""
+    """跑一条用例 rounds 次，返回多数票结论与逐轮明细。
+
+    结论三态：True 拦截 / False 未拦截 / **None 不可判定**（全部轮次都没拿到判定）。
+    未知轮不进多数票分母（见 `judge_corpus.majority_hit`）——否则空响应会被记成
+    "未拦截"，系统性低估拦截率（2026-09-11 重测前的行为）。
+    """
     materials = build_materials(pack, case)
     rounds_detail = []
-    flagged_count = 0
+    verdicts: list[bool | None] = []
     for r in range(1, rounds + 1):
         ok, verdict = judge.check(case.narration, materials)
-        flagged = not ok
-        flagged_count += flagged
+        verdicts.append(ok)
         rounds_detail.append({"round": r, "passed": ok, "verdict": verdict})
-    hit = flagged_count >= (rounds + 1) // 2  # 多数票
-    return hit, rounds_detail
+    return majority_hit(verdicts), rounds_detail
+
+
+def _summarize(results: list[dict]) -> tuple[dict, bool]:
+    """分类统计。未知用例不计入分母但单独报数；**某类全部未知 → 判不通过**。
+
+    「无法判定」不等于「达标」：判官不可用时必须让门禁失败，而不是沉默放行。
+    """
+    summary: dict[str, dict] = {}
+    failed = False
+
+    for cat in ADVERSARIAL_CATEGORIES:
+        items = [r for r in results if r["category"] == cat]
+        known = [r for r in items if r["hit"] is not None]
+        hits = sum(1 for r in known if r["hit"])
+        rate = hits / len(known) if known else 0.0
+        ok = bool(known) and rate >= INTERCEPT_MIN
+        failed |= not ok
+        summary[cat] = {
+            "n": len(known),
+            "intercepted": hits,
+            "rate": round(rate, 3),
+            "pass": ok,
+            "unknown": len(items) - len(known),
+        }
+
+    normals = [r for r in results if r["category"] == NORMAL_CATEGORY]
+    known_normals = [r for r in normals if r["hit"] is not None]
+    fp = sum(1 for r in known_normals if r["hit"])  # 正常样本被拦 = 误报
+    fp_rate = fp / len(known_normals) if known_normals else 0.0
+    fp_ok = bool(known_normals) and fp_rate <= FP_MAX
+    failed |= not fp_ok
+    summary[NORMAL_CATEGORY] = {
+        "n": len(known_normals),
+        "false_positives": fp,
+        "rate": round(fp_rate, 3),
+        "pass": fp_ok,
+        "unknown": len(normals) - len(known_normals),
+    }
+    return summary, failed
 
 
 def main() -> int:
@@ -74,32 +119,27 @@ def main() -> int:
     for case in corpus:
         hit, detail = _run_case(judge, pack, case, args.rounds)
         results.append({"id": case.id, "category": case.category, "hit": hit, "rounds": detail})
-        mark = "✓" if (hit == (not case.expected)) else "✗"
+        if hit is None:
+            mark, shown = "?", "不可判定"
+        else:
+            mark = "✓" if (hit == (not case.expected)) else "✗"
+            shown = "拦" if hit else "过"
         expect_txt = "应拦" if not case.expected else "应过"
         verdict_txt = detail[-1]["verdict"].replace("\n", " ")[:60] if detail[-1]["verdict"] else "（空）"
-        print(f"  [{mark}] {case.id:<32} {expect_txt} → {'拦' if hit else '过'} · {verdict_txt}")
+        print(f"  [{mark}] {case.id:<32} {expect_txt} → {shown} · {verdict_txt}")
 
-    # 分类统计
-    summary: dict[str, dict] = {}
-    failed = False
+    # 分类统计（未知轮/未知用例单独报数；某类全未知 → 不通过）
+    summary, failed = _summarize(results)
     for cat in ADVERSARIAL_CATEGORIES:
-        items = [r for r in results if r["category"] == cat]
-        hits = sum(r["hit"] for r in items)
-        rate = hits / len(items)
-        ok = rate >= INTERCEPT_MIN
-        failed |= not ok
-        summary[cat] = {"n": len(items), "intercepted": hits, "rate": round(rate, 3), "pass": ok}
-        print(f"\n[{cat}] 拦截率 {hits}/{len(items)} = {rate:.0%}  （要求 ≥{INTERCEPT_MIN:.0%}）{'✓' if ok else '✗'}")
+        s = summary[cat]
+        suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
+        print(f"\n[{cat}] 拦截率 {s['intercepted']}/{s['n']} = {s['rate']:.0%}  "
+              f"（要求 ≥{INTERCEPT_MIN:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
 
-    normals = [r for r in results if r["category"] == NORMAL_CATEGORY]
-    fp = sum(r["hit"] for r in normals)  # 正常样本被拦 = 误报
-    fp_rate = fp / len(normals)
-    fp_ok = fp_rate <= FP_MAX
-    failed |= not fp_ok
-    summary[NORMAL_CATEGORY] = {
-        "n": len(normals), "false_positives": fp, "rate": round(fp_rate, 3), "pass": fp_ok,
-    }
-    print(f"\n[normal] 误报率 {fp}/{len(normals)} = {fp_rate:.0%}  （要求 ≤{FP_MAX:.0%}）{'✓' if fp_ok else '✗'}")
+    s = summary[NORMAL_CATEGORY]
+    suffix = f" · 另有 {s['unknown']} 条不可判定" if s["unknown"] else ""
+    print(f"\n[normal] 误报率 {s['false_positives']}/{s['n']} = {s['rate']:.0%}  "
+          f"（要求 ≤{FP_MAX:.0%}）{'✓' if s['pass'] else '✗'}{suffix}")
 
     # 落盘报告
     reports_dir = Path("reports")
@@ -110,6 +150,10 @@ def main() -> int:
         "model": settings.model,
         "rounds": args.rounds,
         "thresholds": {"interception_min": INTERCEPT_MIN, "fp_max": FP_MAX},
+        "unknown_cases": sum(1 for r in results if r["hit"] is None),
+        "unknown_rounds": sum(
+            1 for r in results for d in r["rounds"] if d["passed"] is None
+        ),
         "summary": summary,
         "cases": [
             {
@@ -127,6 +171,9 @@ def main() -> int:
     print(f"\n报告已写入 {out}")
     print("\n" + tracker.cost_report())  # C2
 
+    unknown_n = sum(1 for r in results if r["hit"] is None)
+    if unknown_n:
+        print(f"\n[!] {unknown_n} 条用例不可判定（未知不参与统计，也不算达标）")
     print("\n[✓] 门禁通过" if not failed else "\n[✗] 门禁未通过——若判据太钝，先调 JUDGE_SYSTEM 再重测（E1）")
     return 0 if failed is False else 1
 

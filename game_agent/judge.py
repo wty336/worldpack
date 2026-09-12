@@ -28,11 +28,15 @@ JUDGE_SYSTEM = (
 JUDGE_TEMPERATURE = 0.0  # E1（P0）：判定类调用固定温度 0，保证质量门禁结果可复现
 
 
-def parse_verdict(output: str) -> tuple[bool, str]:
-    """解析判定输出。True = 通过。空输出按"通过"降级（见 check 的升级重试说明）。"""
+def parse_verdict(output: str) -> tuple[bool | None, str]:
+    """解析判定输出：True = 通过 / False = 有问题 / **None = 未知**。
+
+    空输出是「未知」而不是「通过」——思考模式吃光预算时 ``content`` 为空，
+    旧实现把它当通过，等于静默放行假阴性（素材导入工具 B 与 retro §5.3 两次踩到）。
+    """
     text = (output or "").strip()
     if not text:
-        return True, ""
+        return None, ""
     head = text[:10].replace(" ", "")
     return head.startswith("通过"), text
 
@@ -50,12 +54,12 @@ class JudgeSystem:
             },
         ]
 
-    def check(self, narration: str, materials: str) -> tuple[bool, str]:
-        """检查一轮叙事。返回 (是否通过, 判定原文)。调用失败时返回 (True, '')（静默降级）。
+    def check(self, narration: str, materials: str) -> tuple[bool | None, str]:
+        """检查一轮叙事。返回 (判定, 判定原文)：True 通过 / False 有问题 / **None 未知**。
 
-        B（素材导入工具）发现：思考模式偶发把预算烧在推理链上导致空输出，而
-        parse_verdict('') 会静默放行——空 = 未知，不是"通过"。空响应升级重试现由
-        budgets.complete_with_empty_retry 统一实现（judge/dedup/reflect/extract 同策略）。
+        - 空响应与截断由 ``budgets.complete_with_empty_retry`` 统一处理（升级预算重试一次）；
+        - 重试后仍拿不到可用判定、或调用异常 → 返回 ``(None, '')``：
+          **不影响主线**（调用点只在 False 时注入校验反馈），但也**不得谎报为通过**。
         """
         try:
             output = complete_with_empty_retry(
@@ -66,5 +70,5 @@ class JudgeSystem:
                 temperature=JUDGE_TEMPERATURE,
             )
         except Exception:  # noqa: BLE001
-            return True, ""
+            return None, ""
         return parse_verdict(output)

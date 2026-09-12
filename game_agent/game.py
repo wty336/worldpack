@@ -442,7 +442,7 @@ class Game:
             self.state, self.story.active_node(self.state)
         )
         ok, verdict = self.judge.check(narration, materials)
-        if not ok and verdict:
+        if ok is False and verdict:  # None = 未知（判定不可用）→ 不注入反馈，也不当作通过
             self.history.append(
                 {
                     "role": "user",

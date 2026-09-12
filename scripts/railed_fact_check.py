@@ -138,6 +138,7 @@ def main() -> int:
     print("\n===== 关系洞察复核（A3） =====")
     insight_bad = 0
     insight_total = 0
+    insight_unknown = 0
     for npc_id, insights in game.state.npc_insights.items():
         mat_state = game.state.copy()
         mat_state.npc_insights = {}  # 复核材料不含洞察自身（防循环对照）
@@ -145,14 +146,19 @@ def main() -> int:
         for ins in insights:
             insight_total += 1
             ok, verdict = JudgeSystem(game.llm).check(ins.text, materials)
+            if ok is None:
+                insight_unknown += 1
+                print(f"  ? {npc_id}：{ins.text[:60]} → 不可判定（未知 ≠ 无矛盾）")
+                continue
             insight_bad += 0 if ok else 1
             print(f"  {'✓' if ok else '✗'} {npc_id}：{ins.text[:60]}"
                   + (f" → {verdict[:60]}" if not ok else ""))
     if insight_total == 0:
         print("  （本次运行未产生洞察）")
-    print(f"洞察矛盾率：{insight_bad}/{insight_total}（要求 0）")
+    print(f"洞察矛盾率：{insight_bad}/{insight_total}（要求 0）"
+          + (f" · 另有 {insight_unknown} 条不可判定" if insight_unknown else ""))
     print("\n" + tracker.cost_report())  # C2
-    return 0 if passed == len(FACTS) and insight_bad == 0 else 1
+    return 0 if passed == len(FACTS) and insight_bad == 0 and insight_unknown == 0 else 1
 
 
 if __name__ == "__main__":

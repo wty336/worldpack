@@ -60,8 +60,11 @@ def main() -> int:
     # Judge 复核：叙事与材料（含注入 lore）一致
     materials = game.builder.status_text(game.state, None)
     passed, verdict = JudgeSystem(game.llm).check(view.narration, materials)
-    print(f"Judge 复核: {'✓ 通过' if passed else f'✗ {verdict}'}")
-    ok = ok and passed
+    if passed is None:
+        print("Judge 复核: ? 不可判定（未知 ≠ 通过）")
+    else:
+        print(f"Judge 复核: {'✓ 通过' if passed else f'✗ {verdict}'}")
+    ok = ok and passed is True  # 未知不算通过：冒烟门禁不得沉默放行
 
     print("\n" + tracker.cost_report())
     print("\n[✓] B1 冒烟通过" if ok else "\n[✗] B1 冒烟失败")

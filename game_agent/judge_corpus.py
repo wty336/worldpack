@@ -95,3 +95,16 @@ def build_materials(pack: WorldPack, case: JudgeCase) -> str:
         for k, v in case.npc_memories.items()
     }
     return ContextBuilder.from_pack(pack).status_text(state, None)
+
+
+def majority_hit(verdicts: list[bool | None]) -> bool | None:
+    """多数票：以「被拦截」为阳性。``None`` = 该轮无法判定（空响应/截断/异常）。
+
+    - 未知轮**不进分母**（否则空响应会被当成"未拦截"，系统性低估拦截率）；
+    - 全部未知 → 返回 ``None``：该用例不可判定，**不是**"未拦截"。
+    """
+    known = [v for v in verdicts if v is not None]
+    if not known:
+        return None
+    flagged = sum(1 for v in known if not v)
+    return flagged >= (len(known) + 1) // 2

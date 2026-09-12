@@ -35,6 +35,19 @@ class LLMTurnError(Exception):
 
 
 @dataclass
+class CompletionResult:
+    """无工具补全的结果：正文 + 结束原因。
+
+    `finish_reason == "length"` 表示推理链/正文吃光了 max_tokens——输出被截断，
+    不可信（反例见 retro §8.2：flash 200 预算 6 连空；实测 5/6 次 reflect 调用顶满 500）。
+    侧信道据此决定是否升级预算重试（见 budgets.complete_with_empty_retry）。
+    """
+
+    text: str
+    finish_reason: str | None = None
+
+
+@dataclass
 class TurnResult:
     narration: str
     choices: list[str]
@@ -286,6 +299,18 @@ class LLMClient:
         temperature 缺省走提供商默认值；判定类调用（如 Judge）传 0 以获得稳定结论。
         purpose 决定模型路由（C1）与 usage 标签（C2）。
         """
+        return self.complete_with_meta(
+            messages, max_tokens=max_tokens, temperature=temperature, purpose=purpose
+        ).text
+
+    def complete_with_meta(
+        self,
+        messages: list[dict],
+        max_tokens: int = 400,
+        temperature: float | None = None,
+        purpose: str = "aux",
+    ) -> CompletionResult:
+        """同 complete()，但额外返回 finish_reason（侧信道据此识别截断）。"""
         model = self.model_for(purpose)
         kwargs: dict[str, Any] = dict(
             model=model, messages=messages, max_tokens=max_tokens, stream=False
@@ -294,7 +319,11 @@ class LLMClient:
             kwargs["temperature"] = temperature
         resp = self._client.chat.completions.create(**kwargs)
         self._record_usage(model, purpose, resp)
-        return resp.choices[0].message.content or ""
+        choice = resp.choices[0]
+        return CompletionResult(
+            text=choice.message.content or "",
+            finish_reason=getattr(choice, "finish_reason", None),
+        )
 
     def run_turn(
         self,

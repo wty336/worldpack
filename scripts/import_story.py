@@ -541,6 +541,20 @@ def _prior_piece(prior: dict, section: str):
     return prior.get(section)
 
 
+def _failed_cases(report: dict) -> tuple[list, list, list]:
+    """从门禁报告挑出需要修的用例：漏判 / 误报 / **不可判定**。
+
+    `hit is None` = 该用例无法判定（判官空响应或截断，升级重试后仍不可用）。
+    它既不是"漏判"也不是"误报"——不得据此改写语料（会把好用例改坏），
+    单独返回由调用方报数并中止自动修复。
+    """
+    cases = report.get("cases", [])
+    missed = [c for c in cases if c["category"] != "normal" and c.get("hit") is False]
+    fps = [c for c in cases if c["category"] == "normal" and c.get("hit") is True]
+    unknown = [c for c in cases if c.get("hit") is None]
+    return missed, fps, unknown
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="素材导入：小说/大纲/设定 → 世界包（工具 B）")
     parser.add_argument("sources", nargs="+", help="素材文件（txt/md）或目录")
@@ -840,10 +854,15 @@ def main(argv: list[str] | None = None) -> int:
             if report is None:
                 print("[✗] 门禁失败且未找到门禁报告（无法自动修复语料）")
                 return 1
-            missed = [c for c in report["cases"] if c["category"] != "normal" and not c["hit"]]
-            fps = [c for c in report["cases"] if c["category"] == "normal" and c["hit"]]
+            missed, fps, unknown = _failed_cases(report)
             if not missed and not fps:
-                print("[✗] 门禁未通过但无逐案失败信息（判据问题，非语料）")
+                if unknown:
+                    print(
+                        f"[✗] 门禁未通过，但有 {len(unknown)} 条用例**不可判定**"
+                        f"（未知 ≠ 失败）——请重跑门禁或检查判官可用性，不自动改语料"
+                    )
+                else:
+                    print("[✗] 门禁未通过但无逐案失败信息（判据问题，非语料）")
                 return 1
 
             def fix_text(cases: list, kind: str) -> str:

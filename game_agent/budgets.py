@@ -30,6 +30,9 @@ REFLECT_MAX_TOKENS = 500  # 洞察合成：≤2 行「洞察|来源编号」
 # 空响应升级预算：必须严格大于所有基础预算，否则「升级」不成立（见 tests）
 EMPTY_RETRY_TOKENS = 2000
 
+# 截断标记：正文被 max_tokens 砍断（推理链吃光预算），与空响应同属"不可信输出"
+TRUNCATED_FINISH_REASON = "length"
+
 
 def complete_with_empty_retry(
     llm: Any,
@@ -39,16 +42,48 @@ def complete_with_empty_retry(
     max_tokens: int,
     temperature: float | None = None,
 ) -> str:
-    """无工具补全；空响应时用升级预算重试一次。
+    """无工具补全；**空响应或截断**时用升级预算重试一次。
 
-    「空」按 ``strip()`` 判定（纯空白/换行也算空）。重试后仍空则原样返回，
-    交给调用方按各自语义处理——但调用方不得再把空当作肯定结论。
+    - 空：``strip()`` 后为空（纯空白/换行也算），推理链吃光了全部预算；
+    - 截断：``finish_reason == "length"``——正文非空但被砍断，判定不可信
+      （retro §8.2 的 reflect 半句洞察即此类）。
+
+    两者都先用 ``EMPTY_RETRY_TOKENS`` 重试一次，并**采用重试结果**（更长更完整）。
+    若重试仍空，则返回第一次的文本：调用方按各自语义处理，但**不得再把空当作肯定结论**。
+    """
+    text, finish_reason = _complete(
+        llm, messages, max_tokens=max_tokens, purpose=purpose, temperature=temperature
+    )
+    if text.strip() and finish_reason != TRUNCATED_FINISH_REASON:
+        return text
+    retry_text, _retry_finish = _complete(
+        llm,
+        messages,
+        max_tokens=max(EMPTY_RETRY_TOKENS, max_tokens),
+        purpose=purpose,
+        temperature=temperature,
+    )
+    return retry_text if retry_text.strip() else text
+
+
+def _complete(
+    llm: Any,
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    purpose: str,
+    temperature: float | None,
+) -> tuple[str, str | None]:
+    """调用补全，返回 (文本, finish_reason)。
+
+    优先走 ``complete_with_meta``（LLMClient 提供，带 finish_reason）；
+    没有该方法的轻量替身退化为 ``complete``，finish_reason 视作未知（None）。
     """
     kwargs: dict[str, Any] = {"max_tokens": max_tokens, "purpose": purpose}
     if temperature is not None:
         kwargs["temperature"] = temperature
-    text = llm.complete(messages, **kwargs)
-    if text and text.strip():
-        return text
-    kwargs["max_tokens"] = max(EMPTY_RETRY_TOKENS, max_tokens)
-    return llm.complete(messages, **kwargs) or ""
+    meta = getattr(llm, "complete_with_meta", None)
+    if meta is None:
+        return (llm.complete(messages, **kwargs) or ""), None
+    result = meta(messages, **kwargs)
+    return result.text, result.finish_reason

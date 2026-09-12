@@ -100,7 +100,7 @@ def test_judge_parse_verdict():
     assert parse_verdict("通过") == (True, "通过")
     assert parse_verdict("通过。")[0] is True
     assert parse_verdict("OOC：沈清秋说出网络用语。")[0] is False
-    assert parse_verdict("")[0] is True  # 空输出按通过处理（静默降级）
+    assert parse_verdict("")[0] is None  # 空输出 = 未知（三态；不得当作通过）
 
 
 def _game_for_compression(responses, threshold, keep_turns=1):

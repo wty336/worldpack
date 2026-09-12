@@ -201,7 +201,7 @@ def test_judge_silent_degradation_on_api_error():
 
     judge = JudgeSystem(LLMClient(_Boom(), "fake", []))
     ok, verdict = judge.check("任意叙事", "材料")
-    assert (ok, verdict) == (True, "")  # 失败静默降级，不影响主线
+    assert (ok, verdict) == (None, "")  # 未知（≠ 通过）：不影响主线，但不得谎报为放行
 
 
 def test_parse_verdict_variants():

@@ -106,6 +106,69 @@ def test_extract_empty_output_escalates_budget():
 
 
 # ---------------------------------------------------------------------------
+# 截断（finish_reason=length）：非空但不可信，同样升级重试
+# ---------------------------------------------------------------------------
+
+
+def test_truncated_output_escalates_budget():
+    """截断的判定不可信：即使内容非空，也要升级预算重试一次并采用重试结果。"""
+    from game_agent.budgets import complete_with_empty_retry
+
+    llm = LLMClient(
+        FakeClient(
+            [
+                resp(msg(content="问题类型：OOC（半截"), finish_reason="length"),
+                resp(msg(content="问题类型：OOC：角色说出网络用语。"), finish_reason="stop"),
+            ]
+        ),
+        "fake",
+        [],
+    )
+    out = complete_with_empty_retry(
+        llm, [{"role": "user", "content": "x"}], purpose="judge", max_tokens=500
+    )
+    assert out.startswith("问题类型：OOC：")
+    calls = llm._client.chat.completions.calls
+    assert len(calls) == 2
+    assert calls[0]["max_tokens"] == 500
+    assert calls[1]["max_tokens"] == EMPTY_RETRY_TOKENS
+
+
+def test_normal_output_is_not_retried():
+    """正常结束（finish_reason=stop）不重试——不引入额外成本。"""
+    from game_agent.budgets import complete_with_empty_retry
+
+    llm = LLMClient(
+        FakeClient([resp(msg(content="重复"), finish_reason="stop")]), "fake", []
+    )
+    out = complete_with_empty_retry(
+        llm, [{"role": "user", "content": "x"}], purpose="dedup", max_tokens=DEDUP_MAX_TOKENS
+    )
+    assert out == "重复"
+    assert len(llm._client.chat.completions.calls) == 1
+
+
+def test_retry_still_truncated_returns_retry_text():
+    """两次都截断 → 返回重试文本（更长），不回退到第一次的半截输出。"""
+    from game_agent.budgets import complete_with_empty_retry
+
+    llm = LLMClient(
+        FakeClient(
+            [
+                resp(msg(content="第一"), finish_reason="length"),
+                resp(msg(content="第二次更长一些"), finish_reason="length"),
+            ]
+        ),
+        "fake",
+        [],
+    )
+    out = complete_with_empty_retry(
+        llm, [{"role": "user", "content": "x"}], purpose="reflect", max_tokens=REFLECT_MAX_TOKENS
+    )
+    assert out == "第二次更长一些"
+
+
+# ---------------------------------------------------------------------------
 # 预算单一真源：规则与升级不变量
 # ---------------------------------------------------------------------------
 

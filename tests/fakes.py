@@ -20,8 +20,10 @@ def msg(content=None, tool_calls=None, reasoning_content=None):
     )
 
 
-def resp(message):
-    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+def resp(message, finish_reason=None):
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=message, finish_reason=finish_reason)]
+    )
 
 
 class FakeCompletions:
