@@ -17,12 +17,35 @@ CORRUPTION_METHODS = ("近义改写", "指代漂移", "时间线错位", "实体
 SEED_SPACES = {"train": range(10000, 20000), "dev": range(20000, 30000),
                "eval": range(30000, 40000)}
 
+# 发现① 修复（2026-09-13 验收）：`card_id = sc-{seed}-{seq}` **不含模块**，
+# 而三模块原先共用 `seed_base + i` → 同层里 extract/judge/compress 的第 i 张卡 **id 完全相同**
+# （实测 train 69 条只有 29 个唯一 id；质检剔除按 id 过滤于是**连坐**，实剔 3 条只报 1 条）。
+# 修法：在**本层段内**按模块取千位偏移 —— 段宽 10000，生产规模 extract 1000 / judge 800 /
+# compress 300 各占不到一段，故偏移后仍稳定落在本层（决策 19 的种子空间纪律不破）。
+MODULE_SEED_OFFSET = {"extract": 0, "judge": 1000, "compress": 2000}
+
 
 def layer_of(seed: int) -> str:
     for name, space in SEED_SPACES.items():
         if seed in space:
             return name
     raise ValueError(f"seed 不在 train/dev/eval 任一空间: {seed}")
+
+
+def card_seed(seed_base: int, i: int, module: str) -> int:
+    """层内按模块错开 seed → 保证 `card_id` 在本层唯一（发现①）。
+
+    调用方**统一走这里**（`assemble._build_module` 与 dry-run 同源）；偏移越界即报错，
+    不静默回退——静默回退正是发现① 的成因。
+    """
+    if module not in MODULE_SEED_OFFSET:
+        raise ValueError(f"未知模块（无 seed 偏移）：{module!r}")
+    seed = seed_base + MODULE_SEED_OFFSET[module] + i
+    if layer_of(seed) != layer_of(seed_base):
+        raise ValueError(
+            f"模块偏移把 seed 推出了本层段：seed={seed} 属 {layer_of(seed)} 层，"
+            f"而 base={seed_base} 属 {layer_of(seed_base)} 层（模块 {module} 需换层段或缩批量）")
+    return seed
 
 
 class FactSpec(BaseModel):

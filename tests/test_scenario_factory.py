@@ -31,9 +31,11 @@ from scripts.scenario_factory.assemble import (
     build_extract_sample,
     build_judge_sample,
     compress_messages,
+    drop_flagged,
     extract_messages,
     hook_gate,
     quality_gate,
+    write_layer,
 )
 from scripts.scenario_factory.cards import (
     GENRE_EVAL_ONLY,
@@ -41,6 +43,7 @@ from scripts.scenario_factory.cards import (
     PACK_BY_GENRE,
     PreservePoint,
     ScenarioCard,
+    card_seed,
     generate_card,
     layer_of,
 )
@@ -631,7 +634,9 @@ def test_compress_off_single_candidate_no_select():
     llm = StubLLM([history, summary])  # 1 次历史 + 1 次摘要；off 档不选优
     r = build_compress_sample(llm, card, sampling="off")
     assert r.sample and r.sample["candidates"] == 1 and len(llm.calls) == 2
-    assert r.sample["long_input"] is True  # 20000 ≥ 8000
+    # 卡面属长档（20000）但这段夹具历史很短 → 发现⑤ 改判后 long_input=False（旧断言钉的是"看卡面"）
+    assert r.sample["target_tokens"] == 20000
+    assert r.sample["long_input"] is False
 
 
 def test_compress_long_tier_runs_n4_and_select():
@@ -656,6 +661,95 @@ def test_compress_program_kill_fabrication_and_missing_point():
     assert r2.sample is None and "缺要点" in r2.dropped_reason
 
 
+def _padded(summary: str, total: int) -> str:
+    """把摘要补到约 `total` 字（**不加「」引用**，免得撞上"虚构"硬杀）。"""
+    filler = "闲话流水账不断。" * (total // 8 + 1)
+    return summary + filler[: max(0, total - len(summary))]
+
+
+def test_compress_prefers_within_target_candidate():
+    """发现④：候选里有达标（≤800 字）的**优先选它** ——「超长」从**硬杀**降级为**偏好**。"""
+    card = _compress_card()          # 20K 卡 → sampling="long" 时 n=4
+    history, good = _history_and_summary(card)
+    llm = StubLLM([history, _padded(good, 900), good, _padded(good, 900), _padded(good, 900)])
+    r = build_compress_sample(llm, card, sampling="long")
+    assert r.sample is not None
+    assert r.sample["output"] == good and r.sample["over_target"] is False
+    assert len(r.sample["output"]) <= SUMMARY_MAX_TARGET
+
+
+def test_compress_falls_back_to_shortest_over_target_instead_of_dropping():
+    """发现④ 的核心修复：四个候选**全超长**时取最短者并标记，不再把整张卡丢掉。
+
+    依据（实跑取证）：生产端 `game.py:_compress_history` **不检查摘要长度**——
+    `SUMMARY_MAX_TARGET` 的注释自己写的是"字符，**提示词指导**"；而工厂原先按 800 硬杀，
+    实测 compress 卡被"超长"全杀 20~33%（候选长度骑在阈值上：835/890/988/981 全杀、783/740/669 过），
+    只跑 compress 时批级丢弃率必然超 30% 门 → 属于**比生产更严**的误杀。
+    """
+    card = _compress_card()
+    history, good = _history_and_summary(card)
+    cands = [_padded(good, 1200), _padded(good, 900), _padded(good, 2000), _padded(good, 1000)]
+    llm = StubLLM([history, *cands])
+    r = build_compress_sample(llm, card, sampling="long")
+    assert r.sample is not None, "全超长不该丢卡"
+    assert r.sample["output"] == min(cands, key=len)
+    assert r.sample["over_target"] is True
+    assert len(r.sample["output"]) > SUMMARY_MAX_TARGET
+
+
+def test_compress_over_target_fallback_does_not_rescue_hard_kills():
+    """反向守卫：把"超长"降级为偏好，**不得**顺手放过 虚构/缺要点（硬杀仍是硬杀）。"""
+    card = _compress_card()
+    history, _ = _history_and_summary(card)
+    over_and_fabricated = _padded("摘要提到「北冥真人」。" * 3, 1200)  # 既超长又虚构
+    llm = StubLLM([history] + [over_and_fabricated] * 4)
+    r = build_compress_sample(llm, card, sampling="long")
+    assert r.sample is None and "虚构" in r.dropped_reason
+
+
+def test_long_input_flag_requires_realized_length_not_just_card_tier():
+    """发现⑤：`long_input` 原先只看**卡面** `target_tokens`（20K），而实测最长一次演绎输出仅
+    **4,323 token**（出库历史 404~4,127 字）→「长输入档 ≥20%」是**名义达标**。
+
+    改判：卡面属长档 **且** 实测字数兑现（≥ 目标的一半，同 `est_tokens` 口径）。
+    """
+    card = _compress_card(tokens=20000)
+    _, summary = _history_and_summary(card)
+    short = "短历史：" + "，".join(_all_anchors(card)) + "。"
+    r = build_compress_sample(StubLLM([short, summary]), card, sampling="off")
+    assert r.sample["target_tokens"] == 20000
+    assert r.sample["realized_chars"] == len(short)
+    assert r.sample["long_input"] is False, "卡面是长档但没兑现 → 不算长输入样本"
+
+    big = "长历史：" + "，".join(_all_anchors(card)) + "。" + "流水账。" * 3000
+    r2 = build_compress_sample(StubLLM([big, summary]), card, sampling="off")
+    assert r2.sample["long_input"] is True and r2.sample["realized_chars"] == len(big)
+
+
+def test_batch_stats_records_which_cards_were_dropped():
+    """丢弃留档（发现④⑥ 的诊断口子）：原先只记"丢了几张"，事后无法回答"丢的是谁"——
+    验收时诊断 compress 全杀与 confab 撞卡都只能靠重跑花钱。"""
+    from scripts.scenario_factory.assemble import _build_module
+
+    stats = BatchStats()
+    llm = StubLLM(["没有专名的文本"])          # anchors 不在 → 每张卡都演绎丢弃
+    rows = _build_module(llm, "extract", 3, 10000, "off", stats, set())
+    assert rows == [] and stats.dropped == 3
+    assert stats.reasons["演绎丢弃"] == 3
+    assert stats.dropped_ids["演绎丢弃"] == ["sc-10000-0000", "sc-10001-0001", "sc-10002-0002"]
+
+
+def test_quota_gaps_names_the_nominal_long_tier():
+    """配额缺口必须点出"卡面属长档却没兑现"，否则读报告的人只会看到"长输入 0%"而不知为何。"""
+    rows = [{"id": f"c{i}", "module": "compress", "genre": "仙侠", "input": "x",
+             "long_input": False, "target_tokens": 20000, "realized_chars": 1500}
+            for i in range(10)]
+    gaps = quota_gaps(rows)
+    gap = next(g for g in gaps if "长输入档" in g)
+    assert "20,000" in gap or "20000" in gap      # 点出卡面目标
+    assert "1500" in gap                          # 点出实测最大值
+
+
 def test_compress_short_input_tier_stays_single_under_long():
     card = _compress_card(tokens=600)
     history, summary = _history_and_summary(card)
@@ -675,13 +769,22 @@ def _bai_zhi_card_text(pack):
                     ("personality", "speech_style", "boundaries", "forbidden"))
 
 
-def test_hook_gate_catches_confab_collision_only():
+def test_hook_gate_catches_verbatim_runs_only():
+    """发现⑥ 改判据后的语义：**逐字引用**角色卡（≥4 字连续重合）判撞卡；
+    而**只共享虚词二字组**不再误杀。
+
+    依据（30 条真实 confab 叙事实测）：旧口径「任一 2 字重合」撞卡 **26/30 = 87%**，
+    撞的全是 `自己`×6 / `直接`×3 / `具体` / `的原因` / `自己是` 这类虚词；
+    出库幸存率因此只有 **23%**（卡面 34%）。同批 3-gram 10%（仍抓 `的原因`/`自己是`）、4-gram 0/30。
+    """
     pack = load_worldpack(REPO_ROOT / "world-packs/xianxia_wendao")
     han = re.sub(r"[^一-鿿]", "", _bai_zhi_card_text(pack))
-    two = han[4:6]  # 取自角色卡的二字串 → 必撞词面
-    hit = {"category": "confab", "speaker": "bai_zhi", "narration": f"他说{two}如何"}
-    assert hook_gate(hit, pack)  # 撞卡 → 非空列表
+    four = han[4:8]
+    hit = {"category": "confab", "speaker": "bai_zhi", "narration": f"他说{four}如何"}
+    assert hook_gate(hit, pack), "逐字引用（4 字连续）必须判撞卡"
     assert hook_gate({**hit, "category": "setting"}, pack) == []  # 非 confab 不查
+    two_only = {"category": "confab", "speaker": "bai_zhi", "narration": f"他说{han[4:6]}如何"}
+    assert hook_gate(two_only, pack) == [], "只共享二字组（虚词级）不该误杀"
     clean = {"category": "confab", "speaker": "bai_zhi", "narration": "齉龘塾鷟"}
     assert hook_gate(clean, pack) == []  # 生僻字串必不撞
 
@@ -874,3 +977,46 @@ def test_factory_usage_purposes_carry_the_module():
     qllm = StubLLM(['{"自然度": 2}'])
     naturalness(qllm, text="一段叙事")
     assert [c["purpose"] for c in qllm.calls] == ["rubric_quality"]
+
+
+# --- Task 11 修复①：card_id 层内唯一 + 质检剔除账目 --------------------------
+
+
+def test_card_seed_keeps_ids_unique_across_modules():
+    """发现①：三模块共用 `seed_base + i` → `card_id` 完全相同（实测 train 69 条只有 **29** 个唯一 id）。
+
+    修法：seed 在**层内**按模块取千位偏移（extract +0 / judge +1000 / compress +2000）。
+    本守卫钉住"同层三模块 90 张卡 id 互不相同"，且偏移**不得把 seed 推出本层段**（决策 19 的种子空间）。
+    """
+    for layer, base in (("train", 10000), ("dev", 20000), ("eval", 30000)):
+        ids = [generate_card(card_seed(base, i, mod), i, mod).card_id
+               for mod in ("extract", "judge", "compress") for i in range(30)]
+        assert len(set(ids)) == 90, f"{layer} 层 id 不唯一：{len(set(ids))}/90"
+        assert all(layer_of(card_seed(base, i, mod)) == layer
+                   for mod in ("extract", "judge", "compress") for i in range(30))
+
+
+def test_write_layer_rejects_duplicate_ids(tmp_path):
+    """出库口硬校验：层内 id 不唯一即**拒写**（不靠调用方自觉）。"""
+    rows = _rows("extract", ["古代武侠", "仙侠"])
+    rows[1]["id"] = rows[0]["id"]      # 人为撞 id
+    with pytest.raises(ValueError, match="id 重复"):
+        write_layer("dev", rows, tmp_path)
+    assert not (tmp_path / "dev" / "extract.jsonl").exists(), "拒写不应留下半成品"
+
+
+def test_drop_flagged_reports_actual_removed_count():
+    """发现① 的账目面：id 不唯一时按 id 过滤会**连坐**，日志必须报**实际**剔除数。
+
+    实测：train/eval 各实剔 3 条（三个模块的副本一起删）而日志报 1 条，导致
+    `built 72 − 出库 69 = 3` 与日志对不上——这种"少几条且对不上账"的形态最难发现。
+    """
+    rows = [{"id": "same", "module": m} for m in ("extract", "judge", "compress")]
+    rows.append({"id": "other", "module": "extract"})
+    kept, removed = drop_flagged(rows, ["same"])
+    assert removed == 3
+    assert [r["id"] for r in kept] == ["other"]
+    # id 唯一时两者一致（正常路径不受影响）
+    uniq = [{"id": "a"}, {"id": "b"}]
+    kept2, removed2 = drop_flagged(uniq, ["a"])
+    assert removed2 == 1 and [r["id"] for r in kept2] == ["b"]
