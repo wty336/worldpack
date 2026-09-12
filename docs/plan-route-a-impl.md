@@ -51,7 +51,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from scripts.scenario_factory.cards import ScenarioCard, generate_card, layer_of
+# Task 1 只导入本 Task 已实现的符号（`generate_card`/`layer_of` 由 Task 2 追加到本行）
+from scripts.scenario_factory.cards import ScenarioCard
 
 
 def _judge_card(**over):
@@ -129,9 +130,9 @@ def test_judge_requires_pack_material_and_single_corruption():
 
 def test_extract_card_accepts_existing_for_dedup_discipline():
     """契约：existing 是生产模板的一半（`已有事实：{existing}`），必须可入卡。"""
-    card = _judge_card(module="extract", pack=None, material=None,
-                       existing=["玩家的佩剑名叫听雨"], facts=[],
-                       corruptions=[])
+    card = ScenarioCard(**_judge_card(module="extract", pack=None, material=None,
+                                      existing=["玩家的佩剑名叫听雨"], facts=[],
+                                      corruptions=[]))
     assert card.existing == ["玩家的佩剑名叫听雨"] and card.facts == []
 
 
@@ -298,6 +299,10 @@ git commit -m "feat(factory): 场景卡 schema 与 §3.3 校验规则（Task 1�
 - [ ] **Step 1: 写失败测试（追加到测试文件）**
 
 ```python
+# 本 Task 起把 Task 1 的那行导入**扩为**下面这行（generate_card 在 Task 2 Step 3 落地）：
+from scripts.scenario_factory.cards import PACK_BY_GENRE, generate_card, layer_of
+
+
 def test_layer_of():
     assert layer_of(10231) == "train"
     assert layer_of(20231) == "dev"
