@@ -1,0 +1,83 @@
+{
+  "eval_set": "eval-sets\\extract\\direct.yaml",
+  "eval_set_sha256": "b3d918e53d900c762cfe55b794aaee010e8c208518d8f240795c269e02470ca8",
+  "old_report": "extract-eval-20260912-141241.json",
+  "new_report": "extract-eval-20260912-231707.json",
+  "old_model": "local-14b",
+  "new_model": "local-14b",
+  "old_prompt_version": "99668791ed5957fc",
+  "new_prompt_version": "ad8beafe171e9aa9",
+  "compare": {
+    "old": {
+      "n_runs": 126,
+      "n_cases": 42,
+      "pos_runs": 93,
+      "pos_hits": 42,
+      "pos_c_runs": 36,
+      "pos_c_cases": [
+        "x_dedup",
+        "u_dedup",
+        "s_dedup",
+        "n_cipher",
+        "t_airship",
+        "t_license",
+        "p1_letter",
+        "p1_club",
+        "p1_exam",
+        "p2_ledger",
+        "p2_borrow",
+        "p2_dedup"
+      ],
+      "pos_b_runs": 15,
+      "neg_runs": 33,
+      "neg_ok": 33,
+      "neg_facts": 0,
+      "dedup_bad": 0,
+      "flipped": []
+    },
+    "new": {
+      "n_runs": 126,
+      "n_cases": 42,
+      "pos_runs": 93,
+      "pos_hits": 71,
+      "pos_c_runs": 7,
+      "pos_c_cases": [
+        "x_dedup",
+        "s_dedup"
+      ],
+      "pos_b_runs": 15,
+      "neg_runs": 33,
+      "neg_ok": 30,
+      "neg_facts": 3,
+      "dedup_bad": 0,
+      "flipped": [
+        "p2_ledger"
+      ]
+    },
+    "delta": {
+      "pos_c_runs": -29,
+      "pos_hits": 29,
+      "neg_ok": -3
+    },
+    "c_cleared": [
+      "u_dedup",
+      "n_cipher",
+      "t_airship",
+      "t_license",
+      "p1_letter",
+      "p1_club",
+      "p1_exam",
+      "p2_ledger",
+      "p2_borrow",
+      "p2_dedup"
+    ],
+    "c_new": []
+  },
+  "verdict": {
+    "c_ok": true,
+    "neg_ok": false,
+    "recall_up": true,
+    "pass": false
+  },
+  "markdown": "| 指标 | 旧（99668791ed5957fc） | 新（ad8beafe171e9aa9） | Δ |\n| --- | --- | --- | --- |\n| 正例 run 数 | 93 | 93 | +0 |\n| 召回 run 数 | 42 | 71 | +29 |\n| **C 类 run（输出 0 条）** | 36 | 7 | -29 |\n| C 类用例数 | 12 | 2 | -10 |\n| B 类 run（漏项） | 15 | 15 | +0 |\n| 负例正确 run | 33/33 | 30/33 | — |\n| 负例抽出事实总数 | 0 | 3 | +3 |\n| 去重违规 run | 0 | 0 | +0 |\n| 翻转用例数 | 0 | 1 | +1 |\n\n**判据**：① C 类 run ≤ 旧值 1/3 → ✅（7 vs 上限 12）　② 负例不退化 → ❌（30/33）　③（参考）召回回升 → ✅（42 → 71）\n**结论**：未达标（回到「必训」）\n- 治好的「恒「无」」用例（10）：u_dedup, n_cipher, t_airship, t_license, p1_letter, p1_club, p1_exam, p2_ledger, p2_borrow, p2_dedup\n- 新出现的「恒「无」」用例（0）：（无）\n- 仍恒「无」：x_dedup, s_dedup"
+}
