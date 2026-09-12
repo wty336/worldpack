@@ -336,8 +336,10 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   （历史取证：456 次调用 61.2% 顶满 50 预算）→「14B 完胜」改为**持平**；reflect 从 6 连空
   恢复到产出 2 条洞察；railed 轨道事实 flash 3/3（extract 零顶满，旧 34.8% 顶满）；
   judge 经"偏差方向"论证无需重测（空响应只会压低拦截率，100% 是保守下界）。
-  残留待办：截断（非空）不触发重试、judge 升级预算 2000 亦会被顶满、reflect 基础预算偏紧、
-  compress 补标预算须 >2000 → `reports/sidechannel-budget-retest-20260911.md`。
+  残留问题处置：**截断升级重试 + judge 三态判定已修**（`d79345e`：`complete_with_meta`
+  透出 `finish_reason`、判定 None=未知不再当通过、未知不进门禁分母；真机复验 reflect 洞察
+  完整、矛盾率 0/2）；reflect 基础预算暂维持（现有 length 重试兜底）；
+  **compress 补标预算须 >2000 仍待办** → `reports/sidechannel-budget-retest-20260911.md`。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |

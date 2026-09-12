@@ -93,7 +93,7 @@ usage 追加于 `reports/usage-dedup.jsonl`、`reports/usage-reflect-smoke.jsonl
 
 ---
 
-## 5. 本次修复**未覆盖**的残留问题（建议立项）
+## 5. 残留问题与处置（1/2 已修，3/4 待办）
 
 逐调用取证（本次窗口内）：
 
@@ -103,19 +103,22 @@ usage 追加于 `reports/usage-dedup.jsonl`、`reports/usage-reflect-smoke.jsonl
 | reflect | 6 | **5（83.3%）** | 0 |
 | extract | 16 | **0**（旧 34.8%） | 0 |
 
-1. **截断（非空）不触发升级重试** —— 本次修的是"空"，但 reflect 6 次调用里 5 次顶满 500，
-   产出的是**非空而被截断**的正文：冒烟与 railed 两次都出现"洞察断在半句、来源编号丢失"
-   （如「…关系正走向隐」）。根因：`LLMClient.complete()` 只返回正文、丢弃 `finish_reason`，
-   而重试判据只认"空"。**建议**：把 `finish_reason` 透出到侧信道，`length` 同样走升级重试
-   （或按模块调高基础预算）。
-2. **judge 的升级预算 2000 也会被顶满** —— railed 中 12 次 judge 调用呈
-   `500, 2000, 500, 2000 …` 成对出现，其中 **4 次顶满 2000**；顶满且为空时仍走
-   `parse_verdict('')` = 「通过」静默放行。**建议**：升级后仍空时标记「未知」而非默认通过
-   （属产品语义决策，需与门禁判据一起定）。
-3. **reflect 基础预算 500 偏紧**（83% 调用顶满）→ 建议 1000~1500，或纳入第 1 条的 length 重试。
-4. **compress 未纳入重试是刻意边界**（其空响应=保留原历史的 安全降级），但取证显示
+1. ✅ **已修（`d79345e`）｜截断（非空）不触发升级重试** —— `LLMClient.complete_with_meta()`
+   透出 `finish_reason`；`budgets.complete_with_empty_retry` 现在**空或 `finish_reason=="length"`
+   都升级重试**，并采用重试结果。**真机复验**：重跑 `reflect_smoke` → 洞察 2 条**完整**
+   （来源编号齐全）、矛盾率 **0/2**；reflect 4 次调用 / 2,623 completion tokens
+   （可见 500 顶满后确实升级）。证据：`reports/retest-budget500-04-reflect_smoke-truncation-fix.log`。
+2. ✅ **已修（`d79345e`）｜judge 升级后仍空 = 静默放行** —— 判定改**三态**
+   `True 通过 / False 有问题 / None 未知`，`parse_verdict("")` 不再返回 `True`；
+   未知轮不进多数票分母、未知用例不进分类分母（报告新增 `unknown_cases` / `unknown_rounds`），
+   某类全部未知 → 门禁判**不通过**（"无法验证" ≠ "达标"）；消费方（`game` /
+   `judge_sensitivity` / `import_story` / 三个 smoke）全部显式区分未知 ——
+   未知不再被误报为"矛盾""漏判"，也不会触发语料自动改写。
+3. **reflect 基础预算 500 偏紧** → 部分缓解：截断已纳入升级重试（第 1 条），
+   基础预算暂维持 500；若顶满率仍高再上调至 1000~1500。
+4. **compress 未纳入重试是刻意边界**（其空响应 = 保留原历史的 安全降级），但取证显示
    **30.4% 的 flash compress 调用顶满 2000** → Phase 1 的 compress 训练数据靠 flash 补标，
-   **补标预算必须 >2000**（对应 retro §10.4 第一条）。
+   **补标预算必须 >2000**（对应 retro §10.4 第一条）。**仍待办。**
 
 ---
 
