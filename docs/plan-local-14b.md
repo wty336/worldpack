@@ -366,6 +366,11 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   才接受）；生成器 `scripts/build_judge_corpus.py` 覆盖四个可程序化判定的 setting 家族 + confab 模板 +
   ooc 手工卡面锚定 + normal 一致叙事；守卫 `tests/test_judge_corpus_gen.py`。
   setting 20~22 / confab 20 达标；ooc 12、normal 18 留待下一批。三包 E1 重跑中。
+- 2026-09-12 · **judge 扩域首跑的三项修正**（`0b648ba`）——首跑对抗类全 100%，但误报率
+  17~22%（历史 0%）→ 定位为 ① 协议漏洞（未知轮不进分母但未设"最少已知轮"下限，1 轮即可定案，
+  单次噪声翻案）② 我生成的 6 条 normal 缺支撑材料 ③ 手写老语料 4 条本身有缺陷。
+  修正：`majority_hit(min_known=⌈rounds/2⌉)`；补/改 6 条生成 normal 与 4 条手写用例；
+  全量 **302 passed**，v2 复跑进行中。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |
