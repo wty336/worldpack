@@ -254,12 +254,14 @@ class LLMClient:
         tools: list[dict],
         models: dict[str, str] | None = None,  # C1：purpose → 模型名
         tracker: UsageTracker | None = None,  # C2：usage 落盘
+        no_thinking_side_channel: bool = False,  # 侧信道关思考（见 complete_with_meta）
     ):
         self._client = client
         self.model = model
         self.tools = tools
         self.models = models or {}
         self.tracker = tracker
+        self.no_thinking_side_channel = no_thinking_side_channel
 
     @classmethod
     def from_settings(
@@ -278,6 +280,7 @@ class LLMClient:
                 "compress": settings.model_for("compress"),
             },
             tracker=tracker,
+            no_thinking_side_channel=settings.no_thinking_side_channel,
         )
 
     def model_for(self, purpose: str) -> str:
@@ -309,14 +312,25 @@ class LLMClient:
         max_tokens: int = 400,
         temperature: float | None = None,
         purpose: str = "aux",
+        no_thinking: bool | None = None,
     ) -> CompletionResult:
-        """同 complete()，但额外返回 finish_reason（侧信道据此识别截断）。"""
+        """同 complete()，但额外返回 finish_reason（侧信道据此识别截断）。
+
+        ``no_thinking``：关闭供应商的思考模式（默认读 ``self.no_thinking_side_channel``）。
+        2026-09-12 实测：判官在**真轨迹材料**（材料 374~795 字）上思考停不下来——
+        预算 500 → reasoning 800 字；预算 2000 → reasoning 7152 字，content 恒为 0（熔断），
+        且截断会改变判词（4000 预算时草率输出"通过"，8000 时判"虚构"）。
+        关思考后 reasoning=0、同一判词、tokens 1122（比放大预算省 2~3 倍）。
+        """
         model = self.model_for(purpose)
         kwargs: dict[str, Any] = dict(
             model=model, messages=messages, max_tokens=max_tokens, stream=False
         )
         if temperature is not None:
             kwargs["temperature"] = temperature
+        use_no_thinking = self.no_thinking_side_channel if no_thinking is None else no_thinking
+        if use_no_thinking:
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         resp = self._client.chat.completions.create(**kwargs)
         self._record_usage(model, purpose, resp)
         choice = resp.choices[0]

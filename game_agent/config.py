@@ -25,6 +25,7 @@ class Settings:
     model: str
     judge_model: str = ""  # C1：Judge 用模型（空 = 回退主模型）
     compress_model: str = ""  # C1：压缩/摘要用模型（空 = 回退主模型）
+    no_thinking_side_channel: bool = False  # 侧信道关思考（DEEPSEEK_DISABLE_THINKING=1）
 
     @property
     def has_api_key(self) -> bool:
@@ -50,10 +51,14 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     model = os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL).strip()
     judge_model = os.environ.get("DEEPSEEK_JUDGE_MODEL", "").strip()
     compress_model = os.environ.get("DEEPSEEK_COMPRESS_MODEL", "").strip()
+    no_thinking = os.environ.get("DEEPSEEK_DISABLE_THINKING", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
     return Settings(
         api_key=api_key,
         base_url=base_url,
         model=model,
         judge_model=judge_model,
         compress_model=compress_model,
+        no_thinking_side_channel=no_thinking,
     )

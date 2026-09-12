@@ -45,6 +45,7 @@ class JudgeCase:
     affections: dict[str, float] = field(default_factory=dict)
     facts: tuple[str, ...] = ()
     npc_memories: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    stats: dict[str, float] = field(default_factory=dict)  # 真实轨迹用例：当轮属性（重建材料用）
     note: str = ""
     tier: str = ""
 
@@ -115,9 +116,10 @@ def load_corpus(pack_root: str | Path) -> list[JudgeCase]:
         raise FileNotFoundError(f"语料文件缺失: {path}")
 
     sources = [path]
-    gen_path = pack_dir / "judge_corpus.gen.yaml"
-    if gen_path.exists():
-        sources.append(gen_path)
+    for extra_name in ("judge_corpus.gen.yaml", "judge_corpus.real.yaml"):
+        extra = pack_dir / extra_name
+        if extra.exists():
+            sources.append(extra)
 
     cases: list[JudgeCase] = []
     seen: dict[str, str] = {}
@@ -145,6 +147,7 @@ def load_corpus(pack_root: str | Path) -> list[JudgeCase]:
                     },
                     note=str(item.get("note", "")),
                     tier=str(item.get("tier", "")),
+                    stats={str(k): float(v) for k, v in item.get("stats", {}).items()},
                 )
             except (KeyError, TypeError, ValueError) as e:
                 raise ValueError(f"{src} 第 {i} 条非法: {e}") from e
@@ -174,6 +177,9 @@ def build_materials(pack: WorldPack, case: JudgeCase) -> str:
         k: [MemoryEntry(fact=f, day=case.day, round=0) for f in v]
         for k, v in case.npc_memories.items()
     }
+    for k, v in case.stats.items():  # 真实轨迹用例：还原当轮属性（否则状态栏与真实不符）
+        if k in state.stats:
+            state.stats[k] = float(v)
     return ContextBuilder.from_pack(pack).status_text(state, None)
 
 
