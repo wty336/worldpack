@@ -14,6 +14,7 @@ from scripts.scenario_factory.cards import (
     generate_card,
     layer_of,
 )
+from scripts.scenario_factory.materialize import MaterializeError, build_material
 
 
 def _judge_card(**over):
@@ -236,3 +237,54 @@ def test_corruption_new_value_does_not_collide_with_card_entities():
             assert new_val not in f.text, f"{card.card_id}: 新值 {new_val} 已在事实文本里"
             assert all(new_val not in a for a in f.anchors), card.card_id
     assert seen_setting, "样本里没有 setting 卡，守卫没生效"
+
+
+# --- Task 3：材料装配器（校验①②③） ---------------------------------------
+
+
+def _setting_card(**over):
+    """setting 卡：facts 全 in_material=true —— 专用来测校验②（在位）。"""
+    base = _judge_card()          # 夹具本身即 setting 卡（听雨 → 听风）
+    base.update(over)
+    return ScenarioCard(**base)
+
+
+def _confab_card(**over):
+    """confab 卡：facts **全** in_material=false（Task 1 硬规则）—— 专用来测校验③（泄漏）。"""
+    base = _judge_card()
+    base["facts"][0]["in_material"] = False
+    base["corruptions"][0].update(category="confab", expect="问题类型：虚构事实")
+    base.update(over)
+    return ScenarioCard(**base)
+
+
+def test_setting_material_materializes_facts():
+    """校验②：in_material=true 的事实须物化进「关键事实」区（全部 anchors 在位）。"""
+    text = build_material(_setting_card())
+    assert "听雨" in text and "白芷" in text      # 事实 + 在场角色卡
+
+
+def test_confab_material_excludes_the_claim():
+    """校验③：confab 的断言事实不得进材料（该卡 facts 全 false → 关键事实区为空）。"""
+    assert "听雨" not in build_material(_confab_card())
+
+
+def test_material_leak_raises():
+    card = _confab_card()
+    card.material.memories = {"bai_zhi": ["玩家提到佩剑听雨"]}  # 人为泄漏
+    with pytest.raises(MaterializeError, match="泄漏"):
+        build_material(card)
+
+
+def test_missing_in_material_anchor_raises():
+    card = _setting_card()
+    card.facts[0].anchors = ["不存在的专名xyz"]
+    with pytest.raises(MaterializeError, match="未在材料中"):
+        build_material(card)
+
+
+def test_present_npc_must_be_in_pack():
+    card = _setting_card()
+    card.material.present = ["ghost_npc"]
+    with pytest.raises(MaterializeError, match="不在包里"):
+        build_material(card)

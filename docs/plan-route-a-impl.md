@@ -22,7 +22,7 @@
 | --- | --- | --- | --- |
 | 1 卡 schema + §3.3 校验 | ✅ 完成 | `d0b7195` | 发现并修正 3 处计划缺陷（见 Task 1 执行记录） |
 | 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b`（+ 评审补修，见执行记录） | 共修正 **6 处**计划/实现缺陷（执行 3 + 评审 3） |
-| 3 材料装配器 + 校验①②③ | ⬜ 待做 | — | — |
+| 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 1 处计划缺陷（`-k material` 过滤器两头不准） |
 | 4 演绎器 + 反向校验 | ⬜ 待做 | — | 计划已预修 confab 的矛盾逻辑（见 Task 4） |
 | 5 rubric 评委四模式 | ⬜ 待做 | — | — |
 | 6 样本构建三分支 + 拒绝采样 | ⬜ 待做 | — | — |
@@ -43,7 +43,7 @@
 - `aa78893` Task 3 Step 5 由"顺手修 spec"改为"核验 spec 已修订"（spec 修正已先行落地）。
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
-Task 2 守卫 **10** + `evalmeta` 换行守卫 **1** = **362 passed**。
+Task 2 守卫 **10** + Task 3 守卫 **5** + `evalmeta` 换行守卫 **1** = **367 passed**。
 
 ---
 
@@ -716,7 +716,7 @@ git commit -m "feat(factory): 轴空间/种子空间与确定性生成器（Task
 - Create: `scripts/scenario_factory/materialize.py`
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 from scripts.scenario_factory.materialize import MaterializeError, build_material
@@ -772,41 +772,63 @@ def test_present_npc_must_be_in_pack():
 
 注：测试用真实包 `xianxia_wendao`（仓库先例：`tests/test_second_worldpack.py` 同法）。`material.facts` 省略（None）→ 缺省取 `in_material=true` 下标。**spec 侧已先行改好并提交**（详见 Step 5 的表：A.2/A.3 的 `facts: []` 行已删、`recent` 已字符串化、§3.2 已补 `facts: null` 语义注释），故本 Task **不需要再动 spec**——Step 5 只做核验（`git diff` 应为空）。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k material`
-Expected: FAIL（`ModuleNotFoundError`）
+Run: `uv run pytest tests/test_scenario_factory.py -q`
+Expected: FAIL（`ModuleNotFoundError: scripts.scenario_factory.materialize`）
 
-- [ ] **Step 3: 实现 materialize.py**
+> **为什么本 Task 不用 `-k` 过滤**（执行时实测）：`-k material` **两头都不准** ——
+> 既漏掉 Task 3 的 `test_present_npc_must_be_in_pack`（名字里没有 material），
+> 又混进 Task 1 的 `test_setting_requires_in_material_true` 与
+> `test_judge_requires_pack_material_and_single_corruption`（命中 6 个 = Task 3 的 4 个 + Task 1 的 2 个）。
+> 故改为跑整文件 + 看**累计**数。
+
+- [x] **Step 3: 实现 materialize.py**
 
 ```python
 """材料装配器：卡 → GameState → ContextBuilder.status_text（§4.1，生产同形）。
 
-复用生产组装器（禁止另写材料模板）；recent 字段来自决策 17——status_text 的
-rank_facts / lore 命中都吃 context = scene + node.goal + recent（context.py:181），
-工厂必须传 recent，否则排序输入与生产不同形。
+**硬纪律**：必须复用生产组装器（`ContextBuilder`），不得另写材料模板 —— 与
+`plan-phase1-data.md` §4.2.2 开头"输入模板必须逐字对齐生产调用"是同一条纪律，只是它落在材料侧。
+复用组装器只保证"组装器"同形；**"输入"同形**由本模块负责：
+
+- `material.recent`（决策 17）：`status_text` 的 `rank_facts` / `select_lore` 都吃
+  `context = scene + node.goal + recent`（`context.py:181`），生产的 recent 来自最近 2 条
+  真实玩家发言；工厂不给就会让**排序输入与生产不同形**；
+- `material.facts`（下标）：`None` = 缺省取 `facts[in_material=true]`；`[]` = 显式一条不写。
+
+三道校验（§4.1）：① 在场角色卡确落材料；② in_material 事实的 anchors **全部**在位；
+③ confab 的 anchors **不得**出现在材料中（泄漏即等于给判官开出第二条通路，退回踩坑 #17 的老坑）。
 """
 from __future__ import annotations
 
-import pathlib
-
 from game_agent.context import ContextBuilder
 from game_agent.state import GameState, MemoryEntry
-from game_agent.worldpack import load_worldpack
+from game_agent.worldpack import WorldPack, load_worldpack
 
-from .cards import ScenarioCard
-
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+from .cards import REPO_ROOT, ScenarioCard   # REPO_ROOT 复用 cards 的定义，不重复定义
 
 
 class MaterializeError(ValueError):
     """材料装配或校验失败——调用方丢弃该样本并计数（§4.1）。"""
 
 
+_PACK_CACHE: dict[str, WorldPack] = {}
+
+
+def load_pack(pack_path: str) -> WorldPack:
+    """带缓存的包加载：同批上千张卡只解析一次 YAML（否则每张卡都重读全部 yaml）。
+    Task 7 的门禁接线与 Task 8 的出库都用这个入口。"""
+    if pack_path not in _PACK_CACHE:
+        _PACK_CACHE[pack_path] = load_worldpack(REPO_ROOT / pack_path)
+    return _PACK_CACHE[pack_path]
+
+
 def build_material(card: ScenarioCard) -> str:
+    """卡 → 材料文本（与生产 `status_text` 逐字同形）。失败抛 MaterializeError。"""
     if not card.pack or not card.material:
         raise MaterializeError("judge/compress 卡必须带 pack + material")
-    pack = load_worldpack(REPO_ROOT / card.pack)
+    pack = load_pack(card.pack)
     m = card.material
     state = GameState.from_pack(pack)
     state.day, state.scene = m.day, m.scene
@@ -848,12 +870,12 @@ def _check(card: ScenarioCard, pack, text: str) -> None:
             raise MaterializeError(f"材料泄漏：confab anchors 出现在材料中: {hit}")
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k material`
-Expected: 5 passed
+Run: `uv run pytest tests/test_scenario_factory.py -q`
+Expected: **24 passed**（Task 1 的 9 + Task 2 的 10 + Task 3 的 5）
 
-- [ ] **Step 5: 核验 spec 已修订 + Commit**
+- [x] **Step 5: 核验 spec 已修订 + Commit**
 
 spec 的相关修正在**设计阶段就已落实并提交**（不留给实现阶段做），共**四处**：
 
@@ -878,6 +900,31 @@ git diff docs/plan-route-a-factory.md   # 应为空（无任何输出）
 git add scripts/scenario_factory/materialize.py tests/test_scenario_factory.py
 git commit -m "feat(factory): 材料装配器与校验①②③（Task 3）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成**
+>
+> - Step 2 确认失败 ✓：`ModuleNotFoundError: No module named 'scripts.scenario_factory.materialize'`
+> - Step 4 确认通过 ✓：整文件 **24 passed**（9 + 10 + 5）；全量 362 → **367 passed**
+> - Step 5 核验 ✓：`git diff docs/plan-route-a-factory.md` **为空** —— spec 的四处修正
+>   （§3.2 `recent: str` + `facts: null` 语义、§4.1 `recent=material.recent`、
+>   A.2/A.3 删 `facts: []` 行与 `recent` 字符串化）已在设计阶段落地并随 `073e17f` 提交，
+>   本 Step 只核验、不改动。
+> - 落地：新增 `scripts/scenario_factory/materialize.py`
+>
+> **执行中发现并修正的 1 处计划缺陷**：
+>
+> 1. **`-k material` 这个 filter 两头都不准**（实测）：既**漏掉**本 Task 的
+>    `test_present_npc_must_be_in_pack`（名字里没有 material），又**混进** Task 1 的
+>    `test_setting_requires_in_material_true` 与 `test_judge_requires_pack_material_and_single_corruption`
+>    → 实际命中 6 个（Task 3 的 4 个 + Task 1 的 2 个），而计划写"5 passed"。
+>    已改为跑整文件 + 看**累计**数（24），并在 Step 2 注明原因。
+>
+> **实现侧相对计划的两处收敛**（已同步进 Step 3 代码）：
+>
+> - `REPO_ROOT` 改为从 `cards` 复用（不重复定义）—— 计划 Task 7 原先担心的
+>   "两处定义同值 / ruff 报重复定义"就此消除；
+> - `load_pack`（带缓存的包加载）**提前到本 Task 落地**，而不是留到 Task 7 的 Step 3b 再加；
+>   Task 7 的 Step 3b 已改为"直接复用"。
 
 ---
 
@@ -1801,20 +1848,11 @@ def manual_review_row(sample: dict) -> dict:
 ```
 
    注意 `hook_gate` 只对 `category == "confab"` 生效（非 confab 直接返回 `[]`）。
-   另：`materialize.py` 需加**带缓存的包加载**，同批上千张卡不要重复解析 YAML：
+   另：`load_pack`（**带缓存的包加载，已在 Task 3 落地**）直接复用 —— 同批上千张卡不要重复解析 YAML：
 
 ```python
-_PACK_CACHE: dict[str, object] = {}
-
-
-def load_pack(pack_path: str):
-    """带缓存的包加载（同批 1000+ 张卡只解析一次）。"""
-    if pack_path not in _PACK_CACHE:
-        _PACK_CACHE[pack_path] = load_worldpack(REPO_ROOT / pack_path)
-    return _PACK_CACHE[pack_path]
+from .materialize import load_pack   # Task 3 已提供；此处只是使用
 ```
-
-   `build_material` 内改为 `pack = load_pack(card.pack)`。
 
 2. `quality_sample`（质检员）接在**出库前**（Task 8 的 `main` 里，见该处 Step 3）：
 
@@ -2469,10 +2507,12 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - [ ] **Step 1: 全量测试**
 
 Run: `uv run pytest -q`
-Expected: **341 存量** + 本计划新增 **55 个守卫**（Task 1~9：9+10+5+5+6+9+3+5+3）+ Task 10 的 1 个
-prompt 守卫 = **397 全绿**
+Expected: **342 存量** + 本计划新增 **55 个守卫**（Task 1~9：9+10+5+5+6+9+3+5+3）+ Task 10 的 1 个
+prompt 守卫 = **398 全绿**
 
-> 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 当前 **341**（原稿写 279，是 Step 0 之后的旧数）；
+> 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
+> 加上计划外先落的 `card_hook` 死字段守卫 1 条 = **342**（= 本表"存量"口径，见文首「进度」节）。
+> 原稿写 279 是 Step 0 之后的旧数。
 > 计划枚举的守卫数逐个数为 55（原稿写 30 也不对）。Task 2 加了 5 条守卫（anchors 不相交、
 > corruption detail 可解析、judge 留出轴不漏+包必存在、recent 不撞 anchor、新值不撞事实）、
 > Task 3 的夹具拆分把 4 变 5、Task 4 加了 confab 反向校验守卫、Task 5 加了质检员、
