@@ -502,6 +502,7 @@ teacher 带思维链时对 teacher 不公平，Phase 2 盲评需注明产物形�
    - **轨迹数据限量当"生产锚"**（20-30% 混比，跨包混合）；
    - **flash 补标只用于合成前缀**（compress/reflect 需要真实叙事流的模块）；
    - 合成对先让 flash 考一遍验证标准答案可达（flash 答不出的合成题没有训练价值）。
+   - → **执行方案见 `docs/plan-phase1-data.md`**（评测集先冻结 + 轴级留出 + dedup 只造评测集）。
 2. **训练顺序**：extract（必训）→ judge（补强）→ compress（要训）→ dedup（不训，
    留回归集）→ reflect（最低优先级，材料重造后定）。
 3. **泛化验证加档**：文档 §7.3 的 urban_neon 剔除包之外，再加一个训练集未见过的

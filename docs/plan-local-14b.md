@@ -339,7 +339,13 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   残留问题处置：**截断升级重试 + judge 三态判定已修**（`d79345e`：`complete_with_meta`
   透出 `finish_reason`、判定 None=未知不再当通过、未知不进门禁分母；真机复验 reflect 洞察
   完整、矛盾率 0/2）；reflect 基础预算暂维持（现有 length 重试兜底）；
-  **compress 补标预算须 >2000 仍待办** → `reports/sidechannel-budget-retest-20260911.md`。
+  **compress 补标预算已修**（`7573ac9`：`COMPRESS_MAX_TOKENS=4000` + 纳入升级重试 +
+  **截断摘要不得采纳**；真机复验 5/5 无截断）→ `reports/sidechannel-budget-retest-20260911.md`。
+- 2026-09-12 · **Phase 1 数据与评测计划立项** → `docs/plan-phase1-data.md`（训什么/训多少、
+  三源配比、五模块输入与标签契约、轴覆盖矩阵、评测集冻结与三方对照协议）。
+  相对原方案的两处修正：① **先造尺子再造数据**（现评测每类仅 6 条，1 条 = 16.7pp，
+  分辨不出训练效果——"flash dedup 40-50%"的错误对照线就是坏尺子产物）；
+  ② **dedup 不进训练集**（基座与 flash 实测均 100%），只作冻结回归护栏。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |
