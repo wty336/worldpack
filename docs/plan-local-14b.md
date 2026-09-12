@@ -355,7 +355,9 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   详见 `docs/plan-phase1-data.md` §2、证据 `reports/step0-extract-dedomain-verify-20260912.log`。
 - 2026-09-12 · **Phase 1 · Step 1 首批：评测集扩域与冻结**（dedup + extract）——
   `eval-sets/`（MANIFEST + digests + 指纹守卫 `tests/test_eval_frozen.py`）+ 确定性生成器
-  `scripts/build_eval_sets.py`；dedup 123 对（**首次引入负例**：正 65 / 负 58）、extract 30 例。
+  `scripts/build_eval_sets.py`；dedup 123 对（**首次引入负例**：正 65 / 负 58）、extract 30 例
+  （= 24 正 + 6 负；**后续加性扩域至 42 例 = 32 正 + 10 负**，见 `eval-sets/MANIFEST.md` §1/§5
+  与 `docs/plan-phase1-data.md` §3.5.6c）。
   flash v1 基线：dedup 正例 98% / 误拦 0%；extract 召回 90%（按 run 计）/ 去重违规 0 / 负例 18/18。
   **评测噪声发现**：extract 未钉温度三跑 92/92/79%（±13pp），钉 0 后仍 4/30 例翻转 →
   协议升级为"≥3 次重复 + 按 run 计率 + 逐例稳定率"；生产是否钉 temp=0 待决策。
