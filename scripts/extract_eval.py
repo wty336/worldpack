@@ -153,7 +153,6 @@ def main(argv: list[str] | None = None) -> int:
     model = llm.model_for("extract")
 
     results: list[dict] = []
-    raw: dict[str, str] = {}
     case_pass: dict[str, list[bool]] = {}
     for c in cases:
         existing = "；".join(c["existing"])
@@ -172,8 +171,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             facts = parse_facts(out)
             r = score_case(c, facts)
+            r["repeat"] = rep + 1
+            r["raw_output"] = out  # 每条 run 自带原始输出：翻转用例才可诊断
             results.append(r)
-            raw[f"{c['id']}#{rep + 1}"] = out
             marks.append(r["passed"])
         case_pass[c["id"]] = marks
         r = results[-1]
@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         "eval_set": str(EVAL_SET.relative_to(REPO_ROOT)),
         "eval_set_sha256": eval_sha,
         "summary": s,
-        "cases": [{**r, "raw_output": raw.get(f"{r['id']}#1", "")} for r in results],
+        "cases": results,  # 每条 run 已自带 repeat / raw_output
     }
     out_path = Path("reports") / f"extract-eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

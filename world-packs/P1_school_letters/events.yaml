@@ -1,0 +1,39 @@
+# 事件规则（校园·信笺）：condition / schedule / time 各一
+events:
+  - id: ev_note_in_desk
+    title: 抽屉里的第二张便条
+    trigger:
+      kind: condition
+      when: {all: [{flags: {met_lin_xia: true}}]}
+    priority: normal
+    script: |
+      第二天早读前，抽屉里又多了一张便条，只有一行字：周三广播别听。
+    effects:
+      stats: {study: 1}
+    once: true
+
+  - id: ev_deskmate_snack
+    title: 同桌带的零食
+    trigger:
+      kind: schedule
+      action: chat_deskmate
+      chance: 0.4
+    priority: low
+    script: |
+      周牧从书包里掏出两包干脆面，塞给你一包，说这是「投资」。
+    effects:
+      affections: {zhou_mu: 2}
+    once: false
+
+  - id: ev_broadcast_day
+    title: 广播稿被换了
+    trigger:
+      kind: time
+      when: {day: {gte: 6}}
+    priority: high
+    script: |
+      周三广播里念的稿子换了一篇，署名被划掉，换成了「高二(3)班 佚名」。
+    effects:
+      affections: {lin_xia: 2}
+      stats: {social: 2}
+    once: true

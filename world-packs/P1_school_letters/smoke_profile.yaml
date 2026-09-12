@@ -1,0 +1,17 @@
+# 冒烟 profile（P1 校园·书信体）：worldpack_smoke.py 未登记该包，按本文件执行
+picks:
+  how_to_handle: 1
+  how_to_ask: 1
+  exam_strategy: 1
+action: self_study
+days: 8
+lines:
+  - （把信重新读了一遍）
+  - （去旧图书室看看）
+  - （和同桌周牧聊两句）
+forbidden_scan:
+  - 修仙
+  - 法术
+  - 灵力
+observe_modern: []
+target: 文学社的周三

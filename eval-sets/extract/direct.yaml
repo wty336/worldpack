@@ -377,3 +377,78 @@ cases:
   importance_range:
   - 1
   - 10
+- id: p1_letter
+  genre: 校园
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 1 日）我在晚自习的课桌抽屉里摸到一只没有署名的信封，牛皮纸，边角磨得起毛。
+  must_recall:
+  - 牛皮纸
+  must_not_output: []
+  importance_range:
+  - 4
+  - 8
+- id: p1_club
+  genre: 校园
+  axis_kind: 所属与来历
+  expect_empty: false
+  existing: []
+  turn: （第 4 日）林夏把广播稿推给我：周三的稿子归文学社管，署名要自己填。
+  must_recall:
+  - 林夏
+  - 文学社
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: p1_exam
+  genre: 校园
+  axis_kind: 目标与线索
+  expect_empty: false
+  existing: []
+  turn: （第 6 日）陈老师说，月考进年级前二十名就能申请奖学金。
+  must_recall:
+  - 前二十
+  - 奖学金
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: p1_promise
+  genre: 校园
+  axis_kind: 承诺与约定
+  expect_empty: false
+  existing: []
+  turn: （第 5 日）我和周牧约好周三放学一起去旧图书室，他说他会带两包干脆面。
+  must_recall:
+  - 周牧
+  - 周三
+  - 旧图书室
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: p1_dedup
+  genre: 校园
+  axis_kind: 负例
+  expect_empty: true
+  existing:
+  - 我在课桌里发现了一只没有署名的牛皮纸信封
+  turn: （第 3 日）我又把那只信封拿出来看了看，边角已经磨得更毛了。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 3
+  - 9
+- id: p1_none
+  genre: 校园
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （日常）食堂窗口排到了楼梯口，我端着盘子找了个角落坐下，吃完就回教室了。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10

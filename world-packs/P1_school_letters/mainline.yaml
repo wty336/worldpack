@@ -1,0 +1,69 @@
+# 主线节点链（校园·信笺）：4 个节点，2 个关键抉择
+nodes:
+  - id: n1_letter
+    title: 无名信
+    when: {all: []}
+    goal: 读完抽屉里的无名信，并决定怎么处理
+    completion: {flags: {read_letter: true}}
+    on_enter:
+      scene: 城南中学·高二(3)班教室
+      present: [zhou_mu]
+      briefing: 晚自习前，你在抽屉里摸到一只没有署名的信封；同桌周牧正趴在桌上抄作业。
+    critical_choices:
+      - id: how_to_handle
+        prompt: 这封信你打算怎么办？
+        options:
+          - {text: 放学后一个人去旧图书室看看, effects: {flags: {read_letter: true}, affections: {zhou_mu: 1}}}
+          - {text: 先拿给同桌周牧看, effects: {flags: {read_letter: true}, affections: {zhou_mu: 4}, stats: {social: 1}}}
+          - {text: 收进内袋，谁也不说, effects: {flags: {read_letter: true}, stats: {study: 1}}}
+
+  - id: n2_club
+    title: 旧图书室
+    when: {flags: {read_letter: true}}
+    goal: 在旧图书室找到与这封信有关的人
+    completion: {flags: {met_lin_xia: true}}
+    on_enter:
+      scene: 城南中学·旧图书室
+      present: [lin_xia]
+      briefing: 周三放学后，旧图书室的门虚掩着；林夏正在整理广播稿，桌上摊着一叠牛皮纸信封。
+    critical_choices:
+      - id: how_to_ask
+        prompt: 你怎么开口？
+        options:
+          - {text: 直接把信放到桌上，问是不是她写的, effects: {flags: {met_lin_xia: true}, affections: {lin_xia: 3}}}
+          - {text: 先报名加入文学社，再慢慢打听, effects: {flags: {met_lin_xia: true}, affections: {lin_xia: 5}, stats: {social: 2}}}
+          - {text: 假装只是来借书，暗中观察, effects: {flags: {met_lin_xia: true}, affections: {lin_xia: 1}}}
+
+  - id: n3_exam
+    title: 月考
+    when: {flags: {met_lin_xia: true}}
+    goal: 参加月考，把成绩提上去
+    completion: {flags: {exam_done: true}}
+    on_enter:
+      scene: 城南中学·考场
+      present: []
+      briefing: 月考排在周四全天；公告栏上的排名关系到下学期的分班。
+    critical_choices:
+      - id: exam_strategy
+        prompt: 数学卷最后一道大题，你怎么处理？
+        options:
+          - {text: 按步骤写到底, effects: {flags: {exam_done: true}, stats: {study: 3}}}
+          - {text: 先跳过，回头检查前面的题, effects: {flags: {exam_done: true}, stats: {study: 2}}}
+          - {text: 抄同桌的两行思路, effects: {flags: {exam_done: true}, affections: {zhou_mu: 2}, stats: {social: -1}}}
+
+  - id: n4_truth
+    title: 落款
+    when: {flags: {exam_done: true}}
+    goal: 弄清这封信真正的来历
+    completion: {flags: {truth_known: true}}
+    on_enter:
+      scene: 城南中学·教学楼走廊
+      present: [lin_xia, chen_laoshi]
+      briefing: 月考成绩贴出来那天，陈老师把你叫到走廊；林夏站在公告栏前，手里捏着一只同样的牛皮纸信封。
+    critical_choices:
+      - id: how_to_close
+        prompt: 这件事你打算怎么收尾？
+        options:
+          - {text: 当着两人的面把信读出来, effects: {flags: {truth_known: true}, affections: {lin_xia: 4}}}
+          - {text: 私下找林夏问清楚, effects: {flags: {truth_known: true}, affections: {lin_xia: 2}, stats: {social: 1}}}
+          - {text: 把信交还给陈老师, effects: {flags: {truth_known: true}, affections: {chen_laoshi: 4}}}

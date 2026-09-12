@@ -18,7 +18,7 @@ from game_agent.judge_corpus import load_corpus
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GENERATOR = REPO_ROOT / "scripts" / "build_judge_corpus.py"
-PACKS = ("ancient_jianghu", "xianxia_wendao", "urban_neon")
+PACKS = ("ancient_jianghu", "xianxia_wendao", "urban_neon", "P1_school_letters")
 
 TARGETS = {"setting": 20, "confab": 20, "ooc": 6, "normal": 12}
 

@@ -1,0 +1,83 @@
+# E1 Judge 灵敏度语料（P1 校园·书信体）——手写资产
+# 机器生成的扩域部分在同目录 judge_corpus.gen.yaml（见 scripts/build_judge_corpus.py）
+# 纪律：本包为 Phase 1 §3.5 的**跨包留出包**，只用于评测，不进训练数据
+cases:
+  - id: p1_ooc_spread_draft
+    category: ooc
+    narration: |-
+      林夏扬了扬手里那叠稿子：『这些我都复印了一份，托人带到城南中学的贴吧上发了，谁要看谁看。』
+    expected: false
+    day: 4
+    scene: '城南中学·旧图书室'
+    present: [lin_xia]
+    note: '角色卡 boundaries『不把社里的稿子外传』——公开发布社内稿件直接违背。'
+
+  - id: p1_ooc_break_character
+    category: ooc
+    narration: |-
+      林夏忽然放下笔，看着你叹了口气：『你说我们这样按剧本走下去，又有什么意思呢。』
+    expected: false
+    day: 5
+    scene: '城南中学·旧图书室'
+    present: [lin_xia]
+    note: '角色卡 forbidden『不直接承认自己是程序生成的』——"按剧本走"暗示角色自觉，违背。'
+
+  - id: p1_ooc_nickname
+    category: ooc
+    narration: |-
+      周牧冲教室后排喊：『四眼，把作业给我抄抄呗，回头请你吃辣条。』
+    expected: false
+    day: 3
+    scene: '城南中学·高二(3)班教室'
+    present: [zhou_mu]
+    note: '角色卡 boundaries『不给同学起外号』——当众喊外号违背。'
+
+  - id: p1_ooc_supernatural
+    category: ooc
+    narration: |-
+      周牧压低声音跟你说：『别不信，三楼那间教室闹过事，我上次晚上路过，看见讲台上飘着东西。』
+    expected: false
+    day: 6
+    scene: '城南中学·高二(3)班教室'
+    present: [zhou_mu]
+    note: '角色卡 forbidden『不提及超自然力量』+ 世界禁用『魔法与超自然力量』。'
+
+  - id: p1_ooc_leak_rank
+    category: ooc
+    narration: |-
+      陈老师把门掩上，低声说：『这次月考，你们班李婷语文考了 128，年级第二，别说是我讲的。』
+    expected: false
+    day: 7
+    scene: '城南中学·高二(3)班教室'
+    present: [chen_laoshi]
+    note: '角色卡 boundaries『不私下透露其他学生的排名』——私下报出他人分数与名次，违背。'
+
+  - id: p1_ooc_metaphor_ramble
+    category: ooc
+    narration: |-
+      陈老师望着窗外的梧桐，缓缓道：『你们像一群候鸟，翅膀上驮着父母的期待，风一大就散了；而我，是那座被风吹得发白的旗杆。』
+    expected: false
+    day: 8
+    scene: '城南中学·高二(3)班教室'
+    present: [chen_laoshi]
+    note: '角色卡 speech_style『简短直接，不用比喻』——长段抒情比喻违背。'
+
+  - id: p1_normal_letter_write
+    category: normal
+    narration: |-
+      晚自习间隙，我把信纸摊在膝盖上写了两行，又觉得不好，折起来塞回内袋。
+    expected: true
+    day: 4
+    scene: '城南中学·高二(3)班教室'
+    present: []
+    note: '符合书信用语习惯的实际动作，无越界承诺、无自相矛盾。'
+
+  - id: p1_normal_study_room
+    category: normal
+    narration: |-
+      自习室的灯管有点闪。周牧趴在旁边抄作业，笔尖划得很快，抄到一半抬头问你第三题选什么。
+    expected: true
+    day: 5
+    scene: '城南中学·自习室'
+    present: [zhou_mu]
+    note: '日常校园场景，与在场角色（周牧）和场景一致。'

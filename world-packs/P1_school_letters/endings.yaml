@@ -1,0 +1,33 @@
+# 结局规则（校园·信笺）
+endings:
+  - id: ending_together
+    title: 文学社的周三
+    when:
+      all:
+        - {affection: {lin_xia: {gte: 60}}}
+        - {flags: {truth_known: true}}
+    kind: auto
+    text: |
+      信是林夏替广播站写的征稿，署名一栏空着，本来想等一个合适的人填。
+      后来那一栏写着我的名字。往后每个周三，旧图书室的灯都亮到很晚。
+
+  - id: ending_top20
+    title: 前二十名
+    when:
+      all:
+        - {stat: {study: {gte: 60}}}
+        - {flags: {exam_done: true}}
+    kind: auto
+    text: |
+      月考排名贴出来，我在第二十名上面一格。零花省下来买了本参考书，
+      给老友的信里多写了半页，讲的都是这类琐事。
+
+  - id: ending_quiet
+    title: 收信人未署名
+    when:
+      all:
+        - {day: {gte: 14}}
+    kind: auto
+    text: |
+      学期结束时我仍没弄清那封信是谁写的。我把它夹在旧课本里带走了，
+      打算以后有机会再问一次。

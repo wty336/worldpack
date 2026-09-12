@@ -1,0 +1,56 @@
+# 数值与日程定义（校园包：学力 / 人缘 / 零花 三轨；无战斗）
+day_action_points: 2
+
+stats:
+  study:  {label: 学力, min: 0, max: 100, initial: 20}
+  social: {label: 人缘, min: 0, max: 100, initial: 10}
+  money:  {label: 零花, min: 0, max: 9999, initial: 300}
+
+affections:
+  lin_xia:     {label: 林夏, min: 0, max: 100, initial: 5}
+  zhou_mu:     {label: 周牧, min: 0, max: 100, initial: 8}
+  chen_laoshi: {label: 陈老师, min: 0, max: 100, initial: 10}
+
+flags:
+  read_letter: false
+  met_lin_xia: false
+  exam_done: false
+  truth_known: false
+
+actions:
+  - id: self_study
+    label: 去自习室补课
+    cost: 1
+    check: {stat: study, difficulty: 10, margin: 10}
+    effects:
+      stats: {study: {base: 5, spread: 1, decay_every: 20, decay_step: 1}}
+    scene: 城南中学·自习室
+    present: []
+  - id: visit_club
+    label: 去旧图书室
+    cost: 1
+    effects:
+      affections: {lin_xia: 2}
+    scene: 城南中学·旧图书室
+    present: [lin_xia]
+  - id: chat_deskmate
+    label: 和同桌聊两句
+    cost: 1
+    effects:
+      affections: {zhou_mu: 2}
+      stats: {social: {base: 2}}
+    scene: 城南中学·高二(3)班教室
+    present: [zhou_mu]
+  - id: mock_exam
+    label: 参加月考
+    cost: 1
+    requires: {flags: {met_lin_xia: true}}
+    check: {stat: study, difficulty: 30, margin: 15}
+    effects:
+      stats: {study: {base: 2}}
+    critical_effects:
+      stats: {study: {base: 3}}
+    failure_effects:
+      stats: {social: {base: 1}}
+    scene: 城南中学·考场
+    present: []
