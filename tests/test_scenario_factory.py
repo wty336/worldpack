@@ -1,10 +1,17 @@
 """场景卡工厂守卫测试（离线；StubLLM 见 Task 4）。"""
 from __future__ import annotations
 
+import re
+
 import pytest
 from pydantic import ValidationError
 
-from scripts.scenario_factory.cards import ScenarioCard
+from scripts.scenario_factory.cards import (
+    PACK_BY_GENRE,
+    ScenarioCard,
+    generate_card,
+    layer_of,
+)
 
 
 def _judge_card(**over):
@@ -93,3 +100,79 @@ def test_ooc_target_fact_may_be_null():
     card["corruptions"][0].update(category="ooc", target_fact=None,
                                   expect="问题类型：OOC")
     ScenarioCard(**card)
+
+
+# --- Task 2：轴空间与确定性生成器 -----------------------------------------
+
+
+def test_layer_of():
+    assert layer_of(10231) == "train"
+    assert layer_of(20231) == "dev"
+    assert layer_of(30231) == "eval"
+    with pytest.raises(ValueError):
+        layer_of(999)
+
+
+def test_generate_is_deterministic_and_seed_spaced():
+    a = generate_card(10231, 6, "extract")   # seq%10==6 → 正例卡（⑦⑧ 是负例位，见生成器）
+    b = generate_card(10231, 6, "extract")
+    assert a == b  # 同 seed+seq+module → 同一张卡（可复现）
+    assert a.card_id == "sc-10231-0006"
+    assert a.module == "extract" and len(a.facts) >= 3 and a.events
+
+
+def test_eval_only_axis_never_leaks_to_train_dev():
+    for seq in range(60):
+        assert generate_card(10000 + seq, seq, "extract").axes.genre != "民国谍战"
+        dev_card = generate_card(20000 + seq, seq, "extract")
+        assert dev_card.axes.genre != "民国谍战"  # dev 只许孪生「抗战谍战」
+        assert dev_card.axes.style != "书信体"
+    genres = {generate_card(30000 + s, s, "extract").axes.genre for s in range(60)}
+    assert "民国谍战" in genres  # eval 空间抽得到留出轴
+
+
+def test_judge_card_genre_must_have_pack():
+    for seq in range(40):
+        c = generate_card(10231, seq, "judge")
+        assert c.axes.genre in PACK_BY_GENRE  # 无包映射的题材不出 judge 卡
+
+
+def test_extract_dedup_discipline_cards_exist_and_carry_existing():
+    """spec §4.2.1 硬要求：负例必配，其中「已有事实的近义改写」型须带 existing。"""
+    cards = [generate_card(10231, s, "extract") for s in range(80)]
+    dedup = [c for c in cards if c.existing]
+    assert dedup, "生成器必须产出「已有事实」型卡片（考去重纪律）"
+    for c in dedup:
+        assert c.facts == []          # 近义改写型 → 标签「无」（无新事实）
+        assert c.events               # 仍需情节骨架供演绎器写复述型回合
+    plain_neg = [c for c in cards if not c.existing and not c.facts]
+    assert plain_neg, "生成器必须产出「纯寒暄」型负例（无 existing、无 facts）"
+    assert len([c for c in cards if not c.facts]) / len(cards) >= 0.15  # 负例 ≥15%
+
+
+def test_fact_anchors_are_pairwise_disjoint():
+    """反向校验（Task 4）的前提：同一张卡上不同事实的 anchors 不得相交——
+    否则 setting 卡的「原 anchor 不得出现」永远不成立，该类卡永久产出不了样本。"""
+    for seq in range(40):
+        for mod in ("extract", "judge", "compress"):
+            anchors = [a for f in generate_card(10231, seq, mod).facts for a in f.anchors]
+            assert len(anchors) == len(set(anchors)), f"{mod}#{seq} anchors 相交: {anchors}"
+
+
+def test_corruption_detail_quotes_are_parseable():
+    """Task 4 的 `_corruption_swap` 用 `「([^」]+)」` 解析 detail：
+    嵌套「」（如把整条 text 引进去）会解出残缺串 → 该卡**恒被丢弃**，
+    而 confab 占 judge 配额 ≥40% —— 是静默良率损失，必须钉住。"""
+    for seq in range(40):
+        c = generate_card(10231, seq, "judge")
+        cor = c.corruptions[0]
+        assert cor.detail.count("「") == cor.detail.count("」"), cor.detail
+        quoted = re.findall(r"「([^」]+)」", cor.detail)
+        # 不得嵌套引用：嵌套会让 Task 4 的正则解出残缺串 → 该卡恒被丢弃
+        assert all("「" not in q and "」" not in q for q in quoted), cor.detail
+        if cor.category == "setting":
+            assert len(quoted) == 2, f"setting 需「原值」「新值」两引（反向校验依赖）: {cor.detail}"
+        elif cor.category == "confab":
+            assert len(quoted) == 1, f"confab 只应引被断言的 anchor 一个「」: {cor.detail}"
+        else:  # ooc：改写语气/底线，不涉及具体值 → 无引用
+            assert quoted == [], cor.detail
