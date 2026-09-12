@@ -16,16 +16,24 @@ compress 拒绝采样三档（spec §6）：off=单次直出；long=仅长输入
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import sys
+from collections import Counter
+from dataclasses import dataclass, field as dc_field
 
 from game_agent.budgets import COMPRESS_MAX_TOKENS, complete_checked
 from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
 from game_agent.memory import EXTRACT_SYSTEM
+from game_agent.worldpack import WorldPack
 from scripts.rubric_judge import select
 
-from .cards import ScenarioCard
-from .materialize import MaterializeError, build_material
+from .cards import REPO_ROOT, ScenarioCard
+from .materialize import MaterializeError, build_material, load_pack
 from .verbalize import verbalize_card
+
+# card_hook_check 不是包成员（脚本层）：注入 scripts/ 后 import
+# （脚本层先例见 scripts/diag_turn.py:17；tests 层不用此法）
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from card_hook_check import CARD_FIELDS, card_hook  # noqa: E402
 
 SAMPLE_VERSION = "route-a-v1"
 LONG_INPUT_TOKENS = 8000   # spec §6「长输入档」阈值（计划口径；spec 原话为"20K 级"）
@@ -84,12 +92,17 @@ def build_judge_sample(llm, card: ScenarioCard) -> BuildResult:
     if r.dropped:
         return BuildResult(None, "演绎丢弃")
     c = card.corruptions[0]
-    return BuildResult({
+    sample = {
         "id": card.card_id, "module": "judge", "version": SAMPLE_VERSION,
         "genre": card.axes.genre, "pack": card.pack, "material": material,
         "narration": r.text, "expect": c.expect, "category": c.category,
         "speaker": card.material.present[0],
-    })
+    }
+    # **出厂门禁接在产线上**（原稿定义了 hook_gate 却从未调用 = 门禁不存在）：
+    # confab 撞说话人角色卡会多开一条「设定矛盾」通路，拦截率虚高、跨包不可比。
+    if hooked := hook_gate(sample, load_pack(card.pack)):
+        return BuildResult(None, f"confab 撞卡: {'/'.join(hooked)}")
+    return BuildResult(sample)
 
 
 def _fabrication_hit(summary: str, history: str) -> str | None:
@@ -163,3 +176,52 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
         "preserve_points": [{"text": p.text, "anchors": p.anchors}
                             for p in card.preserve_points],
     })
+
+
+# ---------------------------------------------------------------------------
+# 质量门与出厂门禁（spec §9.2：card_hook_check 复用不重写）
+# ---------------------------------------------------------------------------
+
+GATE_MAX_DROP_RATE = 0.30   # 丢弃率超阈 → 批作废（先停产线，不硬凑量）
+QUALITY_SAMPLE_RATE = 0.20  # §7.4 质检员抽检比例（常驻关卡）
+
+
+@dataclass
+class BatchStats:
+    built: int = 0
+    dropped: int = 0
+    reasons: Counter = dc_field(default_factory=Counter)
+
+
+def hook_gate(sample: dict, pack: WorldPack) -> list[str]:
+    """confab 出厂门禁：narration × 说话人角色卡（`CARD_FIELDS`）的**词面**撞卡 → 返回撞词。
+
+    依据 `card_hook_check.py` 文首实证：confab 撞上说话人角色卡（底线/禁忌/说话风格）会让
+    判官多一条「设定矛盾」短路 —— 拦截率虚高、跨包不可比（实测同族用例可被抬到 88%）。
+    本门禁只查 **confab**；词面之外的部分（语义撞卡、决策 16 的"断言不得由材料已有事实
+    组合推出"）**不可程序化**，走人读清单 `manual_review_row()`。
+    """
+    if sample.get("category") != "confab":
+        return []
+    spec = pack.npcs.get(sample["speaker"])
+    card_text = (" ".join(str(spec.model_dump().get(f)) for f in CARD_FIELDS)
+                 if spec else "")
+    return card_hook(sample["narration"], card_text)
+
+
+def quality_gate(stats: BatchStats) -> str | None:
+    """批级质量门：丢弃率超阈 → 返回原因（调用方作废该批，先停产线不硬凑量）。"""
+    total = stats.built + stats.dropped
+    if total and stats.dropped / total > GATE_MAX_DROP_RATE:
+        return f"丢弃率 {stats.dropped}/{total} 超 {GATE_MAX_DROP_RATE:.0%}"
+    return None
+
+
+def manual_review_row(sample: dict) -> dict:
+    """confab 人读清单行（决策 16 的**不可程序化**检查）：
+
+    「断言不得由材料已有事实组合推出」只能人读 —— 逐行核对 material 与 narration。
+    随交付，不替代抽检。
+    """
+    return {"id": sample["id"], "material": sample["material"],
+            "narration": sample["narration"], "expect": sample["expect"]}

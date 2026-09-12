@@ -21,11 +21,14 @@ from scripts.rubric_judge import (
     select,
 )
 from scripts.scenario_factory.assemble import (
+    BatchStats,
     build_compress_sample,
     build_extract_sample,
     build_judge_sample,
     compress_messages,
     extract_messages,
+    hook_gate,
+    quality_gate,
 )
 from scripts.scenario_factory.cards import (
     GENRE_EVAL_ONLY,
@@ -662,3 +665,32 @@ def test_compress_short_input_tier_stays_single_under_long():
     llm = StubLLM([history, summary])
     r = build_compress_sample(llm, card, sampling="long")  # 600 < 阈值 → 仍 n=1
     assert r.sample["candidates"] == 1 and r.sample["long_input"] is False
+
+
+# --- Task 7：质量门 + card_hook 出厂门禁 ------------------------------------
+
+
+def _bai_zhi_card_text(pack):
+    # 口径与 card_hook_check.CARD_FIELDS 一致；注意是 **personality**（NpcSpec 字段名），
+    # 不是 card_hook_check 旧版写的 `persona`（那个字段不存在 → 恒为 None → 死字段，已修）
+    spec = pack.npcs["bai_zhi"]
+    return " ".join(str(spec.model_dump().get(f)) for f in
+                    ("personality", "speech_style", "boundaries", "forbidden"))
+
+
+def test_hook_gate_catches_confab_collision_only():
+    pack = load_worldpack(REPO_ROOT / "world-packs/xianxia_wendao")
+    han = re.sub(r"[^一-鿿]", "", _bai_zhi_card_text(pack))
+    two = han[4:6]  # 取自角色卡的二字串 → 必撞词面
+    hit = {"category": "confab", "speaker": "bai_zhi", "narration": f"他说{two}如何"}
+    assert hook_gate(hit, pack)  # 撞卡 → 非空列表
+    assert hook_gate({**hit, "category": "setting"}, pack) == []  # 非 confab 不查
+    clean = {"category": "confab", "speaker": "bai_zhi", "narration": "齉龘塾鷟"}
+    assert hook_gate(clean, pack) == []  # 生僻字串必不撞
+
+
+def test_quality_gate_drop_rate():
+    ok = BatchStats(built=9, dropped=1)
+    assert quality_gate(ok) is None
+    bad = BatchStats(built=6, dropped=4)  # 40% > 30%
+    assert "丢弃率" in quality_gate(bad)

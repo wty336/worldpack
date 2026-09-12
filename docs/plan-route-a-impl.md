@@ -26,7 +26,7 @@
 | 4 演绎器 + 反向校验 | ✅ 完成 | 见 Task 4 执行记录 | 修正 1 处（自然化指令对 confab 原稿是反的） |
 | 5 rubric 评委四模式 | ✅ 完成 | 见 Task 5 执行记录 | 修正 1 处（`-k` 过滤器；顺带审计了全部 Task 的过滤器） |
 | 6 样本构建三分支 + 拒绝采样 | ✅ 完成 | 见 Task 6 执行记录 | 修正 1 处（compress 样本存裸文本；评审补修） |
-| 7 质量门 + 门禁接线 + 人读清单 | ⬜ 待做 | — | — |
+| 7 质量门 + 门禁接线 + 人读清单 | ✅ 完成 | 见 Task 7 执行记录 | 修正 1 处（守卫顺序：`test_pipeline_calls_both_gates` 移到 Task 8） |
 | 8 配额/去重/出库 CLI | ⬜ 待做 | — | 出库摘要须走 `file_digest`（见下） |
 | 9 轨道 2 批跑 + 定 X | ⬜ 待做 | — | — |
 | 10 EXTRACT_SYSTEM 收紧实验 | ⬜ 待做 | — | 需 GPU 机；不阻塞 M1~M4 |
@@ -44,7 +44,7 @@
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
-Task 6 守卫 **10** + `evalmeta` 换行守卫 **1** = **391 passed**。
+Task 6 守卫 **10** + Task 7 守卫 **2** + `evalmeta` 换行守卫 **1** = **393 passed**。
 
 ---
 
@@ -1956,7 +1956,7 @@ git commit -m "feat(factory): 样本构建三分支与 compress 拒绝采样三�
 - Modify: `scripts/scenario_factory/assemble.py`（追加）
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 import re
@@ -1993,15 +1993,15 @@ def test_quality_gate_drop_rate():
     assert "丢弃率" in quality_gate(bad)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: FAIL（`ImportError: cannot import name 'BatchStats'`）
 
-> 不用 `-k "hook or quality"`：它**漏掉**本 Task 的 `test_pipeline_calls_both_gates`
-> （名字里既无 hook 也无 quality），又**混进** Task 5 的 `test_quality_sample_flags_template_like_output`。
+> 不用 `-k "hook or quality"`：它**漏掉**首个守（其名字不含这两个词），
+> 又**混进** Task 5 的 `test_quality_sample_flags_template_like_output`（含 "quality"）。
 
-- [ ] **Step 3: 实现（追加到 assemble.py）**
+- [x] **Step 3: 实现（追加到 assemble.py）**
 
 ```python
 # ---- 质量门与出厂门禁（spec §9.2：card_hook_check 复用不重写） ----
@@ -2059,7 +2059,7 @@ def manual_review_row(sample: dict) -> dict:
 注意：`REPO_ROOT` 与 Task 3 materialize.py 里的定义同值；若 ruff 报重复定义，改为
 `from .materialize import REPO_ROOT` 并删除本段定义。`dataclass` 已在 Task 6 导入，无需重复。
 
-- [ ] **Step 3b: 把两个门禁**接进产线**（原稿定义了却从未被调用——必须补，否则门禁等于不存在）**
+- [x] **Step 3b: 把两个门禁**接进产线**（原稿定义了却从未被调用——必须补，否则门禁等于不存在）**
 
 1. `hook_gate` 接在 judge 样本构建处（`build_judge_sample` 内、material 装配之后）：
 
@@ -2086,28 +2086,54 @@ from .materialize import load_pack   # Task 3 已提供；此处只是使用
         samples = [s for s in samples if s["id"] not in drop]
 ```
 
-   并加一条守卫，确保"定义了必被调用"（防再次出现"门禁存在但产线不用"）：
+   并加一条守卫，确保"定义了必被调用"（防再次出现"门禁存在但产线不用"）——
+   见 **Task 8 的测试块**（`test_pipeline_calls_both_gates`）：放在本 Task 会必红，
+   因为它的第二、三条断言要求 `quality_sample(` 已出现在 `assemble.py` 里，
+   而质检员的接线在 **Task 8 的 `main`**（本 Task 只接 `hook_gate`）。
 
-```python
-def test_pipeline_calls_both_gates():
-    import inspect
-    from scripts.scenario_factory import assemble
-    src = inspect.getsource(assemble)
-    assert "hook_gate(" in src and "quality_sample(" in src
-    assert "quality_sample(llm, samples" in src  # 在 main 里真的被调
-```
-
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
-Expected: **50 passed**（前五 Task 的 38 + Task 6 的 9 + Task 7 的 3）
+Expected: **50 passed**（Task 1~6 的 48 + Task 7 的 2）
 
-- [ ] **Step 5: Commit**
+> 注：本 Task 原写"Task 6 的 9 + Task 7 的 3 = 50"——数字巧合但仍对，构成已变：
+> Task 6 加了 compress 契约守卫（9 → 10），而 `test_pipeline_calls_both_gates`
+> 已移到 Task 8（它的断言依赖 Task 8 的 `main`），故本 Task 为 2 条。
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/scenario_factory/assemble.py tests/test_scenario_factory.py
 git commit -m "feat(factory): 质量门、confab 卡中性门禁与人读清单（Task 7）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成**
+>
+> - Step 2 确认失败 ✓：`ImportError: cannot import name 'BatchStats'`
+> - Step 4 确认通过 ✓：整文件 **50 passed**（Task 1~6 的 48 + Task 7 的 2）；
+>   全量 391 → **393 passed**
+> - 落地：`assemble.py` 追加 `BatchStats` / `hook_gate` / `quality_gate` / `manual_review_row`，
+>   并把 `hook_gate` **接进 `build_judge_sample`**（Step 3b）
+>
+> **本 Task 的核心是补上"定义了却没调用"**：原稿定义了 `hook_gate` 却从未在产线上调用 ——
+> 等于门禁**不存在**。现在 judge 样本构建时逐条过门禁，撞卡即丢弃并计入 `dropped`。
+>
+> **功能性核验**（门禁真的在产线上生效，不只是函数能跑）：
+>
+> | 输入 | 结果 |
+> | --- | --- |
+> | 干净叙事（不撞卡） | `sample` 正常产出、`hook_gate` 撞词 = `[]` |
+> | 撞卡叙事（含角色卡二字串「口快」） | **被丢弃**，`dropped_reason = confab 撞卡: 口快` ✓ |
+> | `quality_gate(built=9, dropped=1)` | `None`（10% ≤ 30%）✓ |
+> | `quality_gate(built=6, dropped=4)` | `丢弃率 4/10 超 30%` ✓ |
+> | `manual_review_row` | 4 个字段（`id`/`material`/`narration`/`expect`）✓ |
+>
+> **执行中发现并修正的 1 处计划缺陷（顺序问题）**：
+> `test_pipeline_calls_both_gates` 原排在**本 Task**，但它的断言
+> （`"quality_sample(" in src`、`"quality_sample(llm, samples" in src`）要求质检员**已接线**，
+> 而那在 **Task 8 的 `main`** —— 放本 Task 会必红。已移到 Task 8 的测试块，并在 Step 3b 注明。
+> 连带把 Task 8 的 Step 4 改为整文件 + **56 passed**、Task 9 改为 **59 passed**，
+> 并把 Task 11 的构成改为 `9+10+8+5+6+10+**2**+**6**+3`（总数 59 不变）。
 
 ---
 
@@ -2174,12 +2200,30 @@ def test_write_layer_manifest_sha_matches(tmp_path):
     assert manifest["frozen"] is False
     ev = write_layer("eval", rows, tmp_path)
     assert ev["frozen"] is True and (tmp_path / "eval" / "OPEN_LOG.md").exists()
+
+
+def test_pipeline_calls_both_gates():
+    """门禁**定义了必须被调用**（原稿定义了 `hook_gate` 却从未调用 = 门禁不存在）。
+
+    放在本 Task 而非 Task 7：本断言要求 `quality_sample(` 已出现在 `assemble.py` 里，
+    而质检员的接线在**本 Task 的 `main`**（Task 7 只接 `hook_gate`）。
+    """
+    import inspect
+
+    from scripts.scenario_factory import assemble
+
+    src = inspect.getsource(assemble)
+    assert "hook_gate(" in src, "hook_gate 定义了却没被调用"
+    assert "quality_sample(" in src, "quality_sample 定义了却没被调用"
+    assert "quality_sample(llm, samples" in src, "质检员没接在 main 的产线上"
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k "fingerprint or dedup or quota or write_layer"`
 Expected: FAIL（`ImportError`）
+
+> （Step 4 改用整文件 + 累计数，见该处说明。）
 
 - [ ] **Step 3: 实现（追加到 assemble.py）**
 
@@ -2388,8 +2432,12 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: 跑测试确认通过 + dry-run 配额预演（零成本）**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k "fingerprint or dedup or quota or write_layer"`
-Expected: 5 passed
+Run: `uv run pytest tests/test_scenario_factory.py -q`
+Expected: **56 passed**（Task 1~7 的 50 + Task 8 的 6）
+
+> 本 Task 的 `-k "fingerprint or dedup or quota or write_layer"` 对本 Task 的 5 条**准确**，
+> 但**漏掉**新增的 `test_pipeline_calls_both_gates`（名字里没有那四个词）。
+> 与其再拼一个易碎的过滤器，直接跑整文件 + 累计数。
 
 Run: `uv run python -m scripts.scenario_factory.assemble --layer train --extract 100 --judge 80 --compress 30 --dry-run`
 Expected: 打印各模块卡数、题材分布、长输入占比；无 API 调用（`--dry-run` 在 `load_settings` 之前 return，故不需要 key）
@@ -2581,8 +2629,10 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k "run_eval or report"`
-Expected: 3 passed
+Run: `uv run pytest tests/test_scenario_factory.py -q`
+Expected: **59 passed**（Task 1~8 的 56 + Task 9 的 3）—— 本文件全部守卫
+
+> `-k "run_eval or report"` 对本 Task 的 3 条准确，但与本计划既有约定一致，统一跑整文件 + 累计数。
 
 - [ ] **Step 5: 定 X（决策 13 的 M4 验收项，人工+程序）**
 
@@ -2729,7 +2779,7 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - [ ] **Step 1: 全量测试**
 
 Run: `uv run pytest -q`
-Expected: **342 存量** + 本计划新增 **59 个守卫**（Task 1~9：9+10+8+5+6+10+3+5+3）+ Task 10 的 1 个
+Expected: **342 存量** + 本计划新增 **59 个守卫**（Task 1~9：9+10+8+5+6+10+**2**+**6**+3）+ Task 10 的 1 个
 prompt 守卫 = **402 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
