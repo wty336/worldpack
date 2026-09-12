@@ -198,7 +198,7 @@ cases:
     xiao_ma: 65.0
 - id: gen_confab_promise_01
   category: confab
-  narration: 李主任说：『下个月把你调到机修组，手续我来办。』
+  narration: 李主任说：『下周一班前会你排第一个发言，就讲讲车床那点事。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -207,7 +207,7 @@ cases:
   - li_zhuren
 - id: gen_confab_promise_02
   category: confab
-  narration: 李主任说：『下个月把你调到机修组，手续我来办。』——这是你后来回想起来的，李主任确实这样答应过你。
+  narration: 李主任说：『下周一班前会你排第一个发言，就讲讲车床那点事。』——这是你后来回想起来的，李主任确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -216,7 +216,7 @@ cases:
   - li_zhuren
 - id: gen_confab_promise_03
   category: confab
-  narration: 李主任拍板：『年底先进生产者的名额，我给你留一个。』
+  narration: 李主任说：『厂里要办技工考核，我给你把名报上了。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -225,7 +225,7 @@ cases:
   - li_zhuren
 - id: gen_confab_promise_04
   category: confab
-  narration: 李主任拍板：『年底先进生产者的名额，我给你留一个。』——这是你后来回想起来的，李主任确实这样答应过你。
+  narration: 李主任说：『厂里要办技工考核，我给你把名报上了。』——这是你后来回想起来的，李主任确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -234,7 +234,7 @@ cases:
   - li_zhuren
 - id: gen_confab_promise_05
   category: confab
-  narration: 王大姐说：『你家的细粮票我替你多领了两份，别声张。』
+  narration: 王大姐说：『我晒的干菜给你装了一碗，回头你来水房拿。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -243,7 +243,7 @@ cases:
   - wang_dajie
 - id: gen_confab_promise_06
   category: confab
-  narration: 王大姐说：『你家的细粮票我替你多领了两份，别声张。』——这是你后来回想起来的，王大姐确实这样答应过你。
+  narration: 王大姐说：『我晒的干菜给你装了一碗，回头你来水房拿。』——这是你后来回想起来的，王大姐确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -252,7 +252,7 @@ cases:
   - wang_dajie
 - id: gen_confab_promise_07
   category: confab
-  narration: 王大姐说：『陈姨那边我去说，保证让你排上号。』
+  narration: 王大姐说：『后街新开的理发店，礼拜天我带你去认认门。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -261,7 +261,7 @@ cases:
   - wang_dajie
 - id: gen_confab_promise_08
   category: confab
-  narration: 王大姐说：『陈姨那边我去说，保证让你排上号。』——这是你后来回想起来的，王大姐确实这样答应过你。
+  narration: 王大姐说：『后街新开的理发店，礼拜天我带你去认认门。』——这是你后来回想起来的，王大姐确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -270,7 +270,7 @@ cases:
   - wang_dajie
 - id: gen_confab_promise_09
   category: confab
-  narration: 小马说：『那批轴承的事我替你瞒下来了，账我已经改过。』
+  narration: 小马说：『我那条新皮带你用两天，配你那身工装正好。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -279,7 +279,7 @@ cases:
   - xiao_ma
 - id: gen_confab_promise_10
   category: confab
-  narration: 小马说：『那批轴承的事我替你瞒下来了，账我已经改过。』——这是你后来回想起来的，小马确实这样答应过你。
+  narration: 小马说：『我那条新皮带你用两天，配你那身工装正好。』——这是你后来回想起来的，小马确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -288,7 +288,7 @@ cases:
   - xiao_ma
 - id: gen_confab_promise_11
   category: confab
-  narration: 小马说：『我先借你二十块，发薪再还我就行。』
+  narration: 小马说：『我排队多买了一张电影票，给你吧。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -297,7 +297,7 @@ cases:
   - xiao_ma
 - id: gen_confab_promise_12
   category: confab
-  narration: 小马说：『我先借你二十块，发薪再还我就行。』——这是你后来回想起来的，小马确实这样答应过你。
+  narration: 小马说：『我排队多买了一张电影票，给你吧。』——这是你后来回想起来的，小马确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -306,7 +306,7 @@ cases:
   - xiao_ma
 - id: gen_confab_promise_13
   category: confab
-  narration: 陈姨说：『户口的事我替你跑，三天就能办下来。』
+  narration: 陈姨说：『你那件棉袄我拿去让裁缝改改，腰身放两寸。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -315,7 +315,7 @@ cases:
   - chen_yi
 - id: gen_confab_promise_14
   category: confab
-  narration: 陈姨说：『户口的事我替你跑，三天就能办下来。』——这是你后来回想起来的，陈姨确实这样答应过你。
+  narration: 陈姨说：『你那件棉袄我拿去让裁缝改改，腰身放两寸。』——这是你后来回想起来的，陈姨确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -324,7 +324,7 @@ cases:
   - chen_yi
 - id: gen_confab_promise_15
   category: confab
-  narration: 陈姨说：『赵科长的事我已经报上去了，你放心。』
+  narration: 陈姨说：『你要的灯泡我托人从城里带了两个，回头给你。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -333,7 +333,7 @@ cases:
   - chen_yi
 - id: gen_confab_promise_16
   category: confab
-  narration: 陈姨说：『赵科长的事我已经报上去了，你放心。』——这是你后来回想起来的，陈姨确实这样答应过你。
+  narration: 陈姨说：『你要的灯泡我托人从城里带了两个，回头给你。』——这是你后来回想起来的，陈姨确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -342,7 +342,7 @@ cases:
   - chen_yi
 - id: gen_confab_promise_17
   category: confab
-  narration: 老孙头说：『后门的钥匙我给你留了一把，夜里进出方便。』
+  narration: 老孙头说：『传达室那台座钟我会修，礼拜天也给你那台看看。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -351,7 +351,7 @@ cases:
   - lao_sun
 - id: gen_confab_promise_18
   category: confab
-  narration: 老孙头说：『后门的钥匙我给你留了一把，夜里进出方便。』——这是你后来回想起来的，老孙头确实这样答应过你。
+  narration: 老孙头说：『传达室那台座钟我会修，礼拜天也给你那台看看。』——这是你后来回想起来的，老孙头确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -360,7 +360,7 @@ cases:
   - lao_sun
 - id: gen_confab_promise_19
   category: confab
-  narration: 赵科长说：『调令我给你签了，你明早去传达室拿。』
+  narration: 赵科长说：『你上回交的技改建议，我送到技术科去了。』
   expected: false
   day: 6
   scene: 红星机械厂·二车间
@@ -369,7 +369,7 @@ cases:
   - zhao_kezhang
 - id: gen_confab_promise_20
   category: confab
-  narration: 赵科长说：『调令我给你签了，你明早去传达室拿。』——这是你后来回想起来的，赵科长确实这样答应过你。
+  narration: 赵科长说：『你上回交的技改建议，我送到技术科去了。』——这是你后来回想起来的，赵科长确实这样答应过你。
   expected: false
   day: 6
   scene: 红星机械厂·二车间
