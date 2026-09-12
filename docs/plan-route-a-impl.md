@@ -30,7 +30,7 @@
 | 8 配额/去重/出库 CLI | ✅ 完成 | 见 Task 8 执行记录 | ⚠️ 遗留一项：§4.4 轴矩阵未全量落实（见执行记录） |
 | 9 轨道 2 批跑 + 定 X | ✅ 代码完成 / ⏸ Step 5 待真机 | 见 Task 9 执行记录 | 无计划缺陷；定 X 需 dev 层出库数据 |
 | 10 EXTRACT_SYSTEM 收紧实验 | ✅ 完成 / ❌ **未达标（改动已撤回）** | `f65f84f`（证据；引擎零净改动） | 判据②两侧皆败 → 按封板口径回"必训"；新增对照工具 1 个（计划外，见执行记录） |
-| 11 总装验收 + 成本回填 | ⬜ 待做 | — | — |
+| 11 总装验收 + 成本回填 | ✅ 完成 / ⚠️ M3·M4 带遗留（6 个发现待修） | `3b9c9ce`（证据）+ 文档提交 | 「定 X」因轨道 2 批作废**未完成**；生产批量未跑；发现①~⑥ 只记录未修 |
 
 **Task 外的既有改动（已落地，供后续 Task 参考）**
 
@@ -45,11 +45,14 @@
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
 Task 6 守卫 **10** + Task 7 守卫 **2** + Task 8 守卫 **6** + Task 9 守卫 **3** +
-`evalmeta` 换行守卫 **1** + 对照工具 `extract_compare` 守卫 **5** = **407 passed**。
+`evalmeta` 换行守卫 **1** + 对照工具 `extract_compare` 守卫 **5** +
+Task 11 守卫 **10**（用途标签 2 + 成本回填 4 + 定 X 4）= **417 passed**。
 
 > **Task 10 的 1 条 prompt 守卫已随实验未达标一并撤回**（连同 `EXTRACT_SYSTEM` 改动本身）——
 > 未达标物不得留在引擎里；撤回依据见 `reports/extract-task10-report.md`。
 > `scripts/extract_compare.py` 是实验副产品（同集对照 / 离线重切片，零 API），保留并自带 5 条守卫。
+> **Task 11 新增守卫的去向**：`tests/test_scenario_factory.py` +2（用途标签）、
+> 新文件 `tests/test_route_a_cost.py` 4 条、新文件 `tests/test_rubric_x_calibrate.py` 4 条。
 
 ---
 
@@ -2894,12 +2897,13 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - Modify: `docs/plan-route-a-factory.md`（§12.C 追加执行记录）
 - Create: `reports/route-a-cost-YYYYMMDD.md`
 
-- [ ] **Step 1: 全量测试**
+- [x] **Step 1: 全量测试**（实测 **417 passed**；计数拆解见下）
 
 Run: `uv run pytest -q`
 Expected: **342 存量** + 本计划新增 **59 个守卫**（Task 1~9：9+10+8+5+6+10+**2**+**6**+3）+ Task 10 的 1 个
 prompt 守卫（**已随实验未达标撤回**）+ 计划外先落的 `evalmeta` 换行守卫 1 个
-+ 对照工具 `extract_compare` 守卫 **5** 个 = **407 全绿**
++ 对照工具 `extract_compare` 守卫 **5** 个 + Task 11 守卫 **10** 个
+（用途标签 2 + `route_a_cost` 4 + `rubric_x_calibrate` 4）= **417 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
 > 加上计划外先落的 `card_hook` 死字段守卫 1 条 = **342**（= 本表"存量"口径，见文首「进度」节）。
@@ -2911,7 +2915,7 @@ prompt 守卫（**已随实验未达标撤回**）+ 计划外先落的 `evalmeta
 > **Task 10 收尾后的净变化**：**-1**（计划内的 prompt 守卫随实验未达标撤回）+ **+5**
 > （计划外的同集对照工具 `scripts/extract_compare.py`）→ 402 → **407**（实测 `pytest -q` = 407 passed）。
 
-- [ ] **Step 2: M1~M4 验收项核对（对照 spec §10.3 逐项打勾）**
+- [x] **Step 2: M1~M4 验收项核对（对照 spec §10.3 逐项打勾）**　→ 判定 **M1 ✅ / M2 ✅ / M3 ⚠️ / M4 ⚠️**（首次真机跑通：270 张卡 → 出库 210 条）
 
 | 里程碑 | 验收项 | 证据 |
 | --- | --- | --- |
@@ -2920,7 +2924,7 @@ prompt 守卫（**已随实验未达标撤回**）+ 计划外先落的 `evalmeta
 | M3 | compress 演绎 + 拒绝采样 + rubric 评委 | Task 5/6 测试绿；三档调用数断言在案 |
 | M4 | 轨道 2 + 探针校准 + 三层出齐 + 出库 + **定 X** | Task 8/9；`rubric-x-calibration-*.md` 三要素齐 |
 
-- [ ] **Step 3: 成本回填**
+- [x] **Step 3: 成本回填**　→ 工厂批 **¥2.5035**（606 次调用）+ 轨道 2 评委 ¥0.0372；单位 **¥0.0119/样本** → 外推 2100 条 **≈¥25**（**未触 ¥90 门**）；报告 `reports/route-a-cost-20260912.md`
 
 从 usage 记账汇总实际 token —— **记账来源已修正**：`complete_checked` **不接触** `UsageTracker`，
 落盘只发生在 `LLMClient._record_usage`，且**只有构造时显式传了 `tracker=` 才有数据**
@@ -2930,7 +2934,7 @@ prompt 守卫（**已随实验未达标撤回**）+ 计划外先落的 `evalmeta
 **超 ¥90 触发停批复盘**（spec §10.2 门限不变）。报告须附 `prompt_version` / `budget_policy` /
 `endpoint` 三个指纹（spec §6.4）。
 
-- [ ] **Step 4: 文档回写 + Commit**
+- [x] **Step 4: 文档回写 + Commit**
 
 spec `docs/plan-route-a-factory.md` §12.C 追加：M1~M4 完成日期、各层出库 sha256、
 X 取值报告路径、决策 15 复测结论。然后：
@@ -2939,6 +2943,44 @@ X 取值报告路径、决策 15 复测结论。然后：
 git add docs/plan-route-a-factory.md reports/route-a-cost-*.md
 git commit -m "docs(factory): M1~M4 验收与成本回填（Task 11）"
 ```
+
+**执行记录（2026-09-13）** —— 首次**真机**跑通全链路（此前 Task 1~10 只有离线守卫，`data/route-a/` 根本不存在）
+
+**做了什么**：① 全量测试 **417 passed**；② 三次跑批（`--layer {train,dev,eval} --extract 30 --judge 30 --compress 30 --sampling long`，约 50 分钟 / 606 次调用）；
+③ 轨道 2 评委跑 dev compress；④ 成本回填；⑤ 文档回写 + 打 eval 冻结 tag。
+
+**验收判定**：**M1 ✅**（`card_hook_check --gate` 5 包撞卡 0）· **M2 ✅**（270 张卡真机演绎 → 出库 210 条，judge 材料由 3 个真实包物化）·
+**M3 ⚠️**（拒绝采样跑通，但候选全杀率 20~33% 全因"超长"；rubric 评委探针检出 67% → 批作废）·
+**M4 ⚠️**（三层出齐 + 出库 ✅；**「定 X」未完成**）。
+
+**产物**：`data/route-a/{train,dev,eval}/`：出库 **69 / 72 / 69** 条，`manifest.json` 带 sha256（**9 个文件摘要全部复核一致**）；
+extract 负例 **21% ≥ 15%**；决策 16 人读清单 7 条；`eval/OPEN_LOG.md` 冻结留痕 + tag **`eval-route-a-20260912`**。
+
+**成本**：工厂批 **¥2.5035** + 轨道 2 评委 **¥0.0372**；单位 **¥0.0119/样本** → 外推生产规模 2,100 条 **≈¥25**
+（**低于 §10.2 的 ~¥62**、**远低于 ¥90 停批复盘门限**）——但报告里明写：该"更低"是发现⑤的缺陷造成的**假便宜**，
+长度缺陷修好必然上涨，故 **¥25 是下界**。
+
+**六个发现（只记录、未修，修法方向见报告 §4）**：
+
+| # | 发现 | 严重度 |
+| --- | --- | --- |
+| ① | **`card_id` 跨模块重复 → 质检剔除连坐**：`sc-{seed}-{seq}` 三模块同 id（train 69 条只有 29 个唯一 id），`bad_set` 按 id 全量过滤 → train/eval **实剔 3 条只报 1 条**（69 = 90−18−3，被点名 id 在三模块文件里同时消失）。**id 不能当主键** | **生产前必修**（静默丢数据） |
+| ② | 轨道 2 探针检出 **67% < 90%** → 批作废 → **定 X 无数据基础**（"删要点"探针已删掉含「沈砚」的两条承诺句，评委仍给保真 2 = 按 anchor 字面在位放行） | 阻断 M4 |
+| ③ | 评委三维饱和：保真 18/19、结构 19/19、流畅 19/19 满分 → 区分度 ≈ 0（根因：出库样本是"程序先杀幸存者"） | 生产前必修 |
+| ④ | **compress 单模块丢弃率 20~33%**，被杀候选**全部因"超长"**（摘要中位 651 字 / 上限 800）；丢弃率与卡长无关 → 只跑 compress（生产批形态）即超 30% 门作废 | 生产前必修 |
+| ⑤ | **「长输入档 20K」名不副实**：卡面 `target_tokens=20000`，实测**最长一次演绎输出仅 4,323 token**、出库历史仅 404~4,127 字；`long_input` 标记取自**卡面**而非文本 | 生产前必修 |
+| ⑥ | **confab 幸存率仅 23%**（卡面 31/90 → 出库 7/60；同批 ooc 100% / setting 89%） | 影响类别配比 |
+
+**与计划的偏差（3 处）**：
+1. **计划外新增两个工具**（各带守卫）：`scripts/route_a_cost.py`（4 守卫，读盘重算成本——`UsageTracker.cost_report()` 只统计本实例内存，事后回填读不了文件）、
+   `scripts/rubric_x_calibrate.py`（4 守卫，定 X 的程序部分；**批无效即拒绝产 X**，纪律写成代码）。
+2. **计划外修一处实测缺口**：演绎/选优/质检的调用原先**全记 `purpose="aux"`** → §10.2 的分模块成本**回填不出来**。
+   给各调用点加用途标签（`verbalize_extract/judge/compress`、`rubric_score/pairwise/select/quality`），
+   并加 2 条守卫钉住"**只改标签、不改路由**"（标签不落在 judge/compress 两个真路由键上；思考开关与预算都不按 purpose 分派）。
+3. **「定 X」未做**（计划列为本 Step 的验收项）：轨道 2 批作废 → 按 spec"先修评委提示词、整批重评"，**不硬凑一个 X**。
+   计划里"X 取值报告路径"因此只能记成"未产出 + 阻断原因"。
+
+**计数**：**417 passed** = 402（Task 10 收尾值）+ `extract_compare` 5 + 用途标签 2 + `route_a_cost` 4 + `rubric_x_calibrate` 4。
 
 ---
 
