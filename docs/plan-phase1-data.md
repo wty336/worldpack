@@ -91,6 +91,23 @@
 >   "重要性口径过主观"等），逐条记录在 `eval-sets/MANIFEST.md` §6 —— 这正是"20% 抽检"纪律的自动化版本。
 > - **余下（Step 1 后半）**：judge 语料扩域（每包每类 6 → 20+，不搬进 `eval-sets/`）、
 >   compress/reflect 冻结样本、`railed` 端到端事实集扩到 30~50（需先加 `--pack`）、G1/G2 泛化包。
+>
+> **judge 语料扩域（2026-09-12，同日第二批）**
+> - **做法**：手写资产（`judge_corpus.yaml`）与机器产物（`judge_corpus.gen.yaml`）**分离**，
+>   `judge_corpus.load_corpus` 合并两者（**id 全局唯一**，跨源撞名即抛错）；生成器
+>   `scripts/build_judge_corpus.py`（确定性渲染，`--check` 校验）。
+> - **四个可程序化判定的 setting 家族**（标签来源确定，可审计）：
+>   ① 世界禁用物（包 `world.forbidden` 明列）② 与 npc 卡 `identity` 冲突 ③ 与用例 `facts` 冲突
+>   ④ 与 `affections` 冲突（高好感却形同陌路）；**confab** 用"材料中不存在的承诺/约定"模板
+>   （每个种子 × 引语/转述两种载体）；**ooc 手工卡面锚定**（逐条 note 引用 `boundaries`/`forbidden`
+>   原文——star_ring 的教训：note 必须引用物化后的卡）；**normal** 程序化一致叙事（保误报率口径）。
+> - **规模**：每包 **30 → 70~72 条**（`setting` 20~22 ✓ / `confab` 20 ✓ / `ooc` 12 / `normal` 18），
+>   三包合计 **213 条**（原 90 条，2.4×）。ooc 与 normal 未达 20/40 目标：前者须逐卡手写、
+>   后者须真实叙事（留待与 flash 补标/轨迹采样一起做）。
+> - **守卫**：`tests/test_judge_corpus_gen.py` —— 生成物可复现 + 计数达标 + 对抗类必须有 note +
+>   跨源 id 唯一 + 撞名显式报错。
+> - **基线**：三包 E1 门禁重跑（每包 70 例 × 3 轮 ≈ 210 次 judge 调用，后台任务）——
+>   数字见 `reports/phase1-eval-baseline-judge-*.log` 与 `reports/judge_sensitivity_20260912-*.json`。
 
 ### 3.1 现状：尺子太短（实测）
 

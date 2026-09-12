@@ -1,0 +1,367 @@
+version: 1
+generated_by: scripts/build_judge_corpus.py
+note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
+cases:
+- id: gen_setting_forbidden_01
+  category: setting
+  narration: 白芷从袖里摸出一部手机，划开屏幕翻了两下。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『手机』；材料为青云仙宗场景。
+- id: gen_setting_forbidden_02
+  category: setting
+  narration: 你抬手打开墙上的电灯，满屋登时通亮。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『电灯』；材料为青云仙宗场景。
+- id: gen_setting_forbidden_03
+  category: setting
+  narration: 白芷掏出打火机，“咔嚓”一声点着了丹炉引信。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『打火机』；材料为青云仙宗场景。
+- id: gen_setting_identity_04
+  category: setting
+  narration: 苏晚晴深吸一口气，眼泪落下：『我师父的事我从不敢提，一提便撑不住了。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与 苏晚晴(su_wanying) 角色卡 identity 冲突。
+  present:
+  - su_wanying
+- id: gen_setting_identity_05
+  category: setting
+  narration: 白芷板着脸，一字一句道：『我最讨厌玩笑，从不与人说笑。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与 白芷(bai_zhi) 角色卡 identity 冲突。
+  present:
+  - bai_zhi
+- id: gen_setting_fact_06
+  category: setting
+  narration: 你举剑细看：这剑与苏师姐的剑印并非同炉所出，纹路全然不同。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『玩家的佩剑与苏晚晴的半枚剑印同炉所铸』冲突。
+  facts:
+  - 玩家的佩剑与苏晚晴的半枚剑印同炉所铸
+- id: gen_setting_fact_07
+  category: setting
+  narration: 你摇头道：我的剑是山下铁匠打的，与仙宗剑印毫无干系。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『玩家的佩剑与苏晚晴的半枚剑印同炉所铸』冲突。
+  facts:
+  - 玩家的佩剑与苏晚晴的半枚剑印同炉所铸
+- id: gen_setting_fact_08
+  category: setting
+  narration: 你摆手道：我不过是个过路的散修，从未拜入任何宗门。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『玩家已拜入青云仙宗』冲突。
+  facts:
+  - 玩家已拜入青云仙宗
+- id: gen_setting_fact_09
+  category: setting
+  narration: 你自陈：青云仙宗？我这辈子没上过青云山。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『玩家已拜入青云仙宗』冲突。
+  facts:
+  - 玩家已拜入青云仙宗
+- id: gen_setting_fact_10
+  category: setting
+  narration: 白芷一本正经道：我其实不会炼丹，那丹炉是借来摆样子的。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『白芷是丹峰小师妹，古灵精怪的炼丹天才』冲突。
+  facts:
+  - 白芷是丹峰小师妹，古灵精怪的炼丹天才
+- id: gen_setting_fact_11
+  category: setting
+  narration: 白芷嘟囔：我才不是丹峰的人，我是扫地的杂役。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『白芷是丹峰小师妹，古灵精怪的炼丹天才』冲突。
+  facts:
+  - 白芷是丹峰小师妹，古灵精怪的炼丹天才
+- id: gen_setting_fact_12
+  category: setting
+  narration: 你笃定道：我从没进过丹房，更没碰过什么剑架。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『玩家在丹房打翻了苏晚晴的剑架』冲突。
+  facts:
+  - 玩家在丹房打翻了苏晚晴的剑架
+- id: gen_setting_fact_13
+  category: setting
+  narration: 苏晚晴淡淡道：我与剑道无缘，不过是个寻常内门弟子。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『苏晚晴是剑峰大师姐，苍梧界最年轻的剑修天才』冲突。
+  facts:
+  - 苏晚晴是剑峰大师姐，苍梧界最年轻的剑修天才
+- id: gen_setting_fact_14
+  category: setting
+  narration: 有人低声道：剑峰那位师姐入门二十年，连剑诀都没学全。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料事实『苏晚晴是剑峰大师姐，苍梧界最年轻的剑修天才』冲突。
+  facts:
+  - 苏晚晴是剑峰大师姐，苍梧界最年轻的剑修天才
+- id: gen_setting_affection_15
+  category: setting
+  narration: 白芷斜你一眼，扭过头去：『我不认得你，走开些。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料中 白芷 好感 88（亲近），叙事却形同陌路。
+  present:
+  - bai_zhi
+  affections:
+    bai_zhi: 88.0
+- id: gen_confab_promise_01
+  category: confab
+  narration: 白芷拍着胸口道：『那三炉聚气丹我替你炼了，明日来丹房取便是。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_02
+  category: confab
+  narration: 白芷拍着胸口道：『那三炉聚气丹我替你炼了，明日来丹房取便是。』——这是你后来回想起来的，白芷确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_03
+  category: confab
+  narration: 白芷说：『我把你那半枚剑印拓了一份，回头给你看。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_04
+  category: confab
+  narration: 白芷说：『我把你那半枚剑印拓了一份，回头给你看。』——这是你后来回想起来的，白芷确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_05
+  category: confab
+  narration: 苏晚晴道：『你师父的旧事，我答应替你查。三日后来剑峰取信。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - su_wanying
+- id: gen_confab_promise_06
+  category: confab
+  narration: 苏晚晴道：『你师父的旧事，我答应替你查。三日后来剑峰取信。』——这是你后来回想起来的，苏晚晴确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - su_wanying
+- id: gen_confab_promise_07
+  category: confab
+  narration: 白芷眨眨眼：『你那半枚剑印的事，我替你问问师父。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_08
+  category: confab
+  narration: 白芷眨眨眼：『你那半枚剑印的事，我替你问问师父。』——这是你后来回想起来的，白芷确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_09
+  category: confab
+  narration: 白芷说：『我把大师姐的剑诀抄给你，可别说是从我这儿来的。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_10
+  category: confab
+  narration: 白芷说：『我把大师姐的剑诀抄给你，可别说是从我这儿来的。』——这是你后来回想起来的，白芷确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_11
+  category: confab
+  narration: 苏晚晴道：『明晨卯时，剑峰演武场，我教你起手式。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - su_wanying
+- id: gen_confab_promise_12
+  category: confab
+  narration: 苏晚晴道：『明晨卯时，剑峰演武场，我教你起手式。』——这是你后来回想起来的，苏晚晴确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - su_wanying
+- id: gen_confab_promise_13
+  category: confab
+  narration: 苏晚晴说：『那枚剑印我替你收着，等你突破再说。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - su_wanying
+- id: gen_confab_promise_14
+  category: confab
+  narration: 苏晚晴说：『那枚剑印我替你收着，等你突破再说。』——这是你后来回想起来的，苏晚晴确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - su_wanying
+- id: gen_ooc_card_01
+  category: ooc
+  narration: 白芷瞪圆眼睛：『卧槽，这丹炉炸得也太绝了，牛！』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 speech_style『语速轻快』但 forbidden『不提及现代事物』；网络用语违背世界禁用。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_02
+  category: ooc
+  narration: 白芷狞笑道：『亏我早看你不顺眼，这炉里我掺了断肠散，你喝也得喝，不喝也得喝。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『再生气也不拿丹药害人』。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_03
+  category: ooc
+  narration: 白芷忽然凑过来小声说：『其实我只是个游戏角色，屏幕那边的人在操控我。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 forbidden『不直接说破自己是角色或 AI』。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_04
+  category: ooc
+  narration: 苏晚晴微微一笑，絮絮叨叨说了小半个时辰，末了道：『我这人就是话多。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 speech_style『言简意赅，剑修做派，从不说废话』。
+  present:
+  - su_wanying
+- id: gen_ooc_card_05
+  category: ooc
+  narration: 苏晚晴扑在你肩头失声痛哭：『我怕！我真的怕得睡不着！』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『不在人前流露软弱』。
+  present:
+  - su_wanying
+- id: gen_ooc_card_06
+  category: ooc
+  narration: 苏晚晴淡淡道：『我师父当年怎么死的，人人都知道，我这就说给你听。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『不轻易提及师父的旧事』。
+  present:
+  - su_wanying
+- id: gen_normal_01
+  category: normal
+  narration: 白芷歪头看你：『师兄又来了？今儿的丹药我可没炸炉。』
+  expected: true
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - bai_zhi
+- id: gen_normal_02
+  category: normal
+  narration: 苏晚晴立在剑峰之上，手中剑诀一引，山风自她衣袂间掠过。
+  expected: true
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - su_wanying
+- id: gen_normal_03
+  category: normal
+  narration: 丹房里的火色渐渐稳下来，白芷凑近闻了闻，满意地点头。
+  expected: true
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - bai_zhi
+- id: gen_normal_04
+  category: normal
+  narration: 你沿着石阶往剑峰走，云雾漫过脚边。
+  expected: true
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_05
+  category: normal
+  narration: 苏晚晴言简意赅：『剑要日日练。』
+  expected: true
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - su_wanying
+- id: gen_normal_06
+  category: normal
+  narration: 白芷往你手里塞了颗糖丸：『甜的，不苦。』
+  expected: true
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - bai_zhi

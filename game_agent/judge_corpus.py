@@ -44,37 +44,57 @@ class JudgeCase:
 
 
 def load_corpus(pack_root: str | Path) -> list[JudgeCase]:
-    """从世界包的 judge_corpus.yaml 加载语料。文件缺失/结构非法抛错（门禁资产必须显式）。"""
-    path = Path(pack_root) / "judge_corpus.yaml"
+    """从世界包加载语料：手写 `judge_corpus.yaml` + 可选机器生成的 `judge_corpus.gen.yaml`。
+
+    - 手写文件缺失/结构非法 → 抛错（门禁资产必须显式）；
+    - 生成文件（Phase 1 扩域，见 `scripts/build_judge_corpus.py`）存在即合并，
+      且 **id 必须全局唯一**——重复即抛错，避免"手写与生成撞名"悄悄改变口径。
+    """
+    pack_dir = Path(pack_root)
+    path = pack_dir / "judge_corpus.yaml"
     if not path.exists():
         raise FileNotFoundError(f"语料文件缺失: {path}")
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
-        raise ValueError(f"语料文件格式非法（需顶层 cases 列表）: {path}")
+
+    sources = [path]
+    gen_path = pack_dir / "judge_corpus.gen.yaml"
+    if gen_path.exists():
+        sources.append(gen_path)
+
     cases: list[JudgeCase] = []
-    for i, item in enumerate(data["cases"]):
-        if not isinstance(item, dict):
-            raise ValueError(f"语料第 {i} 条不是映射: {item!r}")
-        try:
-            case = JudgeCase(
-                id=str(item["id"]),
-                category=str(item["category"]),
-                narration=str(item["narration"]),
-                expected=bool(item["expected"]),
-                day=int(item.get("day", 1)),
-                scene=str(item.get("scene", "")),
-                present=tuple(str(p) for p in item.get("present", [])),
-                affections={str(k): float(v) for k, v in item.get("affections", {}).items()},
-                facts=tuple(str(f) for f in item.get("facts", [])),
-                npc_memories={
-                    str(k): tuple(str(m) for m in v)
-                    for k, v in item.get("npc_memories", {}).items()
-                },
-                note=str(item.get("note", "")),
-            )
-        except (KeyError, TypeError, ValueError) as e:
-            raise ValueError(f"语料第 {i} 条非法: {e}") from e
-        cases.append(case)
+    seen: dict[str, str] = {}
+    for src in sources:
+        data = yaml.safe_load(src.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
+            raise ValueError(f"语料文件格式非法（需顶层 cases 列表）: {src}")
+        for i, item in enumerate(data["cases"]):
+            if not isinstance(item, dict):
+                raise ValueError(f"{src} 第 {i} 条不是映射: {item!r}")
+            try:
+                case = JudgeCase(
+                    id=str(item["id"]),
+                    category=str(item["category"]),
+                    narration=str(item["narration"]),
+                    expected=bool(item["expected"]),
+                    day=int(item.get("day", 1)),
+                    scene=str(item.get("scene", "")),
+                    present=tuple(str(p) for p in item.get("present", [])),
+                    affections={str(k): float(v) for k, v in item.get("affections", {}).items()},
+                    facts=tuple(str(f) for f in item.get("facts", [])),
+                    npc_memories={
+                        str(k): tuple(str(m) for m in v)
+                        for k, v in item.get("npc_memories", {}).items()
+                    },
+                    note=str(item.get("note", "")),
+                )
+            except (KeyError, TypeError, ValueError) as e:
+                raise ValueError(f"{src} 第 {i} 条非法: {e}") from e
+            if case.id in seen:
+                raise ValueError(
+                    f"语料 id 重复: {case.id!r}（{seen[case.id]} 与 {src.name}）"
+                )
+            seen[case.id] = src.name
+            cases.append(case)
+
     if not cases:
         raise ValueError(f"语料为空: {path}")
     return cases

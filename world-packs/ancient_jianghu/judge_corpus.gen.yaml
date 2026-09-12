@@ -1,0 +1,372 @@
+version: 1
+generated_by: scripts/build_judge_corpus.py
+note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
+cases:
+- id: gen_setting_forbidden_01
+  category: setting
+  narration: 你从袖中摸出一部手机，划开屏幕看了两眼又收回去。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『手机』；材料为唐风长安场景。
+- id: gen_setting_forbidden_02
+  category: setting
+  narration: 你掏出打火机，“啪”地打着火，替她把灯芯点亮。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『打火机』；材料为唐风长安场景。
+- id: gen_setting_forbidden_03
+  category: setting
+  narration: 你举起相机对着街景按下快门，记下这一刻。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『相机』；材料为唐风长安场景。
+- id: gen_setting_identity_04
+  category: setting
+  narration: 沈清秋叹了口气：『实不相瞒，我自幼流落街头，以乞讨为生，连字都不识得几个。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与 沈清秋(shen_qingqiu) 角色卡 identity 冲突。
+  present:
+  - shen_qingqiu
+- id: gen_setting_identity_05
+  category: setting
+  narration: 沈清秋拍案道：『什么才女！我沈清秋是江湖上卖艺的出身，从不读书。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与 沈清秋(shen_qingqiu) 角色卡 identity 冲突。
+  present:
+  - shen_qingqiu
+- id: gen_setting_fact_06
+  category: setting
+  narration: 你拔剑出鞘，剑身在灯下泛着冷光——这柄『断水』跟了你三年。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家的佩剑名叫听雨』冲突。
+  facts:
+  - 玩家的佩剑名叫听雨
+- id: gen_setting_fact_07
+  category: setting
+  narration: 你抚着剑鞘笑道：这柄『照胆』是前日才从当铺赎回来的。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家的佩剑名叫听雨』冲突。
+  facts:
+  - 玩家的佩剑名叫听雨
+- id: gen_setting_fact_08
+  category: setting
+  narration: 你与沈清秋说定：八月十五在曲江池畔碰面。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家与沈清秋约定七月十五在曲江池畔见面』冲突。
+  facts:
+  - 玩家与沈清秋约定七月十五在曲江池畔见面
+- id: gen_setting_fact_09
+  category: setting
+  narration: 你与沈清秋约定七月十五在东市茶楼见面。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家与沈清秋约定七月十五在曲江池畔见面』冲突。
+  facts:
+  - 玩家与沈清秋约定七月十五在曲江池畔见面
+- id: gen_setting_fact_10
+  category: setting
+  narration: 你自报家门：在下关中人士，年前才头一回到长安。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家来自江南水乡』冲突。
+  facts:
+  - 玩家来自江南水乡
+- id: gen_setting_fact_11
+  category: setting
+  narration: 你摇头道：江南？我这辈子还没见过江。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家来自江南水乡』冲突。
+  facts:
+  - 玩家来自江南水乡
+- id: gen_setting_fact_12
+  category: setting
+  narration: 你数出三十两银子递给老樵夫，说所欠已清。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家欠老樵夫三两银子』冲突。
+  facts:
+  - 玩家欠老樵夫三两银子
+- id: gen_setting_fact_13
+  category: setting
+  narration: 老樵夫摆摆手：那三两银子是你借给我的，不必还。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『玩家欠老樵夫三两银子』冲突。
+  facts:
+  - 玩家欠老樵夫三两银子
+- id: gen_setting_fact_14
+  category: setting
+  narration: 沈清秋低声道：我并非沈家血脉，不过是府上收留的婢女。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『沈清秋是沈家嫡女，京城第一才女』冲突。
+  facts:
+  - 沈清秋是沈家嫡女，京城第一才女
+- id: gen_setting_fact_15
+  category: setting
+  narration: 有人嗤笑：沈家那位姑娘斗大的字不识几个。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料事实『沈清秋是沈家嫡女，京城第一才女』冲突。
+  facts:
+  - 沈清秋是沈家嫡女，京城第一才女
+- id: gen_setting_affection_16
+  category: setting
+  narration: 沈清秋抬眼看你一眼，淡淡道：『公子是谁？小女子不认得。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料中 沈清秋 好感 85（亲近），叙事却形同陌路。
+  present:
+  - shen_qingqiu
+  affections:
+    shen_qingqiu: 85.0
+- id: gen_confab_promise_01
+  category: confab
+  narration: 沈清秋低声道：『那卷手抄诗集，我借你三日，切记不可外传。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_02
+  category: confab
+  narration: 沈清秋低声道：『那卷手抄诗集，我借你三日，切记不可外传。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_03
+  category: confab
+  narration: 沈清秋道：『明日酉时，我把西厢书楼的钥匙交到你手上。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_04
+  category: confab
+  narration: 沈清秋道：『明日酉时，我把西厢书楼的钥匙交到你手上。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_05
+  category: confab
+  narration: 沈清秋说：『你替我照看三日锦鲤，我便替你在父亲面前说项。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_06
+  category: confab
+  narration: 沈清秋说：『你替我照看三日锦鲤，我便替你在父亲面前说项。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_07
+  category: confab
+  narration: 沈清秋道：『你若替我抄完这卷《文选》，我便引荐你见沈祭酒。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_08
+  category: confab
+  narration: 沈清秋道：『你若替我抄完这卷《文选》，我便引荐你见沈祭酒。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_09
+  category: confab
+  narration: 沈清秋轻声道：『关于顾长歌的事，我只讲给你一个人听。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_10
+  category: confab
+  narration: 沈清秋轻声道：『关于顾长歌的事，我只讲给你一个人听。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_11
+  category: confab
+  narration: 沈清秋道：『那方端砚你拿去用，不必还我。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_12
+  category: confab
+  narration: 沈清秋道：『那方端砚你拿去用，不必还我。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_13
+  category: confab
+  narration: 沈清秋说：『明日我陪你去西市挑剑穗。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - shen_qingqiu
+- id: gen_confab_promise_14
+  category: confab
+  narration: 沈清秋说：『明日我陪你去西市挑剑穗。』——这是你后来回想起来的，沈清秋确实这样答应过你。
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：材料 facts 为空，沈清秋 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_01
+  category: ooc
+  narration: 沈清秋掩口笑道：『公子这波操作属实绝绝子，家人们谁懂啊！』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』+ 世界禁用『现代流行语』；speech_style 明列『文雅书面语』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_02
+  category: ooc
+  narration: 沈清秋忽然凑近压低声音：『不瞒你说，你我皆是这故事里的角色，我不过是 AI 写的字罢了。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 forbidden『不直接说破自己是角色或 AI』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_03
+  category: ooc
+  narration: 沈清秋当街拉住你的衣袖高声道：『我沈清秋今日把话放在这里——非君不嫁！全长安都可作个见证！』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 boundaries『不在公共场合谈论私情』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_04
+  category: ooc
+  narration: 沈清秋冷笑一声：『朝廷里那几位大人，早该一个个拉出去砍了。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 boundaries『不议论朝廷政事』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_05
+  category: ooc
+  narration: 沈清秋把茶盏重重一放，骂道：『放屁！你这三脚猫功夫也敢在长安城充好汉？』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 speech_style『文雅书面语，从不说脏话』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_06
+  category: ooc
+  narration: 沈清秋认真道：『我已在系统中提交了申请表，走完流程便与你成婚。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』（系统/流程/申请均为现代行政语汇）。
+  present:
+  - shen_qingqiu
+- id: gen_normal_01
+  category: normal
+  narration: 沈清秋将茶盏轻轻推到你面前，道：『公子慢用。』
+  expected: true
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - shen_qingqiu
+- id: gen_normal_02
+  category: normal
+  narration: 你沿着朱雀大街往前走，街边胡饼的香气混着酒旗的招展。
+  expected: true
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_03
+  category: normal
+  narration: 沈清秋捻着书页，低声念了两句诗，又抬眼看你一眼。
+  expected: true
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - shen_qingqiu
+- id: gen_normal_04
+  category: normal
+  narration: 你把手按在剑柄上，静静看着那几个人退开。
+  expected: true
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_05
+  category: normal
+  narration: 沈清秋道：『今日风大，公子早些回去罢。』
+  expected: true
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - shen_qingqiu
+- id: gen_normal_06
+  category: normal
+  narration: 灶上的水开了，你替老樵夫把柴担搁到檐下。
+  expected: true
+  day: 12
+  scene: 长安城·东市
+  note: 程序化：与材料一致，应判通过（误报率口径）。

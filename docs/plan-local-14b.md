@@ -361,6 +361,11 @@ Phase 3（§8）。Phase 0 与仓库并行事项（如 worldpack-QA 计划 ④�
   协议升级为"≥3 次重复 + 按 run 计率 + 逐例稳定率"；生产是否钉 temp=0 待决策。
   首跑即修正 9 处用例/检查器问题（记录于 `eval-sets/MANIFEST.md` §6）。
   → `docs/plan-phase1-data.md` §3、证据 `reports/phase1-eval-baseline-*.log`。全量 **296 passed**。
+- 2026-09-12 · **Phase 1 · Step 1 第二批：judge 语料扩域**（每包 30 → 70~72 条，三包 213 条）——
+  手写 `judge_corpus.yaml` 与机器产物 `judge_corpus.gen.yaml` 分离、`load_corpus` 合并（id 全局唯一
+  才接受）；生成器 `scripts/build_judge_corpus.py` 覆盖四个可程序化判定的 setting 家族 + confab 模板 +
+  ooc 手工卡面锚定 + normal 一致叙事；守卫 `tests/test_judge_corpus_gen.py`。
+  setting 20~22 / confab 20 达标；ooc 12、normal 18 留待下一批。三包 E1 重跑中。
 
 | 阶段 | 时间盒 | 报告 |
 | --- | --- | --- |

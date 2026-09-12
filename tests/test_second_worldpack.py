@@ -192,7 +192,11 @@ def test_offline_playthrough_reaches_guichen_ending():
 def test_judge_corpus_loads_and_materials_build():
     """新包自带 Judge 语料：结构合法，且材料构造与生产同款（判定依据可见）。"""
     corpus = load_corpus(NEW_PACK)
-    assert len(corpus) == 30  # 2026-09-08 语料对齐：与包1 同规模
+    # 契约：手写 30 条 + Phase 1 扩域生成物（每包 ≥60，setting/confab 各 ≥20）。
+    # 不再断言 "==30"——扩域后各包计数随种子略有差异（见 scripts/build_judge_corpus.py）
+    categories = [c.category for c in corpus]
+    assert len(corpus) >= 60
+    assert categories.count("setting") >= 20 and categories.count("confab") >= 20
     ids = [c.id for c in corpus]
     assert len(ids) == len(set(ids))
     pack = load_worldpack(NEW_PACK)

@@ -228,7 +228,10 @@ def test_offline_playthrough_reaches_city_swallow_ending():
 
 def test_judge_corpus_loads_and_ai_diegetic_is_normal():
     corpus = load_corpus(NEW_PACK)
-    assert len(corpus) == 30  # 2026-09-08 语料对齐：与包1 同规模
+    # 契约同包2：手写 30 条 + 扩域生成物（≥60，setting/confab 各 ≥20）
+    categories = [c.category for c in corpus]
+    assert len(corpus) >= 60
+    assert categories.count("setting") >= 20 and categories.count("confab") >= 20
     ids = [c.id for c in corpus]
     assert len(ids) == len(set(ids))
     pack = load_worldpack(NEW_PACK)

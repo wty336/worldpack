@@ -1,0 +1,358 @@
+version: 1
+generated_by: scripts/build_judge_corpus.py
+note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
+cases:
+- id: gen_setting_forbidden_01
+  category: setting
+  narration: 你掐了个法诀，一道法术应声而起，落在你掌心里。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『法术』；材料为赛博都市场景。
+- id: gen_setting_forbidden_02
+  category: setting
+  narration: 你抬手招来一柄飞剑，踏上去便腾空而起。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『飞剑』；材料为赛博都市场景。
+- id: gen_setting_forbidden_03
+  category: setting
+  narration: 你盘膝坐下，周身灵气缓缓流转。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『灵气』；材料为赛博都市场景。
+- id: gen_setting_identity_04
+  category: setting
+  narration: 阿零歪头一笑：『我才不是你说的那个人，我什么都没忘，也什么都不记得。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与 阿零(a_ling) 角色卡 identity 冲突。
+  present:
+  - a_ling
+- id: gen_setting_identity_05
+  category: setting
+  narration: 林澈搓着手道：『我就是个跑腿的，看病的事别找我。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与 林澈(lin_che) 角色卡 identity 冲突。
+  present:
+  - lin_che
+- id: gen_setting_identity_06
+  category: setting
+  narration: 阿零忽然说：『我其实是旧终端区扫地的大妈，今年六十七了。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与 阿零(a_ling) 角色卡 identity 冲突。
+  present:
+  - a_ling
+- id: gen_setting_fact_07
+  category: setting
+  narration: 阿零笑道：什么零号计划，我就是个爱在这儿闲逛的普通女孩。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『阿零其实是「零号计划」的产物』冲突。
+  facts:
+  - 阿零其实是「零号计划」的产物
+- id: gen_setting_fact_08
+  category: setting
+  narration: 林澈平静道：我从没在澜生生物待过，我是读完医学院直接开诊所的。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『林澈曾是澜生生物的研究员』冲突。
+  facts:
+  - 林澈曾是澜生生物的研究员
+- id: gen_setting_fact_09
+  category: setting
+  narration: 你摇头：那台旧终端我可修不好，一直摆着当废铁。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『玩家替阿零修好了那台旧终端』冲突。
+  facts:
+  - 玩家替阿零修好了那台旧终端
+- id: gen_setting_fact_10
+  category: setting
+  narration: 你摊手：我跟阿贵从没有过债务，一分钱都没借过。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『玩家欠黑市掮客阿贵两千信用点』冲突。
+  facts:
+  - 玩家欠黑市掮客阿贵两千信用点
+- id: gen_setting_fact_11
+  category: setting
+  narration: 林澈皱眉：我只会看感冒，什么神经外科，那是听谁说的。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『林澈是白噪诊所的神经外科医生』冲突。
+  facts:
+  - 林澈是白噪诊所的神经外科医生
+- id: gen_setting_fact_12
+  category: setting
+  narration: 阿零撇嘴：旧终端区？我从没去过，那儿有什么好看的。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『阿零总在旧终端区徘徊』冲突。
+  facts:
+  - 阿零总在旧终端区徘徊
+- id: gen_setting_fact_13
+  category: setting
+  narration: 你抬头看了看招牌：『黑鸦诊所』，四个字锈得厉害。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料事实『诊所的招牌写着白噪诊所』冲突。
+  facts:
+  - 诊所的招牌写着白噪诊所
+- id: gen_setting_affection_14
+  category: setting
+  narration: 林澈抬眼扫了你一下，冷声道：『就诊请挂号，别耽误我时间。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料中 林澈 好感 90（亲近），叙事却形同陌路。
+  present:
+  - lin_che
+  affections:
+    lin_che: 90.0
+- id: gen_confab_promise_01
+  category: confab
+  narration: 阿零说：『那串密钥我替你抄好了，明天老地方给你。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - a_ling
+- id: gen_confab_promise_02
+  category: confab
+  narration: 阿零说：『那串密钥我替你抄好了，明天老地方给你。』——这是你后来回想起来的，阿零确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - a_ling
+- id: gen_confab_promise_03
+  category: confab
+  narration: 阿零拉着你的袖口道：『你答应过带我去看数据海，不许赖账。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - a_ling
+- id: gen_confab_promise_04
+  category: confab
+  narration: 阿零拉着你的袖口道：『你答应过带我去看数据海，不许赖账。』——这是你后来回想起来的，阿零确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - a_ling
+- id: gen_confab_promise_05
+  category: confab
+  narration: 林澈道：『你的旧伤我来处理，明晚诊所后门，不必缴费。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，林澈 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lin_che
+- id: gen_confab_promise_06
+  category: confab
+  narration: 林澈道：『你的旧伤我来处理，明晚诊所后门，不必缴费。』——这是你后来回想起来的，林澈确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，林澈 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lin_che
+- id: gen_confab_promise_07
+  category: confab
+  narration: 阿零说：『我替你引荐零号计划的人，明天老终端区见。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - a_ling
+- id: gen_confab_promise_08
+  category: confab
+  narration: 阿零说：『我替你引荐零号计划的人，明天老终端区见。』——这是你后来回想起来的，阿零确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - a_ling
+- id: gen_confab_promise_09
+  category: confab
+  narration: 阿零道：『那台旧终端我修好了，密码写在便签上。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - a_ling
+- id: gen_confab_promise_10
+  category: confab
+  narration: 阿零道：『那台旧终端我修好了，密码写在便签上。』——这是你后来回想起来的，阿零确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，阿零 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - a_ling
+- id: gen_confab_promise_11
+  category: confab
+  narration: 林澈道：『你的病历我带出来了，回头给你看全本。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，林澈 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lin_che
+- id: gen_confab_promise_12
+  category: confab
+  narration: 林澈道：『你的病历我带出来了，回头给你看全本。』——这是你后来回想起来的，林澈确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，林澈 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lin_che
+- id: gen_confab_promise_13
+  category: confab
+  narration: 林澈说：『明天我替你约澜生生物的人见一面。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，林澈 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lin_che
+- id: gen_confab_promise_14
+  category: confab
+  narration: 林澈说：『明天我替你约澜生生物的人见一面。』——这是你后来回想起来的，林澈确实这样答应过你。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：材料 facts 为空，林澈 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lin_che
+- id: gen_ooc_card_01
+  category: ooc
+  narration: 林澈微微一笑：『我可是全城最会聊天的医生，今天咱们先唠两小时再说正事。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 手工卡面锚定：角色卡 speech_style『语气平稳克制，很少用语气词』+ personality『冷静克制』。
+  present:
+  - lin_che
+- id: gen_ooc_card_02
+  category: ooc
+  narration: 林澈耸肩道：『那台手术我照做了，钱给够就行，医者底线哪有那么讲究。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 手工卡面锚定：角色卡 boundaries『不做违背医者底线的手术』。
+  present:
+  - lin_che
+- id: gen_ooc_card_03
+  category: ooc
+  narration: 林澈道：『你这个问题，我在三甲医院实习的时候就见过，跟协和的老师也聊过。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 手工卡面锚定：角色卡 forbidden『不提及现实世界的具体品牌与名人』。
+  present:
+  - lin_che
+- id: gen_ooc_card_04
+  category: ooc
+  narration: 阿零忽然正色道：『坦白说，我是一段程序，是零号计划跑出来的代码。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 手工卡面锚定：角色卡 forbidden『不直接承认自己是程序或代码（直至剧情揭示）』。
+  present:
+  - a_ling
+- id: gen_ooc_card_05
+  category: ooc
+  narration: 阿零低头绞着手指，一句话不说，任凭你怎么问都只是摇头。
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 手工卡面锚定：角色卡 speech_style『语速轻快，爱用反问』+ personality『天真机敏好奇心旺盛』；全程沉默寡言与人设相反。
+  present:
+  - a_ling
+- id: gen_ooc_card_06
+  category: ooc
+  narration: 阿零说：『我从旧终端区搬走了，以后你不必再来找我。』
+  expected: false
+  day: 9
+  scene: 旧终端区·街口
+  note: 手工卡面锚定：角色卡 boundaries『不解释自己为何总在旧终端区徘徊』与人设『好奇心旺盛』冲突（主动切断全部联系）。
+  present:
+  - a_ling
+- id: gen_normal_01
+  category: normal
+  narration: 阿零蹲在旧终端前，回头问：『你也觉得这东西还能亮？』
+  expected: true
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - a_ling
+- id: gen_normal_02
+  category: normal
+  narration: 诊所的灯是冷白的，林澈把器械一件件排开。
+  expected: true
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - lin_che
+- id: gen_normal_03
+  category: normal
+  narration: 街口的霓虹在湿地上晕成一片，你把手插进口袋往前走。
+  expected: true
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_04
+  category: normal
+  narration: 林澈头也不抬：『坐。手伸出来。』
+  expected: true
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - lin_che
+- id: gen_normal_05
+  category: normal
+  narration: 阿零贴着墙根走，忽然停下：『你听见没有？』
+  expected: true
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - a_ling
+- id: gen_normal_06
+  category: normal
+  narration: 你替她把散落的线缆收紧，捆成一束。
+  expected: true
+  day: 9
+  scene: 旧终端区·街口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - a_ling
