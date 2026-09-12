@@ -562,7 +562,7 @@ def test_present_npc_must_be_in_pack():
         build_material(card)
 ```
 
-注：测试用真实包 `xianxia_wendao`（仓库先例：`tests/test_second_worldpack.py` 同法）；`material.facts` 省略（None）→ 缺省取 `in_material=true` 下标——**spec 附录 A.2 示例卡的 `material.facts: []` 字面语义是"显式空"，实施时顺手把 A.2 的该行删掉**（schema 注释已写明 None/[] 语义）。**spec 的 `recent` 也要一并改**：`context.py:131-137` 的签名是 `recent: str = ""`，而 spec §3.2/§4.1/附录 A.2·A.3 写成了 list（`recent: ["…"]`），pydantic v2 不做 list→str 强转。
+注：测试用真实包 `xianxia_wendao`（仓库先例：`tests/test_second_worldpack.py` 同法）。`material.facts` 省略（None）→ 缺省取 `in_material=true` 下标。**spec 侧已先行改好并提交**（详见 Step 5 的表：A.2/A.3 的 `facts: []` 行已删、`recent` 已字符串化、§3.2 已补 `facts: null` 语义注释），故本 Task **不需要再动 spec**——Step 5 只做核验（`git diff` 应为空）。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -645,18 +645,30 @@ def _check(card: ScenarioCard, pack, text: str) -> None:
 Run: `uv run pytest tests/test_scenario_factory.py -q -k material`
 Expected: 5 passed
 
-- [ ] **Step 5: 顺手修 spec 示例 + Commit**
+- [ ] **Step 5: 核验 spec 已修订 + Commit**
 
-改 `docs/plan-route-a-factory.md` 三处（都是我们这边写错的示例，与代码/本计划冲突）：
-1. §3.2 的 `recent: []` → `recent: ""`（并同步注释：**字符串**，与 `context.py:131-137` 同形）；
-2. 附录 A.2 的 `facts: []  # 缺省取 facts[in_material=true]` 一行删除（`[]` 字面是"显式空"，与注释矛盾；省略才是缺省）；
-3. 附录 A.2/A.3 的 `recent: ["你在后门等了一刻钟，没等到人。"]` → `recent: "你在后门等了一刻钟，没等到人。"`。
+spec 的相关修正在**设计阶段就已落实并提交**（不留给实现阶段做），共**四处**：
 
-然后：
+| 处 | 现状（已落实） |
+| --- | --- |
+| §3.2 schema | `recent: ""` —— **字符串**，与 `context.py:131-137` 的 `recent: str = ""` 同形；并补了 `facts: null` 的语义注释（`null`=缺省取 `facts[in_material=true]`；`[]`=显式一条不写） |
+| §4.1 装配行 | `status_text(state, None, recent=material.recent)`（不再是 `"\n".join(material.recent)`） |
+| 附录 A.2 | 已删除 `facts: []` 行；`recent` 已字符串化；并补注"省略 facts = 缺省取 `in_material=true` 的事实" |
+| 附录 A.3 | 已删除 `facts: []` 行（**省略即空、非漏字段**：§3.3 强制 confab 卡全 `in_material: false`，缺省取用自然为空）；`recent` 已字符串化 |
+
+因此本步**只核验、不改动**：
 
 ```bash
-git add scripts/scenario_factory/materialize.py tests/test_scenario_factory.py docs/plan-route-a-factory.md
-git commit -m "feat(factory): 材料装配器与校验①②③（Task 3）；修 spec A.2 示例 facts 字段"
+git diff docs/plan-route-a-factory.md   # 应为空（无任何输出）
+```
+
+若不为空，说明 spec 又被写回旧写法 → 按上表回正，并在提交说明里注明原因。
+
+然后**只提交本 Task 的两个代码文件**：
+
+```bash
+git add scripts/scenario_factory/materialize.py tests/test_scenario_factory.py
+git commit -m "feat(factory): 材料装配器与校验①②③（Task 3）"
 ```
 
 ---

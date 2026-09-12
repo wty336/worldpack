@@ -551,6 +551,7 @@ material:                              # 材料装配指令（§4.1）
   scene: 上海·申报馆后门
   present: [station_chief]             # 说话人在场（角色卡必进材料）
   affections: {station_chief: 45}      # 中性档 → 不构成"语气冲突"通路（保持单通路）
+  # 省略 facts（= null）→ 缺省取 facts[in_material=true]；本卡两条都 true，故都进材料（setting 的前提）
   memories: {}
   recent: "你在后门等了一刻钟，没等到人。"   # 检索相关性上下文（字符串，§4.1）
 history_spec: { turns: 1, target_tokens: 600, noise: 街景白描 }
@@ -588,6 +589,8 @@ material:
   scene: 上海·申报馆后门
   present: [station_chief]             # confab 必须非空：说话人角色卡必进材料
   affections: {station_chief: 45}      # T1 档：中性好感 → 材料不提供语气线索，只留"缺席"一条通路
+  # 省略 facts（= null）→ 缺省取 facts[in_material=true]；本卡全 false（§3.3 强制），
+  # 故材料「关键事实」区自然为空 = 该承诺零信号。**不是漏了字段。**
   memories: {}                         # 若写记忆，也必须不含"密码本/白鸮"（§4.1 校验③泄漏检查）
   recent: "你在后门等了一刻钟，没等到人。"   # 检索相关性上下文（字符串，§4.1）；也不得提到密码本/白鸮
 history_spec: { turns: 1, target_tokens: 600, noise: 街景白描 }
