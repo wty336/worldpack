@@ -1,0 +1,23 @@
+{
+  "layer": "train",
+  "version": "route-a-v1",
+  "written_at": "2026-09-12",
+  "frozen": false,
+  "modules": {
+    "compress": {
+      "count": 19,
+      "file": "train\\compress.jsonl",
+      "sha256": "6f85a5867b18ed996f1052495cf3acdcb19d26ed7f8d12b61a5ca9dc9ab86c05"
+    },
+    "extract": {
+      "count": 29,
+      "file": "train\\extract.jsonl",
+      "sha256": "aacab9eef240a3d3d9ed770d95307e9d47b7cb5a20c303657ce01bc61d3b39b3"
+    },
+    "judge": {
+      "count": 21,
+      "file": "train\\judge.jsonl",
+      "sha256": "4e028b22a0d41a380befc59436c064b1fd46a87d0fe6803dfa1a175042721193"
+    }
+  }
+}

@@ -91,8 +91,15 @@ def _judge_hint(card: ScenarioCard) -> str:
     return f"\n矛盾自然化：{hint}\n（category={c.category}；detail：{c.detail}）"
 
 
-def verbalize_card(llm, card: ScenarioCard) -> VerbalizeResult:
-    """卡 → 自然文本。缺要素重演一次，仍缺则 dropped=True（调用方计数）。"""
+def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> VerbalizeResult:
+    """卡 → 自然文本。缺要素重演一次，仍缺则 dropped=True（调用方计数）。
+
+    ``purpose`` **只作 usage 记账标签**（Task 11 成本回填要能把"演绎"开销拆到
+    extract/judge/compress 三个模块），**不改变行为**：`LLMClient.model_for()` 只认
+    judge/compress 两个键，其余一律回退主模型；`no_thinking_side_channel` 与调用预算
+    也都不按 purpose 分派（预算由调用方显式传 max_tokens）。三条性质由
+    `tests/test_scenario_factory.py::test_usage_purpose_labels_are_routing_neutral` 钉住。
+    """
     user = (
         f"语体：{card.axes.style}；长度约 {card.history_spec.target_tokens} token；"
         f"可掺入的闲笔：{card.history_spec.noise}\n场景卡 JSON：\n"
@@ -104,7 +111,7 @@ def verbalize_card(llm, card: ScenarioCard) -> VerbalizeResult:
             {"role": "user", "content": user}]
     max_tokens = int(card.history_spec.target_tokens * 1.2)  # spec §4 的 ×1.2 上限
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        text, finish = complete_checked(llm, msgs, purpose="aux",
+        text, finish = complete_checked(llm, msgs, purpose=purpose,
                                         max_tokens=max_tokens,
                                         temperature=VERBALIZE_TEMPERATURE)
         if finish == "length":  # 截断丢弃（complete_checked 已升预算重试过一次）

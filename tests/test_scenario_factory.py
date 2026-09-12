@@ -15,6 +15,7 @@ from game_agent.worldpack import load_worldpack
 from scripts.rubric_judge import (
     budget_policy,
     make_probe,
+    naturalness,
     pairwise,
     probe_detected,
     probe_positions,
@@ -815,3 +816,61 @@ def test_run_eval_invalidates_batch_when_probes_missed():
     llm = StubLLM([good] * 10)  # 探针也拿高分 → 检出 0%
     rep = run_eval(llm, rows, probe_rate=0.2, seed=1)
     assert rep["batch_valid"] is False  # <90% → 批作废（spec §7.3）
+
+
+# --- Task 11：成本回填要能按模块归因（只用标签、不改路由） --------------------
+
+
+def test_usage_purpose_labels_are_routing_neutral():
+    """用途标签只进 usage 记账，**绝不改变用哪个模型**（成本回填不能悄悄换路由）。
+
+    实跑发现的缺口：演绎调用原先一律记 `purpose="aux"` —— 记账里"演绎"与"质检/选优"
+    混成一堆，§10.2 的分模块成本表无法回填。修法是给调用点各自的标签，而**不动路由**：
+    `LLMClient.model_for()` 只认 `judge`/`compress` 两个键（`from_settings` 只填这两个），
+    其余标签一律回退主模型；`no_thinking_side_channel` 与调用预算也都不按 purpose 分派
+    （预算由 `budgets.complete_checked` 的显式 `max_tokens` 决定）。
+    """
+    from game_agent.llm import LLMClient
+
+    llm = LLMClient(client=None, model="主模型", tools=[],
+                    models={"judge": "判官模型", "compress": "压缩模型"})
+    for label in ("aux", "verbalize_extract", "verbalize_judge", "verbalize_compress",
+                  "rubric_score", "rubric_pairwise", "rubric_select", "rubric_quality"):
+        assert llm.model_for(label) == "主模型", f"{label} 被路由到了别的模型"
+    # 反向断言：两个真·路由键必须仍然生效（别把路由一起改坏）
+    assert llm.model_for("judge") == "判官模型"
+    assert llm.model_for("compress") == "压缩模型"
+
+
+def test_factory_usage_purposes_carry_the_module():
+    """断言标签**真的被用上**（否则回到"全是 aux"的老问题，且改动无声失效）。"""
+    card = generate_card(10231, 6, "extract")
+    llm = StubLLM(["叙事：" + "，".join(_all_anchors(card)) + "。"])
+    build_extract_sample(llm, card)
+    assert [c["purpose"] for c in llm.calls] == ["verbalize_extract"]
+
+    jllm = StubLLM(["沈青秋收剑笑道：这柄听风倒是趁手。"])
+    build_judge_sample(jllm, ScenarioCard(**_judge_card()))
+    assert [c["purpose"] for c in jllm.calls] == ["verbalize_judge"]
+
+    ccard = _compress_card()
+    history, summary = _history_and_summary(ccard)
+    cllm = StubLLM([history, summary])
+    build_compress_sample(cllm, ccard, sampling="off")
+    # 演绎用模块标签；摘要生成本就是生产侧信道，标签保持 "compress"
+    assert [c["purpose"] for c in cllm.calls] == ["verbalize_compress", "compress"]
+
+    # 评委侧三种用途可区分：打分 / 选优 / 质检
+    pts = [PreservePoint(text="玩家的剑名为「听雨」", anchors=["听雨"])]
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    sllm = StubLLM([good])
+    score(sllm, summary="摘要", material="材料", preserve_points=pts)
+    assert [c["purpose"] for c in sllm.calls] == ["rubric_score"]
+
+    ollm = StubLLM([good])
+    select(ollm, candidates=["甲", "乙"], material="材料", preserve_points=pts)
+    assert [c["purpose"] for c in ollm.calls] == ["rubric_select", "rubric_select"]
+
+    qllm = StubLLM(['{"自然度": 2}'])
+    naturalness(qllm, text="一段叙事")
+    assert [c["purpose"] for c in qllm.calls] == ["rubric_quality"]

@@ -74,7 +74,7 @@ class BuildResult:
 
 
 def build_extract_sample(llm, card: ScenarioCard) -> BuildResult:
-    r = verbalize_card(llm, card)
+    r = verbalize_card(llm, card, purpose="verbalize_extract")
     if r.dropped:
         return BuildResult(None, "演绎丢弃")
     return BuildResult({
@@ -94,7 +94,7 @@ def build_judge_sample(llm, card: ScenarioCard) -> BuildResult:
         material = build_material(card)
     except MaterializeError as e:
         return BuildResult(None, f"材料装配失败: {e}")
-    r = verbalize_card(llm, card)
+    r = verbalize_card(llm, card, purpose="verbalize_judge")
     if r.dropped:
         return BuildResult(None, "演绎丢弃")
     c = card.corruptions[0]
@@ -147,7 +147,7 @@ def _sampling_on(card: ScenarioCard, sampling: str) -> bool:
 
 def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
                           ) -> BuildResult:
-    hist = verbalize_card(llm, card)
+    hist = verbalize_card(llm, card, purpose="verbalize_compress")
     if hist.dropped:
         return BuildResult(None, "历史演绎丢弃")
     # **单一素材真源**：模型看到的就是这一段（含 <旧摘要>/<新增历史> 包裹），

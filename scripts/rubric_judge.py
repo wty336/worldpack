@@ -61,10 +61,10 @@ def _extract_json(text: str) -> dict:
         return json.loads(m.group(0))
 
 
-def _complete(llm, system: str, user: str) -> str:
+def _complete(llm, system: str, user: str, *, purpose: str) -> str:
     text, finish = complete_checked(
         llm, [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        purpose="aux", max_tokens=MAX_TOKENS, temperature=SCORE_TEMPERATURE)
+        purpose=purpose, max_tokens=MAX_TOKENS, temperature=SCORE_TEMPERATURE)
     if finish != "stop":
         raise ValueError(f"评委输出截断: finish={finish}")
     return text
@@ -75,11 +75,16 @@ def _points_text(preserve_points: list[PreservePoint]) -> str:
 
 
 def score(llm, *, summary: str, material: str,
-          preserve_points: list[PreservePoint]) -> dict[str, int]:
-    """打分模式：四维各 0/1/2。评委输出异常 → ValueError（调用方计批次异常）。"""
+          preserve_points: list[PreservePoint],
+          purpose: str = "rubric_score") -> dict[str, int]:
+    """打分模式：四维各 0/1/2。评委输出异常 → ValueError（调用方计批次异常）。
+
+    `purpose` 只作 usage 记账标签（成本回填要能拆开"评测打分"与"拒绝采样选优"），
+    不改变路由（`model_for()` 只认 judge/compress，其余回退主模型）。
+    """
     user = (f"【材料】\n{material}\n\n【必保全要点】\n{_points_text(preserve_points)}"
             f"\n\n【待评摘要】\n{summary}")
-    d = _extract_json(_complete(llm, RUBRIC_SYSTEM, user))
+    d = _extract_json(_complete(llm, RUBRIC_SYSTEM, user, purpose=purpose))
     out = {k: int(d[k]) for k in DIMS}
     if any(v not in (0, 1, 2) for v in out.values()):
         raise ValueError(f"维度分越界: {out}")
@@ -91,7 +96,7 @@ def select(llm, *, candidates: list[str], material: str,
     """选优模式（拒绝采样用，spec §6）：总分最高者，同分取先。"""
     best, best_i = -1, 0
     for i, c in enumerate(candidates):
-        total = sum(score(llm, summary=c, material=material,
+        total = sum(score(llm, summary=c, material=material, purpose="rubric_select",
                           preserve_points=preserve_points).values())
         if total > best:
             best, best_i = total, i
@@ -102,7 +107,8 @@ def _judge_once(llm, *, first: str, second: str, material: str,
                 preserve_points: list[PreservePoint]) -> str:
     user = (f"【材料】\n{material}\n\n【必保全要点】\n{_points_text(preserve_points)}"
             f"\n\n【候选 A】\n{first}\n\n【候选 B】\n{second}")
-    return str(_extract_json(_complete(llm, PAIRWISE_SYSTEM, user)).get("winner"))
+    return str(_extract_json(
+        _complete(llm, PAIRWISE_SYSTEM, user, purpose="rubric_pairwise")).get("winner"))
 
 
 def pairwise(llm, *, a: str, b: str, material: str,
@@ -160,7 +166,8 @@ NATURALNESS_SYSTEM = (
 
 def naturalness(llm, *, text: str) -> int:
     """抽检单条文本的自然度（0~2）。§7.4：<1 剔除并重造。"""
-    d = _extract_json(_complete(llm, NATURALNESS_SYSTEM, f"【待检文本】\n{text}"))
+    d = _extract_json(_complete(llm, NATURALNESS_SYSTEM, f"【待检文本】\n{text}",
+                                purpose="rubric_quality"))
     v = int(d["自然度"])
     if v not in (0, 1, 2):
         raise ValueError(f"自然度分越界: {v}")

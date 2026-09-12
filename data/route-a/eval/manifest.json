@@ -1,0 +1,23 @@
+{
+  "layer": "eval",
+  "version": "route-a-v1",
+  "written_at": "2026-09-13",
+  "frozen": true,
+  "modules": {
+    "compress": {
+      "count": 23,
+      "file": "eval\\compress.jsonl",
+      "sha256": "468a22974a1d905b72840b518936c62d6415bba0584e665a887ceae69d7efbb9"
+    },
+    "extract": {
+      "count": 28,
+      "file": "eval\\extract.jsonl",
+      "sha256": "03b7f4734e471638c9d61e4aca13141aa17a60de50ae417f5cb978871eea6f3c"
+    },
+    "judge": {
+      "count": 18,
+      "file": "eval\\judge.jsonl",
+      "sha256": "ef43477dc0bec784d1e8ce18cd41975d114279e776e21421a06d1aa0982b35c8"
+    }
+  }
+}
