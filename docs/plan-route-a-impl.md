@@ -29,7 +29,7 @@
 | 7 质量门 + 门禁接线 + 人读清单 | ✅ 完成 | 见 Task 7 执行记录 | 修正 1 处（守卫顺序：`test_pipeline_calls_both_gates` 移到 Task 8） |
 | 8 配额/去重/出库 CLI | ✅ 完成 | 见 Task 8 执行记录 | ⚠️ 遗留一项：§4.4 轴矩阵未全量落实（见执行记录） |
 | 9 轨道 2 批跑 + 定 X | ✅ 代码完成 / ⏸ Step 5 待真机 | 见 Task 9 执行记录 | 无计划缺陷；定 X 需 dev 层出库数据 |
-| 10 EXTRACT_SYSTEM 收紧实验 | ⬜ 待做 | — | 需 GPU 机；不阻塞 M1~M4 |
+| 10 EXTRACT_SYSTEM 收紧实验 | ✅ 完成 / ❌ **未达标（改动已撤回）** | `f65f84f`（证据；引擎零净改动） | 判据②两侧皆败 → 按封板口径回"必训"；新增对照工具 1 个（计划外，见执行记录） |
 | 11 总装验收 + 成本回填 | ⬜ 待做 | — | — |
 
 **Task 外的既有改动（已落地，供后续 Task 参考）**
@@ -45,7 +45,11 @@
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
 Task 6 守卫 **10** + Task 7 守卫 **2** + Task 8 守卫 **6** + Task 9 守卫 **3** +
-`evalmeta` 换行守卫 **1** = **402 passed**（本文件 59 条守卫全部就位）。
+`evalmeta` 换行守卫 **1** + 对照工具 `extract_compare` 守卫 **5** = **407 passed**。
+
+> **Task 10 的 1 条 prompt 守卫已随实验未达标一并撤回**（连同 `EXTRACT_SYSTEM` 改动本身）——
+> 未达标物不得留在引擎里；撤回依据见 `reports/extract-task10-report.md`。
+> `scripts/extract_compare.py` 是实验副产品（同集对照 / 离线重切片，零 API），保留并自带 5 条守卫。
 
 ---
 
@@ -60,9 +64,9 @@ Task 6 守卫 **10** + Task 7 守卫 **2** + Task 8 守卫 **6** + Task 9 守卫
 | `scripts/scenario_factory/assemble.py` | 质量门 + 配额 + 前缀指纹去重 + sha256 manifest 出库 + card_hook 门禁 |
 | `scripts/rubric_judge.py` | 评委四模式：score / pairwise / select / probe（temp=0，位置交换×3 重复） |
 | `tests/test_scenario_factory.py` | 全部守卫测试（离线，StubLLM） |
-| `game_agent/memory.py` | **仅 Task 10 改**：EXTRACT_SYSTEM 加判定式+去偏置（决策 15） |
+| `game_agent/memory.py` | Task 10 曾改 `EXTRACT_SYSTEM`（决策 15 实验）——**实验未达标、改动已撤回，引擎净改动为零**（`reports/extract-task10-report.md`） |
 
-**分层纪律**：`game_agent/`（引擎包）只被 import，除 Task 10 外零改动；工厂全部住 `scripts/`。`card_hook_check` 不是包成员，由 `assemble.py` 用 `sys.path` 注入 `scripts/` 后 import（脚本层先例见 `scripts/diag_turn.py:17`；**tests 层不用此法**——测试里"导入非包脚本"的既有惯例是 `importlib.util.spec_from_file_location`，见 `tests/test_card_hook_check.py:17-19`；本计划的测试只 import `scripts.scenario_factory.*`，故不涉及）。
+**分层纪律**：`game_agent/`（引擎包）只被 import，除 Task 10 的实验（**已撤回、净改动为零**）外零改动；工厂全部住 `scripts/`。`card_hook_check` 不是包成员，由 `assemble.py` 用 `sys.path` 注入 `scripts/` 后 import（脚本层先例见 `scripts/diag_turn.py:17`；**tests 层不用此法**——测试里"导入非包脚本"的既有惯例是 `importlib.util.spec_from_file_location`，见 `tests/test_card_hook_check.py:17-19`；本计划的测试只 import `scripts.scenario_factory.*`，故不涉及）。
 
 ---
 
@@ -2734,7 +2738,7 @@ git commit -m "feat(factory): 轨道 2 批跑与探针校准门；定 X 报告�
 系统性保守判定（宁可不记），是提示词能治的病，不该先用 LoRA 治。本任务收紧提示词，
 复测后再定 extract 训练量（必要时砍掉该训练批）。
 
-- [ ] **Step 1: 写失败测试（追加到 tests/test_extract_prompt.py）**
+- [x] **Step 1: 写失败测试（追加到 tests/test_extract_prompt.py）**　⚠️ 该守卫**已随实验未达标撤回**（见执行记录）
 
 ```python
 def test_extract_prompt_has_decision_rule_against_conservatism():
@@ -2745,12 +2749,12 @@ def test_extract_prompt_has_decision_rule_against_conservatism():
     assert "没有值得长期记住的事实就只输出" not in EXTRACT_SYSTEM  # 旧保守句已替换
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**（实测：1 failed / 4 passed，红在 `assert "判定式" in EXTRACT_SYSTEM`）
 
 Run: `uv run pytest tests/test_extract_prompt.py -q`
 Expected: 1 failed（新守卫），其余 4 个存量测试仍过
 
-- [ ] **Step 3: 替换 EXTRACT_SYSTEM（memory.py:50-62）**
+- [x] **Step 3: 替换 EXTRACT_SYSTEM（memory.py:50-62）**　⚠️ **已执行后撤回**：`prompt_version` `99668791ed5957fc` → `ad8beafe171e9aa9`，复测未达标 → `git checkout` 复原（下方代码块即本轮被测版本，留档）
 
 ```python
 EXTRACT_SYSTEM = (
@@ -2776,12 +2780,12 @@ EXTRACT_SYSTEM = (
 ②新增判定式正面清单 + "偏向输出"反保守；③「无」通路从"没有值得记住"收窄为
 "通篇没有上述内容"；④"瞬时状态"补全对照——承诺/债务/新得/新目标即使刚发生也必须记。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**（实测 16 passed，含新守卫 5 个 prompt 测试）
 
 Run: `uv run pytest tests/test_extract_prompt.py tests/test_memory.py -q`
 Expected: 全过（含新守卫 5 个 prompt 测试）
 
-- [ ] **Step 5: 复测（14B 在 GPU 机；flash 侧在本机——**两侧都必须跑**）**
+- [x] **Step 5: 复测（14B 在 GPU 机；flash 侧在本机——**两侧都必须跑**）**　❌ **两侧均未达标**（结论与逐例子句归因见执行记录）
 
 **先弄清脚本的真实形态**（原稿命令写错了）：`scripts/extract_eval.py` 的参数只有
 `--gate / --dry-run / --limit / --temperature / --repeat` —— **没有** `--model` / `--out`；
@@ -2828,12 +2832,59 @@ uv run python scripts/extract_eval.py --repeat 3 --temperature 0
 结果与两侧对照表写入 `reports/`（两侧报告各自带新 `prompt_version`），
 并在 spec §12.C 追加一行已执行记录。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**　⚠️ 计划提交内容作废（引擎改动已撤回）；实际提交 `f65f84f` = 对照工具 + 复测证据，**不含 `game_agent/memory.py`**
 
 ```bash
 git add game_agent/memory.py tests/test_extract_prompt.py
 git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 15 实验）"
 ```
+
+**执行记录（2026-09-12）**
+
+**做了什么**：计划 6 步全部走完 —— ① 追加守卫、确认红（`1 failed / 4 passed`，红在 `assert "判定式" in EXTRACT_SYSTEM`）
+→ ② 按 Step 3 **给出的原文**替换 `EXTRACT_SYSTEM`（计划措辞直接可用，`16 passed`）→ ③ 两侧真机复测
+→ ④ 按封板判据逐条判定 → ⑤ **未达标 → 撤回改动**。端点：14B = VSCode 转发的本地 vLLM
+（`local-14b`，`max_model_len=32768`，零 API 成本）；flash = 云端（本轮 ¥0.049）。
+
+**复测结果**（同集 `eval-sets/extract/direct.yaml` · 42 例 = 31 正 + 11 负 · sha `b3d918e53d90` · `--repeat 3 --temperature 0`）
+
+| 侧 | 模型 | 判据① C 类恒「无」 | 判据③ 召回（参考） | 判据② 负例 | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| 弱（本地 GPU） | `local-14b` | **36 → 7 run** ✅（上限 12） | **42 → 71**（45.2% → 76.3%）✅ | **33/33 → 30/33** ❌ | ❌ 未达标 |
+| 强（现役/云端） | `deepseek-v4-flash` | **3 → 9 run** ❌ | **89 → 84** ❌ | **31/33 → 27/33** ❌ | ❌ 未达标 |
+
+产物：`reports/extract-eval-20260912-231707.json`（14B）/ `…-231918.json`（flash）；
+同集对照 `reports/extract-compare-14b-task10.json` / `…-flash-task10.json`；总报告 `reports/extract-task10-report.md`。
+
+**根因（可指名到子句，非"效果不好"这类空话）**：新增的"出现…**数字或数值**…就必须输出"把**瞬时数量**
+当长期事实 —— 两侧负例退化**同源**于此（`n_funds` 两侧、`p2_ticket` flash 侧，各 3/3 稳定复现）；
+而两条真正的抑制源本轮**没动**：dedup 子句（"「已有事实」中已经存在的不要重复输出"被读成"该实体已知就整句弃记"）
+→ `x_dedup`/`s_dedup`/`p2_dedup` 恒「无」；"剧情进展的瞬时状态不算"口径过宽 → `t_arm`（义肢黄铜齿轮转动）恒「无」。
+即：**这一版治好了弱模型的"宁可不记"，却给两个模型都引入了"见数字就记"，且没碰真正的抑制源。**
+
+**为什么撤回、而不是留档为"改进"**：判据明文"**不达标才回到必训**"，且对**现役** flash 三项全退化 ——
+未达标物不得留在引擎里（"空 = 未知 ≠ 通过"）。撤回后 `pytest -q` = **407 passed**（引擎净改动为零）。
+
+**结论（这才是本实验要回答的问题）**：
+① 提示词**不能**替代 extract 训练 —— 14B 用**为它定制**的新提示词后仍只有 76.3%，**低于** flash 用**旧**提示词的 95.7%；
+② extract **维持"必训"**，训练量不因本实验下调；
+③ 训练数据应重点覆盖本轮实测暴露的两个真实短板（比提示词补丁稳）：**"已有事实的新增信息"（dedup ≠ 沉默）**与**"瞬时场面中的具体物品/参数"**。
+
+**与计划的偏差（4 处）**：
+1. Step 5(a) 原稿建议改 `.env` 三行指向本地端点 → 实际用 **PowerShell 作用域环境变量**（`load_dotenv()` 默认不覆盖已存在变量，
+   同样生效且不脏 `.env`、不留痕）。
+2. 计划命令写 `uv run pytest` → 本仓无 uv，实际用 `.venv\Scripts\python.exe -m pytest`（与既有 Task 一致）。
+3. **计划外新增** `scripts/extract_compare.py` + `tests/test_extract_compare.py`（5 守卫）：计划要求"两侧对照"，
+   但决策 20 的极性修正使两份**基线报告的 `summary` 口径不可比**（旧报告里 `n_funds` 还是正例）——
+   不重切片就没法同尺对照。工具复用 `extract_eval.score_case`，不另立判分口径；守卫含"基线数字可复算"。
+4. Step 6 的提交内容作废（见 Step 6 注），实际提交 `f65f84f` = 对照工具 + 复测证据。
+
+**计数**：**402 → 407**（-1 撤回的 prompt 守卫，+5 对照工具守卫）；Task 11 Step 1 的期望值已同步。
+
+**未拍板（遗留）**：同一份提示词在**弱/强两档模型上最优措辞方向相反**（弱模型要"多记"、强模型要"少触发"）
+—— 要么把差异交给训练（=本轮的必训结论），要么在引擎里做**"按模型分别定稿"**（新决策，需拍板）。
+另：第二轮的四条子句补丁已在 `reports/extract-task10-report.md` §4 **预注册但未执行**（含过拟合论证）；
+若日后要为本地 14B 单独定稿，按"**预注册 → 一次性复测 → 不成即弃**"另开一轮，不要在同一轮里反复调措辞。
 
 ---
 
@@ -2847,7 +2898,8 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 
 Run: `uv run pytest -q`
 Expected: **342 存量** + 本计划新增 **59 个守卫**（Task 1~9：9+10+8+5+6+10+**2**+**6**+3）+ Task 10 的 1 个
-prompt 守卫 + 计划外先落的 `evalmeta` 换行守卫 1 个 = **403 全绿**
+prompt 守卫（**已随实验未达标撤回**）+ 计划外先落的 `evalmeta` 换行守卫 1 个
++ 对照工具 `extract_compare` 守卫 **5** 个 = **407 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
 > 加上计划外先落的 `card_hook` 死字段守卫 1 条 = **342**（= 本表"存量"口径，见文首「进度」节）。
@@ -2856,6 +2908,8 @@ prompt 守卫 + 计划外先落的 `evalmeta` 换行守卫 1 个 = **403 全绿*
 > corruption detail 可解析、judge 留出轴不漏+包必存在、recent 不撞 anchor、新值不撞事实）、
 > Task 3 的夹具拆分把 4 变 5、Task 4 加了 confab 反向校验守卫、Task 5 加了质检员、
 > Task 6 加了三条模板/负例守卫、Task 8 加了 judge 去重守卫、Task 9 加了报告指纹守卫。
+> **Task 10 收尾后的净变化**：**-1**（计划内的 prompt 守卫随实验未达标撤回）+ **+5**
+> （计划外的同集对照工具 `scripts/extract_compare.py`）→ 402 → **407**（实测 `pytest -q` = 407 passed）。
 
 - [ ] **Step 2: M1~M4 验收项核对（对照 spec §10.3 逐项打勾）**
 
