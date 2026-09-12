@@ -28,7 +28,7 @@
 | 6 样本构建三分支 + 拒绝采样 | ✅ 完成 | 见 Task 6 执行记录 | 修正 1 处（compress 样本存裸文本；评审补修） |
 | 7 质量门 + 门禁接线 + 人读清单 | ✅ 完成 | 见 Task 7 执行记录 | 修正 1 处（守卫顺序：`test_pipeline_calls_both_gates` 移到 Task 8） |
 | 8 配额/去重/出库 CLI | ✅ 完成 | 见 Task 8 执行记录 | ⚠️ 遗留一项：§4.4 轴矩阵未全量落实（见执行记录） |
-| 9 轨道 2 批跑 + 定 X | ⬜ 待做 | — | — |
+| 9 轨道 2 批跑 + 定 X | ✅ 代码完成 / ⏸ Step 5 待真机 | 见 Task 9 执行记录 | 无计划缺陷；定 X 需 dev 层出库数据 |
 | 10 EXTRACT_SYSTEM 收紧实验 | ⬜ 待做 | — | 需 GPU 机；不阻塞 M1~M4 |
 | 11 总装验收 + 成本回填 | ⬜ 待做 | — | — |
 
@@ -44,7 +44,8 @@
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
-Task 6 守卫 **10** + Task 7 守卫 **2** + Task 8 守卫 **6** + `evalmeta` 换行守卫 **1** = **399 passed**。
+Task 6 守卫 **10** + Task 7 守卫 **2** + Task 8 守卫 **6** + Task 9 守卫 **3** +
+`evalmeta` 换行守卫 **1** = **402 passed**（本文件 59 条守卫全部就位）。
 
 ---
 
@@ -2492,7 +2493,7 @@ git commit -m "feat(factory): 配额/去重/sha256 出库 CLI 与三层种子空
 - Modify: `scripts/rubric_judge.py`（追加 `run_eval` 与 `main`）
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 from scripts.rubric_judge import (
@@ -2543,12 +2544,12 @@ def test_run_eval_invalidates_batch_when_probes_missed():
     assert rep["batch_valid"] is False  # <90% → 批作废（spec §7.3）
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k run_eval`
 Expected: FAIL（`ImportError: cannot import name 'run_eval'`）
 
-- [ ] **Step 3: 实现（追加到 rubric_judge.py）**
+- [x] **Step 3: 实现（追加到 rubric_judge.py）**
 
 ```python
 # ---- 轨道 2 批跑（spec §7.2/§7.3：掺探针 → 打分 → 检出率门） ----
@@ -2662,14 +2663,18 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: **59 passed**（Task 1~8 的 56 + Task 9 的 3）—— 本文件全部守卫
 
 > `-k "run_eval or report"` 对本 Task 的 3 条准确，但与本计划既有约定一致，统一跑整文件 + 累计数。
 
-- [ ] **Step 5: 定 X（决策 13 的 M4 验收项，人工+程序）**
+- [ ] **Step 5: 定 X（决策 13 的 M4 验收项，人工+程序）** ⏸ **待真机执行**（本轮未做）
+
+> **为什么没做**：本步需要 ① dev 层 compress **出库数据**（`main` 真机跑，花 API 钱）
+> 与 ② 轨道 1 规则保全率对齐跑批 —— 属 M4 验收项，离线测不出来。
+> 前置条件与命令见下方原步骤；执行后把 X 写回 spec §12.A 决策 13 行。
 
 前置：dev 层 compress 已出库（Task 8）、轨道 1 规则保全率可跑（`phase1_probe.eval_compress`
 同款，spec §9.2 复用）。步骤：
@@ -2683,12 +2688,39 @@ Expected: **59 passed**（Task 1~8 的 56 + Task 9 的 3）—— 本文件全�
    （P95 取整值）、**依据哪批数据**（dev 批 id 范围、样本数、探针检出率、日期）；
 5. 报告同步写回 spec §12.A 决策 13 行（"X 已定：……"）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/rubric_judge.py tests/test_scenario_factory.py reports/rubric-x-calibration-*.md docs/plan-route-a-factory.md
 git commit -m "feat(factory): 轨道 2 批跑与探针校准门；定 X 报告（Task 9，决策 13）"
 ```
+
+> **执行记录（2026-09-12）✅ Steps 1~4/6 完成 · ⏸ Step 5 待真机**
+>
+> - Step 2 确认失败 ✓：`ImportError: cannot import name 'budget_policy'`（收集期报错）
+> - Step 4 确认通过 ✓：整文件 **59 passed**；全量 399 → **402 passed**
+>   —— 与 Task 11 预测的终值一致（本文件 59 条守卫全部就位）
+> - 落地：`rubric_judge.py` 追加 `prompt_version` / `budget_policy` / `probe_positions` /
+>   `_restore_points` / `run_eval` / `main`
+> - **无计划缺陷**
+>
+> **功能性核验**（报告形态与批作废口径）：
+>
+> | 项 | 实测 |
+> | --- | --- |
+> | `prompt_version` | `a19110f4d60dddf9`（三个评委提示词的 sha 前 16 位） |
+> | `budget_policy` | `budgets.py@b7a187c940d6` |
+> | `probe_positions` | `n=10,rate=0.2 → [1,2]`；`n=30,rate=0.1 → [4,18,27]`；`n=3,rate=0.2 → [0]` |
+> | 报告 keys | `scores/probes/probe_detection/probe_indices/batch_valid` + **四件指纹** ✓ |
+> | 探针全检出 | `probe_detection=1.0`、`batch_valid=True`、`scores=8`（2 探针不混入）✓ |
+> | 探针全漏 | `probe_detection=0.0`、`batch_valid=False` → `main` exit 1 并提示整批重评 ✓ |
+>
+> **⏸ Step 5（定 X）本轮未做** —— 它需要 dev 层 compress **出库数据**（真机跑 `main`）
+> 与轨道 1 规则保全率对齐跑批，属 M4 验收项，离线测不出来。复选框已**故意留未勾**并注明。
+>
+> **顺带修掉一处测试文件卫生问题**：`tests/test_scenario_factory.py` 里
+> `from scripts.rubric_judge import (...)` **重复了两份**（Task 6 加导入时插重的），
+> 本轮合并为一份并把新符号并入。
 
 ---
 
@@ -2815,7 +2847,7 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 
 Run: `uv run pytest -q`
 Expected: **342 存量** + 本计划新增 **59 个守卫**（Task 1~9：9+10+8+5+6+10+**2**+**6**+3）+ Task 10 的 1 个
-prompt 守卫 = **402 全绿**
+prompt 守卫 + 计划外先落的 `evalmeta` 换行守卫 1 个 = **403 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
 > 加上计划外先落的 `card_hook` 死字段守卫 1 条 = **342**（= 本表"存量"口径，见文首「进度」节）。

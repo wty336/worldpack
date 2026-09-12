@@ -11,10 +11,14 @@
 """
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import math
+import pathlib
 import random
 import re
+import sys
 
 from game_agent.budgets import MIN_CALL_TOKENS, complete_checked
 
@@ -176,3 +180,110 @@ def quality_sample(llm, samples: list[dict], *, rate: float = 0.20,
         if naturalness(llm, text=s.get("input") or s.get("narration") or "") < 1:
             bad.append(s["id"])
     return bad
+
+
+# ---------------------------------------------------------------------------
+# 轨道 2 批跑（spec §7.2/§7.3：掺探针 → 打分 → 检出率门）
+# ---------------------------------------------------------------------------
+
+PROBE_MIN_RATE = 0.10   # 探针掺入 ≥10%
+DETECT_MIN = 0.90       # 检出率 <90% → 当批成绩全部作废
+PROBE_SEED = 20260912
+
+
+def prompt_version() -> str:
+    """rubric 提示词指纹（spec §6.4/§9.2：报告必须自证口径）。评委提示词一改即换新值。"""
+    return hashlib.sha256(
+        (RUBRIC_SYSTEM + PAIRWISE_SYSTEM + NATURALNESS_SYSTEM).encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def budget_policy() -> str:
+    """预算策略指纹（budgets.py 的 sha 前 12 位）——改常量即整套重测（spec §9.2 继承项）。"""
+    import game_agent.budgets as _b
+    return "budgets.py@" + hashlib.sha256(
+        pathlib.Path(_b.__file__).read_bytes()).hexdigest()[:12]
+
+
+def probe_positions(n: int, rate: float, seed: int = PROBE_SEED) -> list[int]:
+    """探针抽样位置（**与 run_eval 同源**：测试据此构造夹具、报告据此留痕）。"""
+    if n <= 0:
+        return []
+    k = min(max(1, math.ceil(n * rate)), n)
+    return sorted(random.Random(seed).sample(range(n), k=k))
+
+
+def _restore_points(sample: dict) -> list[PreservePoint]:
+    return [PreservePoint(text=p["text"], anchors=p["anchors"])
+            for p in sample.get("preserve_points", [])]
+
+
+def run_eval(llm, samples: list[dict], *, probe_rate: float = PROBE_MIN_RATE,
+             seed: int = PROBE_SEED, meta: dict | None = None) -> dict:
+    """对 compress 样本批跑打分轨。探针替换法：被抽中的样本以其改坏版送入评委，
+    成绩只计入探针检出统计，不混入干净样本的分数分布（防污染报告口径）。
+
+    `meta`：调用方注入溯源指纹（prompt_version / budget_policy / endpoint / judge_model），
+    满足 spec §6.4 的报告 schema —— **缺指纹的报告不予采信**。
+    """
+    probe_idx = set(probe_positions(len(samples), probe_rate, seed))
+    kind_rng = random.Random(seed + 1)   # 与位置抽样**解耦**：改其一不影响另一
+    rows, probes = [], []
+    for i, s in enumerate(samples):
+        pps = _restore_points(s)
+        if i in probe_idx:
+            kind = kind_rng.choice(PROBE_KINDS)
+            bad = make_probe(s["output"], pps, kind=kind, rng=kind_rng)
+            sc = score(llm, summary=bad, material=s["input"], preserve_points=pps)
+            probes.append({"id": s["id"], "kind": kind,
+                           "detected": probe_detected(sc, kind)})
+        else:
+            sc = score(llm, summary=s["output"], material=s["input"],
+                       preserve_points=pps)
+            rows.append({"id": s["id"], **sc})
+    det = (sum(p["detected"] for p in probes) / len(probes)) if probes else 1.0
+    return {"scores": rows, "probes": probes, "probe_detection": det,
+            "probe_indices": sorted(probe_idx),
+            "batch_valid": det >= DETECT_MIN, **(meta or {})}
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description="rubric 轨道 2 批跑（spec §7）")
+    p.add_argument("--samples", required=True, help="compress.jsonl（出库产物）")
+    p.add_argument("--probe-rate", type=float, default=PROBE_MIN_RATE)
+    p.add_argument("--report", default=None, help="报告输出路径（json）")
+    args = p.parse_args(argv)
+    from game_agent.config import load_settings
+    from game_agent.endpoint import fingerprint_for
+    from game_agent.llm import LLMClient
+    from game_agent.usage import UsageTracker
+
+    samples = [json.loads(line) for line in
+               pathlib.Path(args.samples).read_text(encoding="utf-8").splitlines() if line]
+    settings = load_settings()
+    if not settings.has_api_key:
+        print("[✗] 未配置 DEEPSEEK_API_KEY（.env）")
+        return 1
+    tracker = UsageTracker("reports/usage-rubric.jsonl")
+    llm = LLMClient.from_settings(settings, [], tracker=tracker)
+    rep = run_eval(llm, samples, probe_rate=args.probe_rate, meta={
+        "prompt_version": prompt_version(),
+        "budget_policy": budget_policy(),
+        "judge_model": llm.model_for("aux"),
+        "endpoint": fingerprint_for(settings, "aux"),
+        "sample_set": str(args.samples),
+    })
+    out = json.dumps(rep, ensure_ascii=False, indent=2)
+    if args.report:
+        pathlib.Path(args.report).write_text(out, encoding="utf-8")
+    print(f"探针检出率 {rep['probe_detection']:.0%}（门 {DETECT_MIN:.0%}）；"
+          f"有效样本 {len(rep['scores'])} 条 · prompt_version={rep['prompt_version']}")
+    if not rep["batch_valid"]:
+        print("[✗] 探针检出率不达标——当批成绩全部作废（报告已带 batch_valid=false 留痕），"
+              "修评委提示词后整批重评")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

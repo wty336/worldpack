@@ -13,10 +13,14 @@ from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
 from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import load_worldpack
 from scripts.rubric_judge import (
+    budget_policy,
     make_probe,
     pairwise,
     probe_detected,
+    probe_positions,
+    prompt_version,
     quality_sample,
+    run_eval,
     score,
     select,
 )
@@ -45,15 +49,7 @@ from scripts.scenario_factory.materialize import (
     build_material,
 )
 from scripts.scenario_factory.verbalize import verbalize_card
-from scripts.rubric_judge import (
-    make_probe,
-    pairwise,
-    probe_detected,
-    quality_sample,
-    score,
-    select,
-)
-from scripts.scenario_factory.cards import PreservePoint
+
 
 def _judge_card(**over):
     base = {
@@ -773,3 +769,49 @@ def test_pipeline_calls_both_gates():
     assert "hook_gate(" in src, "hook_gate 定义了却没被调用"
     assert "quality_sample(" in src, "quality_sample 定义了却没被调用"
     assert "quality_sample(llm, samples" in src, "质检员没接在 main 的产线上"
+
+
+# --- Task 9：轨道 2 批跑 + 探针校准 ------------------------------------------
+
+
+def _compress_rows(n):
+    return [{"id": f"c-{i}", "input": f"历史{i}：玩家的剑名为「听雨」。",
+             "output": f"摘要{i}：玩家的剑名为「听雨」。",
+             "preserve_points": [{"text": "玩家的剑名为「听雨」", "anchors": ["听雨"]}]}
+            for i in range(n)]
+
+
+def test_run_eval_injects_probes_and_validates_batch():
+    rows = _compress_rows(10)
+    idx = probe_positions(10, 0.2, 1)
+    # 锚定抽样行为：Random(1).sample(range(10), k=2) == [1, 2]，**不是**"前 2 个"
+    assert idx == [1, 2]
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    zero = '{"保真": 0, "简洁": 0, "结构": 0, "流畅": 0}'
+    # 按 run_eval 的**升序消费**构造队列：探针位拿 0 分（= 检出），其余拿满分
+    probe_set = set(idx)
+    llm = StubLLM([zero if i in probe_set else good for i in range(10)])
+    rep = run_eval(llm, rows, probe_rate=0.2, seed=1)
+    assert rep["probe_indices"] == [1, 2]
+    assert len(rep["probes"]) == 2 and rep["probe_detection"] == 1.0
+    assert rep["batch_valid"] is True and len(rep["scores"]) == 8
+
+
+def test_report_carries_provenance_fingerprints():
+    """spec §6.4/§9.2：报告必须自证口径（缺一即为不合格报告）。"""
+    rows = _compress_rows(4)
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    llm = StubLLM([good] * 4)
+    rep = run_eval(llm, rows, probe_rate=0.25, seed=1, meta={
+        "prompt_version": prompt_version(), "budget_policy": budget_policy(),
+        "judge_model": "stub", "endpoint": {"model": "stub"}})
+    for k in ("prompt_version", "budget_policy", "judge_model", "endpoint"):
+        assert rep.get(k), f"报告缺 {k}"
+
+
+def test_run_eval_invalidates_batch_when_probes_missed():
+    rows = _compress_rows(10)
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    llm = StubLLM([good] * 10)  # 探针也拿高分 → 检出 0%
+    rep = run_eval(llm, rows, probe_rate=0.2, seed=1)
+    assert rep["batch_valid"] is False  # <90% → 批作废（spec §7.3）
