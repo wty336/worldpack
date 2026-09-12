@@ -592,15 +592,37 @@ def _history_and_summary(card):
 
 
 def test_compress_input_matches_production_template():
-    """spec §4.2 硬纪律：compress 输入模板逐字对齐生产（`game.py:_compress_history`）。"""
+    """spec §4.2 硬纪律：compress 输入模板逐字对齐生产（`game.py:_compress_history`）。
+
+    **必须断言样本字段本身**（原稿只断言了 `compress_messages()` 的函数输出，
+    于是样本里存裸文本这件事整批漏过 —— 与 extract 侧的断言方式不对称）。
+    """
     card = _compress_card()
     history, summary = _history_and_summary(card)
-    build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    r = build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    assert r.sample["input"] == compress_messages(card, history)[1]["content"]
+    assert r.sample["input"].startswith("<旧摘要>")
+    assert r.sample["input"].endswith("</新增历史>")
+    # 与生产同源：system 段必须是引擎的 COMPRESS_SYSTEM（不得另写提示词）
     msgs = compress_messages(card, "新增历史文本")
     assert msgs[0] == {"role": "system",
                        "content": COMPRESS_SYSTEM.format(target=SUMMARY_MAX_TARGET)}
     assert msgs[1]["content"] == (
         f"<旧摘要>\n{card.old_summary}\n</旧摘要>\n\n<新增历史>\n新增历史文本\n</新增历史>")
+
+
+def test_compress_incremental_sample_carries_old_summary():
+    """增量合并档（`seq%4==0`，约 25% 的 compress 卡）的样本必须把旧摘要带进 input。
+
+    否则模型学不到"读旧摘要 → 合并"这条通路，而评测时用的却是带旧摘要的完整模板
+    —— 训练/推理形态不一致（原稿 `"input": hist.text` 正是如此）。
+    """
+    card = next(c for s in range(60)
+                if (c := generate_card(10231, s, "compress")).old_summary)
+    history, summary = _history_and_summary(card)
+    r = build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    assert card.old_summary in r.sample["input"]
+    assert "<旧摘要>" in r.sample["input"]
 
 
 def test_compress_off_single_candidate_no_select():

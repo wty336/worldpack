@@ -131,6 +131,12 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
     hist = verbalize_card(llm, card)
     if hist.dropped:
         return BuildResult(None, "历史演绎丢弃")
+    # **单一素材真源**：模型看到的就是这一段（含 <旧摘要>/<新增历史> 包裹），
+    # 故样本 input、程序先杀的虚构素材、评委的【材料】三处都用它 —— 早先版本只有
+    # hist.text（裸历史），造成三处后果：① 样本 input 与生产模板不一致（spec §4.2 硬纪律）；
+    # ② 增量合并档的旧摘要根本不进样本（25% 的卡，模型学不到"读旧摘要→合并"）；
+    # ③ 虚构判定以裸历史为素材，旧摘要里的「」引用词会被误判成编造 → 候选被误杀。
+    source = compress_messages(card, hist.text)[1]["content"]
     n = CANDIDATES_N if _sampling_on(card, sampling) else 1
     cands, killed = [], []
     for _ in range(n):
@@ -139,17 +145,19 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
         except ValueError as e:
             killed.append(str(e))
             continue
-        if why := _program_kill(s, hist.text, card):
+        if why := _program_kill(s, source, card):
             killed.append(why)
             continue
         cands.append(s)
     if not cands:
         return BuildResult(None, f"候选全杀: {killed}")
-    best = select(llm, candidates=cands, material=hist.text,
+    best = select(llm, candidates=cands, material=source,
                   preserve_points=card.preserve_points) if len(cands) > 1 else 0
     return BuildResult({
         "id": card.card_id, "module": "compress", "version": SAMPLE_VERSION,
-        "genre": card.axes.genre, "input": hist.text, "output": cands[best],
+        "genre": card.axes.genre,
+        # 生产同款 user 段（与 extract 侧对称：extract 也存带模板包裹的 user 段）
+        "input": source, "output": cands[best],
         "sampling": sampling, "candidates": len(cands), "killed": killed,
         "long_input": card.history_spec.target_tokens >= LONG_INPUT_TOKENS,
         "preserve_points": [{"text": p.text, "anchors": p.anchors}

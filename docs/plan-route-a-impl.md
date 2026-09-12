@@ -25,7 +25,7 @@
 | 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 2 处（`-k material` 过滤器；好感覆写静默跳过 → 坏标签） |
 | 4 演绎器 + 反向校验 | ✅ 完成 | 见 Task 4 执行记录 | 修正 1 处（自然化指令对 confab 原稿是反的） |
 | 5 rubric 评委四模式 | ✅ 完成 | 见 Task 5 执行记录 | 修正 1 处（`-k` 过滤器；顺带审计了全部 Task 的过滤器） |
-| 6 样本构建三分支 + 拒绝采样 | ✅ 完成 | 见 Task 6 执行记录 | 无计划缺陷（该 Task 的 `-k` 过滤器已审计为准确） |
+| 6 样本构建三分支 + 拒绝采样 | ✅ 完成 | 见 Task 6 执行记录 | 修正 1 处（compress 样本存裸文本；评审补修） |
 | 7 质量门 + 门禁接线 + 人读清单 | ⬜ 待做 | — | — |
 | 8 配额/去重/出库 CLI | ⬜ 待做 | — | 出库摘要须走 `file_digest`（见下） |
 | 9 轨道 2 批跑 + 定 X | ⬜ 待做 | — | — |
@@ -44,7 +44,7 @@
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
-Task 6 守卫 **9** + `evalmeta` 换行守卫 **1** = **390 passed**。
+Task 6 守卫 **10** + `evalmeta` 换行守卫 **1** = **391 passed**。
 
 ---
 
@@ -1626,16 +1626,35 @@ def test_build_extract_dedup_discipline_negative_with_existing():
 
 
 def test_compress_input_matches_production_template():
-    """spec §4.2 硬纪律：compress 输入模板逐字对齐生产（`game.py:_compress_history`）。"""
+    """spec §4.2 硬纪律：compress 输入模板逐字对齐生产（`game.py:_compress_history`）。
+
+    **必须断言样本字段本身** —— 原稿只断言了 `compress_messages()` 的函数输出，
+    于是"样本里存裸文本"整批漏过（与 extract 侧的断言方式不对称）。
+    """
     card = _compress_card()
     history, summary = _history_and_summary(card)
-    llm = StubLLM([history, summary])
-    build_compress_sample(llm, card, sampling="off")
+    r = build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    assert r.sample["input"] == compress_messages(card, history)[1]["content"]
+    assert r.sample["input"].startswith("<旧摘要>")
+    assert r.sample["input"].endswith("</新增历史>")
     msgs = compress_messages(card, "新增历史文本")
     assert msgs[0] == {"role": "system",
                        "content": COMPRESS_SYSTEM.format(target=SUMMARY_MAX_TARGET)}
     assert msgs[1]["content"] == (
         f"<旧摘要>\n{card.old_summary}\n</旧摘要>\n\n<新增历史>\n新增历史文本\n</新增历史>")
+
+
+def test_compress_incremental_sample_carries_old_summary():
+    """增量合并档（`seq%4==0`，约 25% 的 compress 卡）的样本必须把旧摘要带进 input。
+
+    否则模型学不到"读旧摘要 → 合并"这条通路，而评测时用的却是带旧摘要的完整模板。
+    """
+    card = next(c for s in range(60)
+                if (c := generate_card(10231, s, "compress")).old_summary)
+    history, summary = _history_and_summary(card)
+    r = build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    assert card.old_summary in r.sample["input"]
+    assert "<旧摘要>" in r.sample["input"]
 
 
 def test_build_judge_sample_setting():
@@ -1839,6 +1858,12 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
     hist = verbalize_card(llm, card)
     if hist.dropped:
         return BuildResult(None, "历史演绎丢弃")
+    # **单一素材真源**：模型看到的就是这一段（含 <旧摘要>/<新增历史> 包裹），
+    # 故样本 input、虚构判定的素材、评委的【材料】三处都用它。早先版本只有 `hist.text`
+    # （裸历史），三处后果：① 样本 input 与生产模板不一致（spec §4.2 硬纪律）；
+    # ② 增量合并档的旧摘要根本不进样本（约 25% 的卡，模型学不到"读旧摘要→合并"）；
+    # ③ 虚构判定以裸历史为素材 → 旧摘要里的「」引用词被误判成编造，候选被误杀。
+    source = compress_messages(card, hist.text)[1]["content"]
     n = CANDIDATES_N if _sampling_on(card, sampling) else 1
     cands, killed = [], []
     for _ in range(n):
@@ -1847,17 +1872,19 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
         except ValueError as e:
             killed.append(str(e))
             continue
-        if why := _program_kill(s, hist.text, card):
+        if why := _program_kill(s, source, card):
             killed.append(why)
             continue
         cands.append(s)
     if not cands:
         return BuildResult(None, f"候选全杀: {killed}")
-    best = select(llm, candidates=cands, material=hist.text,
+    best = select(llm, candidates=cands, material=source,
                   preserve_points=card.preserve_points) if len(cands) > 1 else 0
     return BuildResult({
         "id": card.card_id, "module": "compress", "version": SAMPLE_VERSION,
-        "genre": card.axes.genre, "input": hist.text, "output": cands[best],
+        "genre": card.axes.genre,
+        # 生产同款 user 段（与 extract 侧对称：那边也存带模板包裹的 user 段）
+        "input": source, "output": cands[best],
         "sampling": sampling, "candidates": len(cands), "killed": killed,
         "long_input": card.history_spec.target_tokens >= LONG_INPUT_TOKENS,
         "preserve_points": [{"text": p.text, "anchors": p.anchors}
@@ -1868,7 +1895,7 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
 - [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k "build_ or compress"`
-Expected: 9 passed
+Expected: 10 passed
 
 - [x] **Step 5: Commit**
 
@@ -1896,6 +1923,30 @@ git commit -m "feat(factory): 样本构建三分支与 compress 拒绝采样三�
 >
 > 两侧 system 段实测都为引擎提示词（`EXTRACT_SYSTEM` / `COMPRESS_SYSTEM`）—— **不再是自造提示词**，
 > spec §4.2「输入模板逐字对齐生产」落地。
+>
+> **评审补修（2026-09-12，第二轮）✅ 已修** —— 由外部评审指出、经实测确认（守卫 9 → **10**，
+> 全量 390 → **391 passed**）：
+>
+> 2. **compress 样本的 `input` 存的是裸历史，而非生产 user 段**（与 extract 侧不对称）：
+>    `extract` 侧存的是 `extract_messages(...)[1]["content"]`（带 `已有事实：`/`<回合内容>` 包裹），
+>    而 compress 侧写的却是 `"input": hist.text`。实测三处后果：
+>    ① `input == 生产 user 段` → **False**、`startswith("<旧摘要>")` → **False**
+>       → 训练分布 ≠ 推理分布（spec §4.2 硬纪律要防的正是这个）；
+>    ② **增量合并形态整条丢失**：约 25% 的 compress 卡带 `old_summary`（`seq%4==0`），
+>       但裸文本 input 里旧摘要根本不进样本 → 模型学不到"读旧摘要→合并"，
+>       而评测时用的却是带旧摘要的完整模板；
+>    ③ **虚构判定会误杀**（评审未点出、实测发现）：`_program_kill(s, hist.text, …)` 以**裸历史**
+>       为素材，而模型看到的是含旧摘要的完整段 → 旧摘要里的「」引用词会被判成编造。
+>       实测：旧摘要含「夜明珠」（不在裸历史里）、候选照它复述 → 旧素材判 `虚构:夜明珠`，
+>       新素材判 `None`（正确放行）。
+>    **守卫为什么漏过**：`test_compress_input_matches_production_template` 原稿只断言了
+>    `compress_messages()` 的**函数输出**，没断言**样本字段本身** —— 与 extract 侧
+>    （`got.startswith("已有事实：")`）不对称，于是"样本存裸文本"整批漏过。
+>    修法：引入 `source = compress_messages(card, hist.text)[1]["content"]` 作为**单一素材真源**，
+>    **样本 input / 虚构判定素材 / 评委【材料】三处统一用它**；
+>    并把守卫改成断言样本字段（`input == compress_messages(...)[1]["content"]` +
+>    `startswith("<旧摘要>")` + `endswith("</新增历史>")`），另补
+>    `test_compress_incremental_sample_carries_old_summary` 钉住增量合并形态。
 
 ---
 
@@ -2678,8 +2729,8 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - [ ] **Step 1: 全量测试**
 
 Run: `uv run pytest -q`
-Expected: **342 存量** + 本计划新增 **58 个守卫**（Task 1~9：9+10+8+5+6+9+3+5+3）+ Task 10 的 1 个
-prompt 守卫 = **401 全绿**
+Expected: **342 存量** + 本计划新增 **59 个守卫**（Task 1~9：9+10+8+5+6+10+3+5+3）+ Task 10 的 1 个
+prompt 守卫 = **402 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
 > 加上计划外先落的 `card_hook` 死字段守卫 1 条 = **342**（= 本表"存量"口径，见文首「进度」节）。
