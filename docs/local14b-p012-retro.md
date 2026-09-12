@@ -244,7 +244,8 @@ compress_threshold=30000, judge_every=5, keep_turns=6`）：
   reflect 200 预算（§8.2 实锤）、extract 400 预算（存疑，smoke 中未见异常）。
 - **对实验的影响**：flash dedup 对照线 40-50% 是**预算 bug 拉低的值**，不是能力基线；
   14B 的 100% 仍然有效（无思考模式）。B 轴 dedup 结论不受影响（14B 已达标）；
-  但「flash 补标」环节必须放大 max_tokens 再采标。
+  但「flash 补标」环节必须放大 max_tokens 再采标——**compress 取 ≥4000**
+  （2026-09-12 更新：取证显示 53% 的 compress 调用顶在 2000 附近，4000 后真机 5/5 无截断）。
 - **对产品的影响**：建议引擎侧立项——把 judge 的空响应升级重试推广到
   dedup/reflect/extract（或按模块调大预算），P1 门禁即可恢复。
 
@@ -506,7 +507,13 @@ teacher 带思维链时对 teacher 不公平，Phase 2 盲评需注明产物形�
 3. **泛化验证加档**：文档 §7.3 的 urban_neon 剔除包之外，再加一个训练集未见过的
    临时中性小包（init-worldpack 生成）作最终试金石。
 4. **flash 小预算侧信道的预算 bug**（思考模式吃光预算，§5.3/§8.2 实锤）：
-   - 所有"以 flash 为标准答案"的补标环节一律放大 max_tokens（≥2000）再采标；
+   - 所有"以 flash 为标准答案"的补标环节一律放大 max_tokens 再采标：
+     **compress ≥4000**（`budgets.COMPRESS_MAX_TOKENS`；取证：53% 的 flash compress 调用
+     顶在 2000 附近，自然结束落在 933~1803）、**reflect ≥500 且失败即升级 2000**、
+     **judge ≥2000**、**dedup ≥500**；judge/dedup/reflect/extract/compress 均走
+     `budgets.complete_checked`（空或截断 → 升级重试）；
+     ✅ **2026-09-12 已落地**（compress：4000 + 纳入升级重试 + **截断摘要不得采纳**——
+     它会替换历史前缀 = 静默丢内容；真机复验 5/5 样本无截断，completion 均值 1,465）；
    - 建议引擎侧立项：空响应升级重试从 judge 推广到 dedup/reflect/extract；
      ✅ **2026-09-11 已落地**：`game_agent/budgets.py` 成为预算单一真源
      （`MIN_CALL_TOKENS=500` 规则 + `EMPTY_RETRY_TOKENS=2000`），升级重试由

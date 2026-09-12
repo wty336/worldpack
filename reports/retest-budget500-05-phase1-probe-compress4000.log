@@ -1,0 +1,25 @@
+﻿[样本] compress=5 reflect=3
+  compress/merge/smoke-flash-xianxia_wendao: 旧摘要=1049字 新增=5865字
+  compress/merge/smoke-flash-urban_neon: 旧摘要=995字 新增=2783字
+  compress/first/memory-regression-checkpoint@(40, 52): 旧摘要=0字 新增=20872字
+  compress/first/memory-regression-checkpoint@(10, 22): 旧摘要=0字 新增=13584字
+  compress/first/smoke-urban_neon@None: 旧摘要=0字 新增=5795字
+  reflect/memory-regression-checkpoint/shen_qingqiu/last12: 沈清秋 12 条记忆
+  reflect/memory-regression-checkpoint/shen_qingqiu/last8: 沈清秋 8 条记忆
+  reflect/memory-regression-checkpoint/shen_qingqiu/mid12: 沈清秋 10 条记忆
+[compress] compress/merge/smoke-flash-xianxia_wendao flash=1195字/0.886 local=0字/-
+[compress] compress/merge/smoke-flash-urban_neon flash=1028字/0.889 local=0字/-
+[compress] compress/first/memory-regression-checkpoint@(40, 52) flash=1178字/0.529 local=0字/-
+[compress] compress/first/memory-regression-checkpoint@(10, 22) flash=1070字/0.8 local=0字/-
+[compress] compress/first/smoke-urban_neon@None flash=906字/0.6 local=0字/-
+[reflect] reflect/memory-regression-checkpoint/shen_qingqiu/last12 flash=2条/True local=-条/-
+[reflect] reflect/memory-regression-checkpoint/shen_qingqiu/last8 flash=2条/True local=-条/-
+[reflect] reflect/memory-regression-checkpoint/shen_qingqiu/mid12 flash=2条/True local=-条/-
+
+已保存 → reports\phase1-probe-20260912-093149.json
+===== usage 成本报告 =====
+  deepseek-v4-flash@compress               调用    5 次 · 入    36,358（命中 35,456 / 未命中 902）· 出    7,326 · 约 ¥0.036（空闲）
+  deepseek-v4-flash@reflect                调用    6 次 · 入     3,504（命中 2,304 / 未命中 1,200）· 出    6,344 · 约 ¥0.030（空闲）
+  合计：入 39,862 · 出 13,670 · 成本约 ¥0.067（空闲时段）/ ¥0.133（高峰时段）
+  注：价格快照 2026-09（峰谷分时），以 DeepSeek 最新公告为准。
+
