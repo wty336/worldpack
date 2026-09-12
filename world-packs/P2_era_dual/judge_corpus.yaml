@@ -1,0 +1,83 @@
+# E1 Judge 灵敏度语料（P2 年代·机油与粮票）——手写资产
+# 机器生成的扩域部分在同目录 judge_corpus.gen.yaml（见 scripts/build_judge_corpus.py）
+# 纪律：本包为 Phase 1 §3.5 的**跨包留出包**，只用于评测，不进训练数据
+cases:
+  - id: p2_ooc_special_case
+    category: ooc
+    narration: |-
+      陈姨把户口本合上，往你手里一塞：『你是李主任的亲戚吧？那就不用排队了，我先给你办。』
+    expected: false
+    day: 6
+    scene: '家属院·居委会'
+    present: [chen_yi]
+    note: '角色卡 boundaries『不搞特殊，亲戚也一样』——以"亲戚"为由插队，直接违背。'
+
+  - id: p2_ooc_leak_meeting
+    category: ooc
+    narration: |-
+      陈姨压低声音：『昨天会上定了，三号楼那户要被注销户口，这话我只跟你一个人说。』
+    expected: false
+    day: 8
+    scene: '家属院·居委会'
+    present: [chen_yi]
+    note: '角色卡 boundaries『不把会上说的话往外传』——直接违背。'
+
+  - id: p2_ooc_gate_key
+    category: ooc
+    narration: |-
+      老孙头把一串钥匙拍在窗台上：『后门那把归你，夜里谁进谁出你说了算。』
+    expected: false
+    day: 7
+    scene: '红星机械厂·厂门口'
+    present: [lao_sun]
+    note: '角色卡 boundaries『不放外人进厂』——把后门钥匙私相授受，违背守门职责。'
+
+  - id: p2_ooc_sign_for_other
+    category: ooc
+    narration: |-
+      老孙头拿过值班簿，替你签了名：『你先走，我替你签上，反正查不着。』
+    expected: false
+    day: 9
+    scene: '红星机械厂·厂门口'
+    present: [lao_sun]
+    note: '角色卡 boundaries『不替人代签』——直接违背。'
+
+  - id: p2_ooc_li_cover_smoking
+    category: ooc
+    narration: |-
+      李主任从抽屉里摸出两条烟塞给你：『拿回去给你爸抽，以后车间的事，你多照应着点。』
+    expected: false
+    day: 10
+    scene: '红星机械厂·二车间'
+    present: [li_zhuren]
+    note: '角色卡 boundaries『不收礼，也不收烟』——虽然方向是"送出"，但以公事换取私相照顾，与角色底线冲突（同理判定为违背）。'
+
+  - id: p2_ooc_ma_betray
+    category: ooc
+    narration: |-
+      小马被保卫科叫去问话，回来就跟人说：『我把那批料的事全推给老周了，反正他也不敢拿我怎么样。』
+    expected: false
+    day: 11
+    scene: '红星机械厂·二车间'
+    present: [xiao_ma]
+    note: '角色卡 boundaries『不出卖朋友』+ personality『讲义气』——推责给出卖他人，违背。'
+
+  - id: p2_normal_shift_end
+    category: normal
+    narration: |-
+      下了早班，你把工作服挂在更衣室的钉子上，袖口那道机油印已经洗不掉了。
+    expected: true
+    day: 3
+    scene: '红星机械厂·更衣室'
+    present: []
+    note: '日常收工描写，与场景一致，无越界承诺。'
+
+  - id: p2_normal_chen_register
+    category: normal
+    narration: |-
+      陈姨把表格推过来，指着最后一栏：『按实际填，常住还是暂住，别空着。』
+    expected: true
+    day: 6
+    scene: '家属院·居委会'
+    present: [chen_yi]
+    note: '符合角色卡 speech_style（爱引用规定）与 boundaries（按规定办）。'

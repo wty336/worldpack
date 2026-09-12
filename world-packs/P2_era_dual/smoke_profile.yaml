@@ -1,0 +1,20 @@
+# 冒烟 profile（P2 年代·机油与粮票）
+picks:
+  how_to_handle_hazard: 1
+  how_to_get_post: 1
+  how_to_handle_ledger: 1
+  how_to_speak: 1
+  how_to_face_gossip: 1
+  how_to_decide: 0
+action: overtime
+days: 8
+lines:
+  - （跟着老师傅学开机床）
+  - （去仓库代班）
+  - （和小马喝一杯）
+forbidden_scan:
+  - 手机
+  - 互联网
+  - 法术
+observe_modern: []
+target: 先进生产者

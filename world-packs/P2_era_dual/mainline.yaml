@@ -1,0 +1,104 @@
+# 主线节点链（年代·机油与粮票）：6 个节点；每个节点的 completion flag 都由本节点的关键选择写入
+# 结构轴：每个关键选择都让「信誉」与「声望」**此消彼长**（两本账的设计体现）
+nodes:
+  - id: n1_first_day
+    title: 第一个早班
+    when: {all: []}
+    goal: 上完第一个班次
+    completion: {flags: {first_shift_done: true}}
+    on_enter:
+      scene: 红星机械厂·二车间
+      present: [li_zhuren, xiao_ma]
+      briefing: 早班的机床声压得人耳朵发麻。你发现三号机床的防护罩卡扣松了，带你的老师傅正背对着你调刀。
+    critical_choices:
+      - id: how_to_handle_hazard
+        prompt: 卡扣松了这件事，你怎么处理？
+        options:
+          - {text: 当场报告李主任, effects: {flags: {first_shift_done: true}, stats: {credit: 4, standing: -2}}}
+          - {text: 私下提醒老师傅, effects: {flags: {first_shift_done: true}, stats: {standing: 3, credit: 1}, affections: {xiao_ma: 2}}}
+          - {text: 装作没看见，先把活干完, effects: {flags: {first_shift_done: true}, stats: {credit: -1}}}
+
+  - id: n2_post
+    title: 岗位名额
+    when: {flags: {first_shift_done: true}}
+    goal: 拿到二车间的正式岗位
+    completion: {flags: {got_post: true}}
+    on_enter:
+      scene: 红星机械厂·劳资科
+      present: [li_zhuren, zhao_kezhang]
+      briefing: 二车间只有一个见习岗名额，报上去的名单上有你，也有小马。赵科长把两张表摊在桌上，让你自己看。
+    critical_choices:
+      - id: how_to_get_post
+        prompt: 这个名额你怎么争？
+        options:
+          - {text: 找李主任表态愿意天天加班, effects: {flags: {got_post: true}, stats: {credit: 5, standing: -3}, affections: {li_zhuren: 4, xiao_ma: -3}}}
+          - {text: 帮小马说话，把名额让给他, effects: {flags: {got_post: true}, stats: {standing: 6, credit: -2}, affections: {xiao_ma: 6}}}
+          - {text: 给赵科长递烟，打听他的意思, effects: {flags: {got_post: true}, stats: {credit: -3}, affections: {zhao_kezhang: 6}}}
+
+  - id: n3_ledger
+    title: 仓库的账
+    when: {flags: {got_post: true}}
+    goal: 弄清仓库领料单对不上的事
+    completion: {flags: {found_ledger: true}}
+    on_enter:
+      scene: 红星机械厂·仓库
+      present: [wang_dajie]
+      briefing: 你替仓库代班，翻出一沓领料单：有三十七个轴承的签字像是后补的，签的正是王大姐男人的名字。
+    critical_choices:
+      - id: how_to_handle_ledger
+        prompt: 这沓领料单怎么办？
+        options:
+          - {text: 原样封好，报给李主任, effects: {flags: {found_ledger: true}, stats: {credit: 7, standing: -4}, affections: {wang_dajie: -5}}}
+          - {text: 私下找王大姐问清楚, effects: {flags: {found_ledger: true}, stats: {standing: 4, credit: -1}, affections: {wang_dajie: 3}}}
+          - {text: 记下编号，先不动声色, effects: {flags: {found_ledger: true}, stats: {credit: 2}}}
+
+  - id: n4_meeting
+    title: 厂务会
+    when: {flags: {found_ledger: true}}
+    goal: 在厂务会上把话说明白
+    completion: {flags: {spoke_up: true}}
+    on_enter:
+      scene: 红星机械厂·会议室
+      present: [li_zhuren, zhao_kezhang, lao_sun]
+      briefing: 厂务会上，赵科长点名说仓库丢了东西，问谁经手过。老孙头坐在门口，手指在膝盖上敲。
+    critical_choices:
+      - id: how_to_speak
+        prompt: 轮到你了，你怎么说？
+        options:
+          - {text: 把领料单的编号念出来, effects: {flags: {spoke_up: true}, stats: {credit: 6, standing: -2}, affections: {zhao_kezhang: -8, lao_sun: 3}}}
+          - {text: 提议先查值班记录，不点名, effects: {flags: {spoke_up: true}, stats: {credit: 3, standing: 3}, affections: {lao_sun: 5}}}
+          - {text: 说自己刚来，不清楚, effects: {flags: {spoke_up: true}, stats: {standing: -3}, affections: {li_zhuren: -2}}}
+
+  - id: n5_neighborhood
+    title: 家属院的闲话
+    when: {flags: {spoke_up: true}}
+    goal: 稳住家属院的口碑
+    completion: {flags: {neighbor_ok: true}}
+    on_enter:
+      scene: 家属院·水房
+      present: [wang_dajie, chen_yi]
+      briefing: 水房里排着队，王大姐一边接水一边说你家的事；陈姨端着盆站在旁边，眼睛看着你。
+    critical_choices:
+      - id: how_to_face_gossip
+        prompt: 这盆水你打算怎么端？
+        options:
+          - {text: 当场把这几天的事讲开, effects: {flags: {neighbor_ok: true}, stats: {standing: 5, credit: -1}, affections: {wang_dajie: 2, chen_yi: 3}}}
+          - {text: 认下自己被议论的那部分, effects: {flags: {neighbor_ok: true}, stats: {standing: 3, credit: 2}, affections: {chen_yi: 2}}}
+          - {text: 端着盆走开，不接话, effects: {flags: {neighbor_ok: true}, stats: {standing: -2}}}
+
+  - id: n6_decide
+    title: 调令
+    when: {flags: {neighbor_ok: true}}
+    goal: 决定是留在厂里还是调走
+    completion: {flags: {decided: true}}
+    on_enter:
+      scene: 红星机械厂·劳资科
+      present: [zhao_kezhang, li_zhuren]
+      briefing: 外地分厂来要人，调令就摆在赵科长手边。他说：想去，签个字就行。
+    critical_choices:
+      - id: how_to_decide
+        prompt: 这张调令你签不签？
+        options:
+          - {text: 签字，去外地分厂, effects: {flags: {decided: true}, stats: {credit: 2}}}
+          - {text: 不签，留在二车间, effects: {flags: {decided: true}, stats: {credit: 3, standing: 3}}}
+          - {text: 先问李主任的意见再定, effects: {flags: {decided: true}, stats: {credit: 1}, affections: {li_zhuren: 3, zhao_kezhang: -3}}}

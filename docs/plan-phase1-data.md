@@ -214,18 +214,24 @@
 
 ### 3.5.4 第一步：零样本跨包对照（半天，几乎零成本）—— 先量化，再投入
 
-**不训练**，直接拿两个新包跑现有 E1 与 extract 评测，量出"跨包掉点"：
+> ⚠️ **必须两侧都测，别用一侧下结论**（2026-09-12 修正）：
+> - **flash = 参照线**（可在任意机器跑；判据都是相对 flash 的，所以新包也必须先有 flash 数）
+> - **14B = 窄化探针**（"窄化"是**学生模型**的属性；只有 14B 在新包上的掉点才是答案）
+> - **14B 侧只能在 4090 那台机器/会话上跑**（本会话机器是 GTX 1650 Ti / 4 GB，无 vLLM 环境、
+>   无权重缓存 —— 见 §3.5.7 执行清单）。**只测 flash 就宣称"没有窄化"是无效推论。**
+
+**不训练**，直接拿两个新包跑现有 E1 与 extract 评测（**两侧模型各跑一遍**）：
 
 | 代号 | 走的轴 | 造法 |
 | --- | --- | --- |
 | **P1 校园 · 书信体** | 题材 + 语体 + 实体类型 | `init-worldpack` 起骨架 → 手写书信体叙事与 corpus |
 | **P2 年代 · 双轨数值** | 题材 + 数值系统 + 结构规模 | `import_story.py --offline` 生成草稿 → 手工改数值系统为「信誉 + 声望」、NPC ≥6 |
 
-- **判定门**（与三包基线对比 judge 拦截率 / 误报率 / extract 召回）：
+- **判定门**（14B 在新包上的表现 vs 14B 在已知三包上的表现；flash 同包数字作旁证）：
   - 掉点 **≤5pp** → 泛化性本就够，训练数据扩域可适度；
   - 掉点 **10~20pp** → 窄化风险为真，训练数据须**以新包为主**（现有包降为生产锚）；
   - 掉点 **>20pp** → 先修提示词与输入形态（加数据救不回来）。
-- **成本**：2 包 × (E1 70 例 × 3 轮 + extract 30 例) ≈ **¥0.3**；造包约半天。
+- **成本**：2 包 × 2 侧 × (E1 66~68 例 × 3 轮 + extract 42 例 × 3) ≈ **flash ¥1.5 + 14B 本地电费**；造包约半天。
 
 ### 3.5.5 第二步：世界包工厂（规模由 §3.5.4 的数字决定）
 
@@ -243,31 +249,74 @@
 每包 6~12 条 ooc 手写。**这笔投入必须在 Step 2 批量造数据之前完成**——否则造出来的数据
 天然带三包偏置，返工代价远高于先造包。
 
-### 3.5.6 执行记录（P1 校园·书信体，2026-09-12）
+### 3.5.6 执行记录（P1 / P2 已建成；两侧对照 **仅 flash 侧完成**，2026-09-12）
 
-**已建成**：`world-packs/P1_school_letters/`（4 节点 / **3 NPC** / 3 事件 / 3 结局 / 4 行动；
-stats = 学力·人缘·零花；语体 = 书信体）+ 语料 **66 条**（ooc 12 / setting 20 / confab 20 / normal 14）
-+ `smoke_profile.yaml`；已通过 `check-worldpack`，并入生成器与守卫（`build_judge_corpus.py` /
-`test_judge_corpus_gen.py`）。
+**已建成两个留出包**（都只用于评测，不进训练数据）：
 
-**extract 跨包对照（同协议：temp=0 × 3 次重复，36 例 / 108 run）**：
+| 包 | 结构 | 数值 | 语体/题材 | 语料 |
+| --- | --- | --- | --- | --- |
+| `P1_school_letters`（校园·信笺） | 4 节点 / **3 NPC** / 3 事件 / 3 结局 | 学力·人缘·零花 | **书信体** / 现代校园 | **66 条**（ooc 12 / setting 20 / confab 20 / normal 14） |
+| `P2_era_dual`（年代·机油与粮票） | **6 节点 / 6 NPC** / 3 事件 / 3 结局 | **信誉 · 声望 双轨** + 现金 | 年代语汇 / 八十年代厂区 | **68 条**（ooc 12 / setting 22 / confab 20 / normal 14） |
 
-| 题材 | 召回（按 run） | 说明 |
-| --- | --- | --- |
-| 仙侠 / 现代都市 | 100% / 100% | 手写题材（非真包） |
-| 太空科幻 / 蒸汽朋克 | 93% / 92% | 同上 |
-| **校园（P1，真·留出包）** | **92%** | **与手写题材持平 → extract 未观察到跨包掉点** |
-| 民国谍战 | 47% | ⚠️ **不是跨包信号**：它不是真包，只是手写评测文本；逐轮原始输出显示为"瞬时状态类出题（经费余额）+ 1 例真实漏抽"，属**出题难度不均** |
+两者均通过 `check-worldpack`，并入生成器与守卫（`build_judge_corpus.py` / `test_judge_corpus_gen.py`）；
+五包语料合计 **347 条**。P2 另带**敌对型关系**（赵科长初始好感 −15；`affections` 支持负区间）。
 
-**工具侧两处修正**（首跑暴露）：
-1. `p1_dedup` 我标成"应召回"，但 turn 里只有瞬时信息 → 模型输出「无」是对的 → 改判负例（与 `t_dedup` 同一教训）；
-2. `extract_eval` 原先只存**第 1 次重复**的原始输出 → 翻转用例无法诊断 → 改为**每条 run 自带 `raw_output`**。
+**flash 侧对照结果（= 参照线，不是窄化结论）**：
 
-**待办**：P2（年代·双轨数值，走结构 + 数值轴）尚未开建 —— 它是"结构轴"的唯一探针，不可省；
-P1 的 E1（judge）对照在后台跑（66 例 × 3 轮）。
+| 模块 | 已知三包（flash） | P1 校园（flash） | P2 年代（flash） |
+| --- | --- | --- | --- |
+| judge 拦截 / 误报 | 100% / 0~6% | **100% / 0%** | 见 `reports/phase1-crosspack-P2-judge.log`（后台） |
+| extract 召回（按 run） | 92~100% | **92%** | **92%** |
 
-> **阶段性结论**：**extract 对新包没有明显窄化**（校园 92% ≈ 手写题材 92-100%）。
-> 但 judge 才是对包最敏感的模块（OOC 判据来自角色卡），P1 的 E1 数字是关键证据 —— 待其落地。
+连同手写题材（仙侠 100% / 现代都市 100% / 太空科幻 93% / 蒸汽朋克 100% / 民国 73%），
+**flash 在所有题材上都稳定在 ~92-100%**：这说明**语料与器械在新包上校准良好**（不是坏题），
+但**不能**推出"14B 不会窄化" —— 那是学生模型的属性，须由 §3.5.7 在 GPU 机上测。
+
+**工具侧两处修正**（首跑暴露）：`p1_dedup` 我标成"应召回"但 turn 里只有瞬时信息（模型输出「无」是对的）；
+`extract_eval` 原先只存第 1 次重复的原始输出 → 改为**每条 run 自带 `raw_output`**（否则翻转用例无法诊断）。
+
+> **阶段性结论（2026-09-12 修正后的诚实版）**：
+> - ✅ **器械在新包上可用**：P1/P2 的包、语料（68/66 条）、门禁流程全链路跑通，判官在**新包上**
+>   也给出可解释的判定（P1 的 ooc/setting/confab 判词均准确引用角色卡与事实）。
+> - ✅ **新包语料已校准**：flash 参照线在新包上仍是 **ooc 12/12 · setting 20/20 · confab 19/19 ·
+>   normal 误报 0/14**（P1）——说明这些题不是"坏题"，14B 若在此失手可归因于模型。
+> - ✅ **flash 参照线已就位**（判据都是相对 flash 的，新包同样需要这条线）。
+> - ❌ **14B 侧尚未测** —— 而"窄化"是 14B 的属性，**因此现在还不能对"是否窄化"下任何结论**。
+>   早前误将 flash 数字读作"未观察到跨包掉点"，已在 §3.5.4 更正口径。
+
+### 3.5.7 14B 侧执行清单（必须在 4090 机器/会话上跑）
+
+> 环境事实（2026-09-12 实测）：本会话机器为 **GTX 1650 Ti / 4 GB**，无 vLLM venv、无 HF 权重缓存、
+> `127.0.0.1:8000` 不可达 —— **14B 侧无法在本机执行**。以下命令供在 GPU 机上原样运行。
+
+```bash
+# ① 起 vLLM（PATH 先指向 venv bin，否则 EngineCore 找不到 ninja；参数见附录 D）
+export PATH=<venv>/bin:$PATH
+vllm serve Qwen/Qwen2.5-14B-Instruct-AWQ --max-model-len 32768 --kv-cache-dtype fp8 \
+  --gpu-memory-utilization 0.85 --max-num-seqs 64 --enable-prefix-caching \
+  --enable-auto-tool-choice --tool-call-parser hermes --served-model-name local-14b
+
+# ② 双确认（复盘踩坑 #6：旧进程占卡时 curl 仍通）
+curl http://127.0.0.1:8000/v1/models && nvidia-smi
+
+# ③ 14B 侧三项（新包，显式带 DEEPSEEK_* 前缀 —— 测量纪律）
+for P in P1_school_letters P2_era_dual; do
+  DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1 DEEPSEEK_MODEL=local-14b DEEPSEEK_API_KEY=sk-local \
+    python scripts/judge_sensitivity.py --pack world-packs/$P
+done
+DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1 DEEPSEEK_MODEL=local-14b DEEPSEEK_API_KEY=sk-local \
+  python scripts/extract_eval.py --repeat 3 --temperature 0
+
+# ④ 已知三包的同口径 14B 基线（对照组；Phase 0 已有部分，但语料已扩域需重跑）
+for P in ancient_jianghu xianxia_wendao urban_neon; do
+  DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1 DEEPSEEK_MODEL=local-14b DEEPSEEK_API_KEY=sk-local \
+    python scripts/judge_sensitivity.py --pack world-packs/$P
+done
+```
+
+**判读**：把 ③ 与 ④ 的 14B 数字并排（**同类语料、同轮数、同预算**），差值才是"跨包掉点"；
+flash 在同包的 ③ 数字作为 teacher 参照（已备：`reports/phase1-crosspack-P1-judge.log` 等）。
+预期：14B 的 judge 在零样本下本就有间歇性熔断与漏判（Phase 0：83~94%），**新包若显著更低才是窄化证据**。
 
 ---
 

@@ -1,0 +1,40 @@
+# 事件规则（年代·机油与粮票）：condition / schedule / time 各一
+events:
+  - id: ev_chen_visit
+    title: 陈姨上门
+    trigger:
+      kind: condition
+      when: {all: [{flags: {got_post: true}}]}
+    priority: normal
+    script: |
+      陈姨端着户口本上楼，说家属院要重新登记常住人口，问你家顶岗的事办下来没有。
+    effects:
+      affections: {chen_yi: 3}
+      stats: {standing: 2}
+    once: true
+
+  - id: ev_ma_borrow
+    title: 小马来借钱
+    trigger:
+      kind: schedule
+      action: drink_with_ma
+      chance: 0.5
+    priority: low
+    script: |
+      小马把钱拍在柜台上，说这个月粮票不够，问你借五块，下月发薪就还。
+    effects:
+      affections: {xiao_ma: 2}
+      stats: {credit: -1}
+    once: false
+
+  - id: ev_ticket_tight
+    title: 月底的粮票
+    trigger:
+      kind: time
+      when: {day: {gte: 8}}
+    priority: high
+    script: |
+      月底，细粮票只剩三张。食堂窗口的师傅说，掺点粗粮也能吃。
+    effects:
+      stats: {standing: 1}
+    once: true

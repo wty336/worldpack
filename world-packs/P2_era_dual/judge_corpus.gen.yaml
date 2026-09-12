@@ -1,0 +1,534 @@
+version: 1
+generated_by: scripts/build_judge_corpus.py
+note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
+cases:
+- id: gen_setting_forbidden_01
+  category: setting
+  narration: 你从兜里掏出手机，划开屏幕看了一眼又塞回去。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『手机』；材料为八十年代国营厂区场景。
+- id: gen_setting_forbidden_02
+  category: setting
+  narration: 你打开电脑，把领料单一条条录进表格里。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『电脑』；材料为八十年代国营厂区场景。
+- id: gen_setting_forbidden_03
+  category: setting
+  narration: 你掐了个法术，机床自己转了起来，防护罩也自己扣上了。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化（build_judge_corpus.py）：世界禁用表含『法术』；材料为八十年代国营厂区场景。
+- id: gen_setting_identity_04
+  category: setting
+  narration: 李主任把一个布包推回来：『这烟你拿回去，人情我记下了。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与 李主任(li_zhuren) 角色卡 identity 冲突。
+  present:
+  - li_zhuren
+- id: gen_setting_identity_05
+  category: setting
+  narration: 李主任拍拍你肩膀：『这次的事我替你担着，跟上面就说是我的主意。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与 李主任(li_zhuren) 角色卡 identity 冲突。
+  present:
+  - li_zhuren
+- id: gen_setting_identity_06
+  category: setting
+  narration: 王大姐压低声音：『三号楼那家的事你知道不？我跟你说，他俩早就……』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与 王大姐(wang_dajie) 角色卡 identity 冲突。
+  present:
+  - wang_dajie
+- id: gen_setting_identity_07
+  category: setting
+  narration: 王大姐把公家的煤球往自家筐里拨了两铲：『反正也没人点数。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与 王大姐(wang_dajie) 角色卡 identity 冲突。
+  present:
+  - wang_dajie
+- id: gen_setting_identity_08
+  category: setting
+  narration: 赵科长站起来，当着全科室道：『上次的事是我办错了，我检讨。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与 赵科长(zhao_kezhang) 角色卡 identity 冲突。
+  present:
+  - zhao_kezhang
+- id: gen_setting_identity_09
+  category: setting
+  narration: 赵科长把材料往桌上一摔：『明说了吧，我就是看你不顺眼，这月奖金扣你一半。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与 赵科长(zhao_kezhang) 角色卡 identity 冲突。
+  present:
+  - zhao_kezhang
+- id: gen_setting_fact_10
+  category: setting
+  narration: 劳资科的人翻了翻档案：你是招工考进来的，跟顶岗没关系。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『玩家的调令是顶父亲的岗』冲突。
+  facts:
+  - 玩家的调令是顶父亲的岗
+- id: gen_setting_fact_11
+  category: setting
+  narration: 你说自己是应聘进厂的，父亲还在老家种地。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『玩家的调令是顶父亲的岗』冲突。
+  facts:
+  - 玩家的调令是顶父亲的岗
+- id: gen_setting_fact_12
+  category: setting
+  narration: 李主任说：二车间今年有三个见习岗名额，随便报。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『二车间只有一个见习岗名额』冲突。
+  facts:
+  - 二车间只有一个见习岗名额
+- id: gen_setting_fact_13
+  category: setting
+  narration: 赵科长把表一推：名额早就用完了，一个都不剩。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『二车间只有一个见习岗名额』冲突。
+  facts:
+  - 二车间只有一个见习岗名额
+- id: gen_setting_fact_14
+  category: setting
+  narration: 你说那批轴承一共十七个，单子是你当场签的。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『仓库有三十七个轴承的领料单签字是后补的』冲突。
+  facts:
+  - 仓库有三十七个轴承的领料单签字是后补的
+- id: gen_setting_fact_15
+  category: setting
+  narration: 王大姐摆手：轴承的单子一张不缺，都盖了章。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『仓库有三十七个轴承的领料单签字是后补的』冲突。
+  facts:
+  - 仓库有三十七个轴承的领料单签字是后补的
+- id: gen_setting_fact_16
+  category: setting
+  narration: 小马把钱塞回来：借你那五块早还了，别老提。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『小马借了玩家五块钱』冲突。
+  facts:
+  - 小马借了玩家五块钱
+- id: gen_setting_fact_17
+  category: setting
+  narration: 你摊手：我从没借过钱给小马。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『小马借了玩家五块钱』冲突。
+  facts:
+  - 小马借了玩家五块钱
+- id: gen_setting_fact_18
+  category: setting
+  narration: 赵科长笑道：调令我早签了，就压在传达室。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『赵科长是劳资科科长，卡着调令不签』冲突。
+  facts:
+  - 赵科长是劳资科科长，卡着调令不签
+- id: gen_setting_fact_19
+  category: setting
+  narration: 有人告诉你：赵科长去年就调走了，现在管档案的是老周。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『赵科长是劳资科科长，卡着调令不签』冲突。
+  facts:
+  - 赵科长是劳资科科长，卡着调令不签
+- id: gen_setting_fact_20
+  category: setting
+  narration: 你数了数粮票：细粮票还有三十张，够吃半个月。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『月底细粮票只剩三张』冲突。
+  facts:
+  - 月底细粮票只剩三张
+- id: gen_setting_fact_21
+  category: setting
+  narration: 王大姐说：这个月细粮票早就发完了，一张不剩。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料事实『月底细粮票只剩三张』冲突。
+  facts:
+  - 月底细粮票只剩三张
+- id: gen_setting_affection_22
+  category: setting
+  narration: 小马把脸别过去：『你别跟我说话，咱俩没什么好说的。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料中 小马 好感 65（亲近），叙事却形同陌路。
+  present:
+  - xiao_ma
+  affections:
+    xiao_ma: 65.0
+- id: gen_confab_promise_01
+  category: confab
+  narration: 李主任说：『下个月把你调到机修组，手续我来办。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，李主任 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - li_zhuren
+- id: gen_confab_promise_02
+  category: confab
+  narration: 李主任说：『下个月把你调到机修组，手续我来办。』——这是你后来回想起来的，李主任确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，李主任 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - li_zhuren
+- id: gen_confab_promise_03
+  category: confab
+  narration: 李主任拍板：『年底先进生产者的名额，我给你留一个。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，李主任 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - li_zhuren
+- id: gen_confab_promise_04
+  category: confab
+  narration: 李主任拍板：『年底先进生产者的名额，我给你留一个。』——这是你后来回想起来的，李主任确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，李主任 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - li_zhuren
+- id: gen_confab_promise_05
+  category: confab
+  narration: 王大姐说：『你家的细粮票我替你多领了两份，别声张。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，王大姐 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - wang_dajie
+- id: gen_confab_promise_06
+  category: confab
+  narration: 王大姐说：『你家的细粮票我替你多领了两份，别声张。』——这是你后来回想起来的，王大姐确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，王大姐 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - wang_dajie
+- id: gen_confab_promise_07
+  category: confab
+  narration: 王大姐说：『陈姨那边我去说，保证让你排上号。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，王大姐 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - wang_dajie
+- id: gen_confab_promise_08
+  category: confab
+  narration: 王大姐说：『陈姨那边我去说，保证让你排上号。』——这是你后来回想起来的，王大姐确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，王大姐 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - wang_dajie
+- id: gen_confab_promise_09
+  category: confab
+  narration: 小马说：『那批轴承的事我替你瞒下来了，账我已经改过。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，小马 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - xiao_ma
+- id: gen_confab_promise_10
+  category: confab
+  narration: 小马说：『那批轴承的事我替你瞒下来了，账我已经改过。』——这是你后来回想起来的，小马确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，小马 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - xiao_ma
+- id: gen_confab_promise_11
+  category: confab
+  narration: 小马说：『我先借你二十块，发薪再还我就行。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，小马 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - xiao_ma
+- id: gen_confab_promise_12
+  category: confab
+  narration: 小马说：『我先借你二十块，发薪再还我就行。』——这是你后来回想起来的，小马确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，小马 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - xiao_ma
+- id: gen_confab_promise_13
+  category: confab
+  narration: 陈姨说：『户口的事我替你跑，三天就能办下来。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，陈姨 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - chen_yi
+- id: gen_confab_promise_14
+  category: confab
+  narration: 陈姨说：『户口的事我替你跑，三天就能办下来。』——这是你后来回想起来的，陈姨确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，陈姨 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - chen_yi
+- id: gen_confab_promise_15
+  category: confab
+  narration: 陈姨说：『赵科长的事我已经报上去了，你放心。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，陈姨 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - chen_yi
+- id: gen_confab_promise_16
+  category: confab
+  narration: 陈姨说：『赵科长的事我已经报上去了，你放心。』——这是你后来回想起来的，陈姨确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，陈姨 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - chen_yi
+- id: gen_confab_promise_17
+  category: confab
+  narration: 老孙头说：『后门的钥匙我给你留了一把，夜里进出方便。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，老孙头 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lao_sun
+- id: gen_confab_promise_18
+  category: confab
+  narration: 老孙头说：『后门的钥匙我给你留了一把，夜里进出方便。』——这是你后来回想起来的，老孙头确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，老孙头 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lao_sun
+- id: gen_confab_promise_19
+  category: confab
+  narration: 赵科长说：『调令我给你签了，你明早去传达室拿。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，赵科长 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - zhao_kezhang
+- id: gen_confab_promise_20
+  category: confab
+  narration: 赵科长说：『调令我给你签了，你明早去传达室拿。』——这是你后来回想起来的，赵科长确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，赵科长 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - zhao_kezhang
+- id: gen_ooc_card_01
+  category: ooc
+  narration: 李主任把两条烟塞回你怀里，笑道：『行，这事我收下了，往后好说。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不收礼，也不收烟』——收下烟并以「往后好说」做交换，直接违背。
+  present:
+  - li_zhuren
+- id: gen_ooc_card_02
+  category: ooc
+  narration: 李主任当着检查组的面说：『那批废件是我让小马处理的，跟他没关系。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不替人打掩护』——当众替人顶事，违背。
+  present:
+  - li_zhuren
+- id: gen_ooc_card_03
+  category: ooc
+  narration: 王大姐拉着你的袖子说：『你听说了没有？三号楼那家的闺女……哎哟，我跟你说细点儿。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不传别人家的私事』——主动传邻里私事，违背。
+  present:
+  - wang_dajie
+- id: gen_ooc_card_04
+  category: ooc
+  narration: 王大姐把公家的肥皂往兜里一揣：『反正是公家的，不拿白不拿。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不占公家的便宜』——直接违背。
+  present:
+  - wang_dajie
+- id: gen_ooc_card_05
+  category: ooc
+  narration: 小马从车间窗子里翻出来，怀里揣着一把铜料：『顺手拿的，卖钱咱俩分。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不偷厂里的东西』——直接违背。
+  present:
+  - xiao_ma
+- id: gen_ooc_card_06
+  category: ooc
+  narration: 赵科长把茶缸一放，认认真真道：『这事是我错了，我给你赔个不是，明天就给你补上。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不认错』+ personality『明面上挑不出错』——当众认错道歉，违背。
+  present:
+  - zhao_kezhang
+- id: gen_normal_01
+  category: normal
+  narration: 李主任把图纸摊在机床台面上，用铅笔点了点：『按这个尺寸走，公差别超。』
+  expected: true
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - li_zhuren
+- id: gen_normal_02
+  category: normal
+  narration: 小马把饭盒端过来，蹲在你旁边：『今儿食堂有红烧肉，我给你留了一块。』
+  expected: true
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - xiao_ma
+- id: gen_normal_03
+  category: normal
+  narration: 王大姐在水房门口招手：『你家的粮票我给你捎上来了，在传达室搁着。』
+  expected: true
+  day: 6
+  scene: 家属院·水房
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - wang_dajie
+- id: gen_normal_04
+  category: normal
+  narration: 陈姨把户口本翻开，在表格上划了一行：『常住户，登记过了。』
+  expected: true
+  day: 6
+  scene: 家属院·居委会
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - chen_yi
+- id: gen_normal_05
+  category: normal
+  narration: 老孙头把介绍信推回来：『章没盖，出去也白搭。』
+  expected: true
+  day: 6
+  scene: 红星机械厂·厂门口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - lao_sun
+- id: gen_normal_06
+  category: normal
+  narration: 机床声停下来，二车间的灯一盏盏灭掉，只剩门口那盏。
+  expected: true
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_07
+  category: normal
+  narration: 赵科长从走廊过去，只点了下头，没停脚。
+  expected: true
+  day: 6
+  scene: 红星机械厂·走廊
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - zhao_kezhang
+- id: gen_normal_08
+  category: normal
+  narration: 你把手套摘下来搭在机床上，袖口蹭了一道黑机油。
+  expected: true
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_09
+  category: normal
+  narration: 食堂窗口前排着队，师傅用大勺敲了敲盆沿：『下一个。』
+  expected: true
+  day: 6
+  scene: 红星机械厂·食堂
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+- id: gen_normal_10
+  category: normal
+  narration: 小马蹲在门口抽烟，烟头在夜里一明一暗。
+  expected: true
+  day: 6
+  scene: 家属院·小卖部
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - xiao_ma
+- id: gen_normal_11
+  category: normal
+  narration: 王大姐在楼道口择菜，见你过来，往旁边让了半步。
+  expected: true
+  day: 6
+  scene: 家属院·三号楼
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - wang_dajie
+- id: gen_normal_12
+  category: normal
+  narration: 你在值班簿上签了名，把笔挂回钉子上。
+  expected: true
+  day: 6
+  scene: 红星机械厂·厂门口
+  note: 程序化：与材料一致，应判通过（误报率口径）。
+  present:
+  - lao_sun

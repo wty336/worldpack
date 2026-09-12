@@ -452,3 +452,79 @@ cases:
   importance_range:
   - 1
   - 10
+- id: p2_ledger
+  genre: 年代
+  axis_kind: 物品与装备
+  expect_empty: false
+  existing: []
+  turn: （第 5 日）我替仓库代班，翻出一沓领料单：有三十七个轴承的签字像是后补的。
+  must_recall:
+  - 三十七
+  - 轴承
+  must_not_output: []
+  importance_range:
+  - 6
+  - 10
+- id: p2_post
+  genre: 年代
+  axis_kind: 目标与线索
+  expect_empty: false
+  existing: []
+  turn: （第 3 日）李主任把名单摊开：二车间只有一个见习岗名额，名单上是我和小马。
+  must_recall:
+  - 李主任
+  - 见习岗
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: p2_ticket
+  genre: 年代
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （第 8 日）月底，细粮票只剩三张，食堂师傅说掺点粗粮也能吃。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10
+- id: p2_borrow
+  genre: 年代
+  axis_kind: 承诺与约定
+  expect_empty: false
+  existing: []
+  turn: （第 6 日）小马把钱拍在柜台上，说这个月粮票不够，问我借五块，下月发薪就还。
+  must_recall:
+  - 小马
+  - 五块
+  must_not_output: []
+  importance_range:
+  - 5
+  - 9
+- id: p2_dedup
+  genre: 年代
+  axis_kind: 承诺与约定
+  expect_empty: false
+  existing:
+  - 小马借了玩家五块钱
+  turn: （第 9 日）小马见了我还是提那五块钱，说下月一定还。
+  must_recall:
+  - 小马
+  - 五块
+  must_not_output:
+  - 小马借了玩家五块钱
+  importance_range:
+  - 3
+  - 9
+- id: p2_none
+  genre: 年代
+  axis_kind: 负例
+  expect_empty: true
+  existing: []
+  turn: （日常）车间里机油味很重，我把手套摘下来搭在机床上，袖口蹭了一道黑。
+  must_recall: []
+  must_not_output: []
+  importance_range:
+  - 1
+  - 10

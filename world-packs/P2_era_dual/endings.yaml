@@ -1,0 +1,33 @@
+# 结局规则（年代·机油与粮票）：两条线（信誉线 / 声望线）+ 一条兜底
+endings:
+  - id: ending_credit_line
+    title: 先进生产者
+    when:
+      all:
+        - {stat: {credit: {gte: 60}}}
+        - {flags: {spoke_up: true}}
+    kind: auto
+    text: |
+      年底评先进，名单贴在食堂门口，你在第二行。
+      厂里给你换了间带阳台的宿舍，家属院里却有人背后说你嘴严心硬。
+
+  - id: ending_standing_line
+    title: 院里的一把椅子
+    when:
+      all:
+        - {stat: {standing: {gte: 60}}}
+        - {flags: {neighbor_ok: true}}
+    kind: auto
+    text: |
+      夏天晚上，家属院的人都搬椅子出来乘凉，你那把椅子一直有人给你留着。
+      厂里的调令来了两回，你没签。
+
+  - id: ending_drift
+    title: 调令签了字
+    when:
+      all:
+        - {day: {gte: 16}}
+    kind: auto
+    text: |
+      调令最后你还是签了。走的那天早上，二车间的机床照旧响着，
+      门房老孙头把介绍信递给你，说：到了那边，话少说点。

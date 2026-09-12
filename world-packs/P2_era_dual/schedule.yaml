@@ -1,0 +1,66 @@
+# 数值与日程定义（年代包：信誉 / 声望 **双轨** + 现金；两轨常此消彼长）
+day_action_points: 2
+
+stats:
+  credit:   {label: 信誉, min: 0, max: 100, initial: 20}
+  standing: {label: 声望, min: 0, max: 100, initial: 20}
+  money:    {label: 现金, min: 0, max: 9999, initial: 120}
+
+affections:
+  li_zhuren:    {label: 李主任, min: 0, max: 100, initial: 10}
+  wang_dajie:   {label: 王大姐, min: 0, max: 100, initial: 15}
+  xiao_ma:      {label: 小马, min: 0, max: 100, initial: 20}
+  chen_yi:      {label: 陈姨, min: 0, max: 100, initial: 10}
+  lao_sun:      {label: 老孙头, min: 0, max: 100, initial: 5}
+  zhao_kezhang: {label: 赵科长, min: -50, max: 50, initial: -15}
+
+flags:
+  first_shift_done: false
+  got_post: false
+  found_ledger: false
+  spoke_up: false
+  neighbor_ok: false
+  decided: false
+
+actions:
+  - id: overtime
+    label: 留下加班
+    cost: 1
+    check: {stat: credit, difficulty: 15, margin: 10}
+    effects:
+      stats: {credit: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
+    scene: 红星机械厂·二车间
+    present: [li_zhuren]
+  - id: coal_run
+    label: 帮王大姐拉煤球
+    cost: 1
+    effects:
+      stats: {standing: {base: 4}}
+      affections: {wang_dajie: 3}
+    scene: 家属院·煤棚
+    present: [wang_dajie]
+  - id: drink_with_ma
+    label: 和小马喝一杯
+    cost: 1
+    effects:
+      affections: {xiao_ma: 3}
+      stats: {standing: {base: 2}, credit: {base: -1}}
+    scene: 家属院·小卖部
+    present: [xiao_ma]
+  - id: visit_chen
+    label: 去居委会坐坐
+    cost: 1
+    effects:
+      affections: {chen_yi: 3}
+      stats: {standing: {base: 2}}
+    scene: 家属院·居委会
+    present: [chen_yi]
+  - id: gate_duty
+    label: 替老孙头看会儿门
+    cost: 1
+    requires: {flags: {first_shift_done: true}}
+    effects:
+      affections: {lao_sun: 4}
+      stats: {credit: {base: 2}}
+    scene: 红星机械厂·厂门口
+    present: [lao_sun]
