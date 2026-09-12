@@ -25,7 +25,7 @@
 | 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 2 处（`-k material` 过滤器；好感覆写静默跳过 → 坏标签） |
 | 4 演绎器 + 反向校验 | ✅ 完成 | 见 Task 4 执行记录 | 修正 1 处（自然化指令对 confab 原稿是反的） |
 | 5 rubric 评委四模式 | ✅ 完成 | 见 Task 5 执行记录 | 修正 1 处（`-k` 过滤器；顺带审计了全部 Task 的过滤器） |
-| 6 样本构建三分支 + 拒绝采样 | ⬜ 待做 | — | — |
+| 6 样本构建三分支 + 拒绝采样 | ✅ 完成 | 见 Task 6 执行记录 | 无计划缺陷（该 Task 的 `-k` 过滤器已审计为准确） |
 | 7 质量门 + 门禁接线 + 人读清单 | ⬜ 待做 | — | — |
 | 8 配额/去重/出库 CLI | ⬜ 待做 | — | 出库摘要须走 `file_digest`（见下） |
 | 9 轨道 2 批跑 + 定 X | ⬜ 待做 | — | — |
@@ -44,7 +44,7 @@
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
-`evalmeta` 换行守卫 **1** = **381 passed**。
+Task 6 守卫 **9** + `evalmeta` 换行守卫 **1** = **390 passed**。
 
 ---
 
@@ -1579,7 +1579,7 @@ git commit -m "feat(factory): rubric 评委四模式与探针改坏/检出口径
 - Create: `scripts/scenario_factory/assemble.py`
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
@@ -1700,12 +1700,12 @@ def test_compress_short_input_tier_stays_single_under_long():
     assert r.sample["candidates"] == 1 and r.sample["long_input"] is False
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k "build_ or compress"`
 Expected: FAIL（`ModuleNotFoundError`）
 
-- [ ] **Step 3: 实现 assemble.py（样本构建部分）**
+- [x] **Step 3: 实现 assemble.py（样本构建部分）**
 
 ```python
 """数据集装配（spec §9.1）：样本构建三分支 + 质量门/门禁/配额/去重/出库。
@@ -1865,17 +1865,37 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
     })
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k "build_ or compress"`
 Expected: 9 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/scenario_factory/assemble.py tests/test_scenario_factory.py
 git commit -m "feat(factory): 样本构建三分支与 compress 拒绝采样三档（Task 6）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成**
+>
+> - Step 2 确认失败 ✓：`ModuleNotFoundError: No module named 'scripts.scenario_factory.assemble'`
+> - Step 4 确认通过 ✓：`-k "build_ or compress"` **9 passed**（该过滤器已审计为准确）；
+>   整文件 **47 passed**；全量 381 → **390 passed**
+> - 落地：新增 `scripts/scenario_factory/assemble.py`（`extract_messages` / `compress_messages` /
+>   三分支 `build_*_sample` / 程序先杀三项 / 三档拒绝采样）
+> - **本 Task 无计划缺陷** —— 前几轮已把过滤器与模板问题清掉，这次一次跑通
+>
+> **功能性核验**（三个分支的真实产物，确认对齐生产）：
+>
+> | 分支 | 产物要点 |
+> | --- | --- |
+> | extract 正例 | `input = '已有事实：\n\n<回合内容>\n…\n</回合内容>'`；labels 取自卡面 4 条；`expect_empty=False` |
+> | extract 负例（去重纪律） | `existing=['玩家答应把沈砚转交给灰雀号']`；`labels=[]`；`expect_empty=True` |
+> | compress（long 档） | system 段 = `COMPRESS_SYSTEM`；`candidates=4`、`long_input=True`、`killed=[]`；preserve_points 2 条 |
+>
+> 两侧 system 段实测都为引擎提示词（`EXTRACT_SYSTEM` / `COMPRESS_SYSTEM`）—— **不再是自造提示词**，
+> spec §4.2「输入模板逐字对齐生产」落地。
 
 ---
 

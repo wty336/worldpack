@@ -9,11 +9,29 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
+from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import load_worldpack
+from scripts.rubric_judge import (
+    make_probe,
+    pairwise,
+    probe_detected,
+    quality_sample,
+    score,
+    select,
+)
+from scripts.scenario_factory.assemble import (
+    build_compress_sample,
+    build_extract_sample,
+    build_judge_sample,
+    compress_messages,
+    extract_messages,
+)
 from scripts.scenario_factory.cards import (
     GENRE_EVAL_ONLY,
     NPC_BY_PACK,
     PACK_BY_GENRE,
+    PreservePoint,
     ScenarioCard,
     generate_card,
     layer_of,
@@ -33,7 +51,6 @@ from scripts.rubric_judge import (
     select,
 )
 from scripts.scenario_factory.cards import PreservePoint
-
 
 def _judge_card(**over):
     base = {
@@ -511,3 +528,115 @@ def test_quality_sample_flags_template_like_output():
     llm = StubLLM(['{"自然度": 0}', '{"自然度": 2}'])
     rows = [{"id": "a", "input": "填空式模板文本"}, {"id": "b", "input": "自然叙事"}]
     assert quality_sample(llm, rows, rate=1.0, seed=1) == ["a"]
+
+
+# --- Task 6：样本构建三分支 + compress 拒绝采样 ------------------------------
+
+
+def _all_anchors(card):
+    return [a for f in card.facts for a in f.anchors]
+
+
+def test_build_extract_sample_labels_come_from_card():
+    card = generate_card(10231, 6, "extract")   # 正例位
+    llm = StubLLM(["叙事：" + "，".join(_all_anchors(card)) + "。"])
+    r = build_extract_sample(llm, card)
+    assert r.sample and r.dropped_reason is None
+    assert r.sample["genre"] == card.axes.genre
+    assert r.sample["expect_empty"] is False
+    assert [x["text"] for x in r.sample["labels"]] == [f.text for f in card.facts]
+
+
+def test_build_judge_sample_setting():
+    card = ScenarioCard(**_judge_card())  # setting 卡：听雨 → 听风
+    llm = StubLLM(["沈青秋收剑笑道：这柄听风倒是趁手。"])  # 替身词在、原词不在
+    r = build_judge_sample(llm, card)
+    assert r.sample and r.sample["expect"] == "问题类型：设定矛盾"
+    assert "听雨" in r.sample["material"]      # 材料含原事实
+    assert "听风" in r.sample["narration"]     # 叙事含改写值
+
+
+def test_build_extract_input_matches_production_template():
+    """spec §4.2 硬纪律：输入模板逐字对齐生产（`game.py:_extract_facts`）。"""
+    card = generate_card(10231, 6, "extract")
+    llm = StubLLM(["叙事：" + "，".join(_all_anchors(card)) + "。"])
+    got = build_extract_sample(llm, card).sample["input"]
+    assert got.startswith("已有事实：") and "<回合内容>" in got and got.endswith("</回合内容>")
+    # 与生产同源：system 段必须是引擎的 EXTRACT_SYSTEM（不得另写提示词）
+    msgs = extract_messages(card, "回合文本")
+    assert msgs[0] == {"role": "system", "content": EXTRACT_SYSTEM}
+    assert msgs[1]["content"] == "已有事实：\n\n<回合内容>\n回合文本\n</回合内容>"
+
+
+def test_build_extract_dedup_discipline_negative_with_existing():
+    """去重纪律样本：带 existing、标签为空（spec §4.2.1 负例硬要求）。"""
+    card = generate_card(10231, 7, "extract")   # seq%10==7 → 近义改写型
+    assert card.existing and not card.facts
+    r = build_extract_sample(StubLLM(["玩家又把旧事重提了一遍。"]), card)
+    assert r.sample["labels"] == [] and r.sample["expect_empty"] is True
+    assert r.sample["input"].startswith(f"已有事实：{card.existing[0]}")
+
+
+def _compress_card(tokens=20000):
+    return next(c for s in range(60)
+                if (c := generate_card(10231, s, "compress")
+                   ).history_spec.target_tokens == tokens)
+
+
+def _history_and_summary(card):
+    anchors = _all_anchors(card)
+    history = "长历史：" + "，".join(anchors) + "。" + "流水账。" * 50
+    keep = [a for p in card.preserve_points for a in p.anchors]
+    summary = "要点摘要：" + "，".join(keep) + "。"
+    return history, summary
+
+
+def test_compress_input_matches_production_template():
+    """spec §4.2 硬纪律：compress 输入模板逐字对齐生产（`game.py:_compress_history`）。"""
+    card = _compress_card()
+    history, summary = _history_and_summary(card)
+    build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    msgs = compress_messages(card, "新增历史文本")
+    assert msgs[0] == {"role": "system",
+                       "content": COMPRESS_SYSTEM.format(target=SUMMARY_MAX_TARGET)}
+    assert msgs[1]["content"] == (
+        f"<旧摘要>\n{card.old_summary}\n</旧摘要>\n\n<新增历史>\n新增历史文本\n</新增历史>")
+
+
+def test_compress_off_single_candidate_no_select():
+    card = _compress_card()
+    history, summary = _history_and_summary(card)
+    llm = StubLLM([history, summary])  # 1 次历史 + 1 次摘要；off 档不选优
+    r = build_compress_sample(llm, card, sampling="off")
+    assert r.sample and r.sample["candidates"] == 1 and len(llm.calls) == 2
+    assert r.sample["long_input"] is True  # 20000 ≥ 8000
+
+
+def test_compress_long_tier_runs_n4_and_select():
+    card = _compress_card()
+    history, summary = _history_and_summary(card)
+    scores = ['{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'] * 4
+    llm = StubLLM([history, summary, summary, summary, summary] + scores)
+    r = build_compress_sample(llm, card, sampling="long")
+    assert r.sample["candidates"] == 4 and len(llm.calls) == 1 + 4 + 4
+
+
+def test_compress_program_kill_fabrication_and_missing_point():
+    card = _compress_card()
+    history, good = _history_and_summary(card)
+    bad = "摘要提到「北冥真人」。"  # 历史外「」词 → 虚构杀
+    llm = StubLLM([history, bad, bad, bad, bad])
+    r = build_compress_sample(llm, card, sampling="long")
+    assert r.sample is None and "虚构" in r.dropped_reason
+    no_point = "只写了些无关紧要的话。"
+    llm2 = StubLLM([history, no_point])
+    r2 = build_compress_sample(llm2, card, sampling="off")
+    assert r2.sample is None and "缺要点" in r2.dropped_reason
+
+
+def test_compress_short_input_tier_stays_single_under_long():
+    card = _compress_card(tokens=600)
+    history, summary = _history_and_summary(card)
+    llm = StubLLM([history, summary])
+    r = build_compress_sample(llm, card, sampling="long")  # 600 < 阈值 → 仍 n=1
+    assert r.sample["candidates"] == 1 and r.sample["long_input"] is False
