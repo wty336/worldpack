@@ -13,6 +13,7 @@ from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
 from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import load_worldpack
 from scripts.rubric_judge import (
+    RUBRIC_SYSTEM,
     budget_policy,
     make_probe,
     naturalness,
@@ -912,8 +913,14 @@ def test_make_probe_delete_point_removes_every_mention():
         make_probe("完全无关的一段摘要。", pts, kind="删要点", rng=random.Random(1))
 
 
-def test_run_eval_excludes_invalid_probes_from_detection_rate():
-    """探针构造失败 → 剔出统计并留痕，**不得**记成"判官漏检"（否则尺子把自己的毛病算给评委）。"""
+def test_run_eval_excludes_invalid_probes_from_detection_rate(monkeypatch):
+    """探针构造失败 → 剔出统计并留痕，**不得**记成"判官漏检"（否则尺子把自己的毛病算给评委）。
+
+    只有「删要点」会构造失败（另外两个坏法永远改得出），故用 monkeypatch 把它钉成唯一坏法。
+    """
+    from scripts import rubric_judge as _rj
+
+    monkeypatch.setattr(_rj, "_probe_kinds", lambda n, *, rng: ["删要点"] * n)
     rows = _compress_rows(10)
     good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
     # 让被抽中的探针样本的 output 不含任何 anchor → make_probe 抛错
@@ -922,8 +929,28 @@ def test_run_eval_excludes_invalid_probes_from_detection_rate():
     llm = StubLLM([good] * 10)
     rep = run_eval(llm, rows, probe_rate=0.2, seed=1)
     assert rep["probes"] == [] and len(rep["probes_invalid"]) == 2
-    assert rep["probe_detection"] is None, "无有效探针时检出率是**未知**，不是 1.0"
-    assert rep["batch_valid"] is False and "无有效探针" in rep["validity_note"]
+    assert rep["probe_detection"] is None, "无显性探针时检出率是**未知**，不是 1.0"
+    assert rep["batch_valid"] is False and "无显性探针" in rep["validity_note"]
+
+
+def test_probe_gate_only_counts_explicit_grade():
+    """发现② 的真根因：`保真` 维按 spec §7.2 只管"多出来的坏东西"，**覆盖**归规则管
+    （"规则管要点在不在"）——而「删要点」探针考的是覆盖 → 要求 rubric 判 0 分是**要它判不该判的东西**
+    （实测三批 0/3 命中）。spec §11 风险表处方："探针坏法分级，按级分别要求检出率"。
+    本守卫钉住：≥90% 门只计**显性级**，覆盖级另列诊断、不影响 batch_valid。"""
+    rows = _compress_rows(10)
+    idx = probe_positions(10, 0.2, 1)          # == [1, 2]
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    zero = '{"保真": 0, "简洁": 0, "结构": 0, "流畅": 0}'
+    # 两个探针位都给 0 分（= 都"检出"）；再构造一个只抽到覆盖级探针的批次
+    rep = run_eval(StubLLM([zero if i in set(idx) else good for i in range(10)]),
+                   rows, probe_rate=0.2, seed=1)
+    kinds = {p["kind"] for p in rep["probes"]}
+    assert rep["probe_grades"]["explicit"] + rep["probe_grades"]["coverage"] == 2
+    assert set(rep["probe_grades"]) == {"explicit", "coverage"}
+    if "删要点" in kinds:                        # 覆盖级单独计，不进门的分子
+        assert rep["probe_coverage_detection"] is not None
+    assert rep["batch_valid"] is True, "显性级全检出 → 批有效（覆盖级不参与门）"
 
 
 def test_run_eval_reports_dim_saturation():
@@ -940,6 +967,42 @@ def test_run_eval_reports_dim_saturation():
     rep2 = run_eval(mixed, rows, probe_rate=0.25, seed=1)
     assert rep2["dim_stats"]["保真"]["saturated"] is False
     assert rep2["dim_stats"]["保真"]["1"] == 1 and rep2["dim_stats"]["保真"]["2"] == 2
+
+
+def test_make_probe_delete_point_leaves_no_trace():
+    """发现② 第三次加固：删要点必须**删到痕迹全无**（要点文本的任何 4 字串都不再出现）。
+
+    实测反例：要点"欠密码本五十两，约定中秋前归还"，只删 anchor（五十两/中秋）后，
+    另一条要点仍写着"密码本债主…持续追讨"→ 判官给保真 1（丢了数字）是**合理**的，探针却期望 0 → 必漏检。
+    """
+    pts = [PreservePoint(text="玩家欠密码本五十两，约定中秋前归还", anchors=["五十两", "中秋"])]
+    summary = ("# 剧情摘要\n## 人物关系\n- **密码本（债主）**：与主角存在债务关系，持续追讨，关系紧张。\n"
+               "## 关键约定\n- **债务**：主角欠密码本五十两，约定中秋前必须还清。\n"
+               "## 目标\n- 查明断刃崖下落。\n")
+    bad = make_probe(summary, pts, kind="删要点", rng=random.Random(1))
+    assert "五十两" not in bad and "中秋" not in bad
+    marks = {pts[0].text[i:i + 4] for i in range(len(pts[0].text) - 3)}
+    assert not any(m in bad for m in marks), "要点文本的 4 字串必须一并抹掉"
+    assert "断刃崖" in bad, "其他要点不该被连坐删掉"
+
+
+def test_make_probe_structure_corruption_strips_markdown_skeleton():
+    """发现②③ 耦合：出库摘要是 Markdown 分节要点表，而干净材料上 `结构` 维 **26/26 全满分**（饱和）
+    → 探针必须给到"支离破碎"才可能被判 0。故"打乱结构"连骨架一起去掉（标记剥除 + 顺序打散）。"""
+    summary = ("# 剧情摘要\n\n## 人物关系\n- 甲与乙关系紧张。\n"
+               "## 关键约定\n- 玩家欠丙五十两，约定中秋前归还。\n## 目标\n- 查明断刃崖下落。\n")
+    pts = [PreservePoint(text="玩家欠丙五十两，约定中秋前归还", anchors=["五十两", "中秋"])]
+    bad = make_probe(summary, pts, kind="打乱结构", rng=random.Random(7))
+    assert bad != summary
+    assert not any(mark in bad for mark in ("#", "*", "- ")), "Markdown 骨架应剥除"
+    assert bad != "".join(re.sub(r"[#*>\-\s]+", "", s) for s in
+                          [x for x in re.split(r"(?<=[。！？；\n])", summary) if x]), "顺序应被打散"
+
+
+def test_rubric_fidelity_zero_bucket_is_existence_based():
+    """发现② 的判据侧（文本层钉住，**行为**由轨道 2 真机验收）：0 分档必须是**存在性**判据
+    （「有要点在摘要中整体缺失」），否则判官会对"整条要点被删"给 1 分（实测如此）→ 探针注定漏检。"""
+    assert "整体缺失" in RUBRIC_SYSTEM
 
 
 def test_report_carries_provenance_fingerprints():

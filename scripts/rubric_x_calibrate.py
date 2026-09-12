@@ -52,8 +52,36 @@ def history_of(sample: dict) -> str:
     return m.group(1)
 
 
-def calibrate(samples: list[dict], report: dict) -> dict:
+def track1_points(sample: dict) -> float | None:
+    """**要点口径**的规则保全率（工厂材料的默认尺子）：命中的必保全要点锚点 / 全部锚点。
+
+    为什么不用 `phase1_probe.eval_compress` 的实体口径：那是给**引擎真实轨迹**用的启发式
+    （抽历史里出现的数字、「」引号词、约定类关键词），而它在**合成材料**上抽到的是一堆附带数字
+    （实测 n_entities 只有 1~18），摘要根本没义务复述它们 → 保全率成片 0.000、
+    `diff = |0 − 1| = 100pp`，X 算出满格 100pp（**废值**）。
+    spec §7.2 说得很清楚——"**规则管要点在不在**，rubric 管多出来的坏东西"——
+    工厂样本自带**显式** `preserve_points`，故工厂材料上轨道 1 就该按要点锚点算。
+    """
+    points = sample.get("preserve_points") or []
+    anchors = [a for p in points for a in (p.get("anchors") or [])]
+    if not anchors:
+        return None
+    text = sample.get("output", "")
+    return round(sum(1 for a in anchors if a in text) / len(anchors), 3)
+
+
+def track1_entities(sample: dict) -> float | None:
+    """**实体口径**（`phase1_probe.eval_compress` 同款）：引擎真实轨迹用；合成材料上会失真（见上）。"""
+    return eval_compress({"new_text": history_of(sample), "npc_names": []},
+                         sample.get("output", ""))["preserve_rate"]
+
+
+TRACK1_METRICS = {"points": track1_points, "entities": track1_entities}
+
+
+def calibrate(samples: list[dict], report: dict, *, metric: str = "points") -> dict:
     """逐样本对齐两条轨道 → diff 分布 → X。对不齐/无实体一律**报出来**，不静默补零。"""
+    t1_of = TRACK1_METRICS[metric]
     scores = {r["id"]: r for r in report.get("scores", [])}
     rows, skipped_no_entities, probes_excluded = [], [], []
     for s in samples:
@@ -61,16 +89,17 @@ def calibrate(samples: list[dict], report: dict) -> dict:
         if sc is None:                      # 探针位样本的成绩不进干净分布（run_eval 的设计）
             probes_excluded.append(s["id"])
             continue
-        t1 = eval_compress({"new_text": history_of(s), "npc_names": []}, s.get("output", ""))
-        if t1["preserve_rate"] is None:     # 抽不出关键串 = 未知，不是 0（"空 = 未知 ≠ 通过"）
+        t1_rate = t1_of(s)
+        if t1_rate is None:                 # 抽不出关键串 = 未知，不是 0（"空 = 未知 ≠ 通过"）
             skipped_no_entities.append(s["id"])
             continue
         t2 = int(sc[FIDELITY_DIM]) / 2      # 轨道 2 折到 0~1
-        rows.append({"id": s["id"], "track1": t1["preserve_rate"], "track2": t2,
-                     "n_entities": t1["n_entities"], "long_input": bool(s.get("long_input")),
-                     "diff": abs(t1["preserve_rate"] - t2)})
+        rows.append({"id": s["id"], "track1": t1_rate, "track2": t2,
+                     "long_input": bool(s.get("long_input")),
+                     "diff": abs(t1_rate - t2)})
     diffs = [r["diff"] for r in rows]
     return {
+        "metric": metric,
         "n": len(rows),
         "rows": rows,
         "p50": p95_sorted(diffs, 0.50) if diffs else None,
@@ -108,11 +137,11 @@ def format_md(cal: dict, *, samples_path: str, report_path: str, report_meta: di
         "",
         "## 逐样本对照",
         "",
-        "| id | 轨道1 保全率 | 轨道2 保真/2 | n 实体 | 长输入 | diff(pp) |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| id | 轨道1 保全率 | 轨道2 保真/2 | 长输入 | diff(pp) |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for r in sorted(cal["rows"], key=lambda r: -r["diff"]):
-        out.append(f"| `{r['id']}` | {r['track1']:.3f} | {r['track2']:.2f} | {r['n_entities']} | "
+        out.append(f"| `{r['id']}` | {r['track1']:.3f} | {r['track2']:.2f} | "
                    f"{'是' if r['long_input'] else '否'} | {r['diff'] * 100:.1f} |")
     if cal["skipped_no_entities"]:
         out += ["", f"> 跳过（抽不出关键串，**未知不是 0**）：{', '.join(cal['skipped_no_entities'])}"]
@@ -134,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="决策 13 定 X（轨道 1 × 轨道 2 对齐）")
     ap.add_argument("--samples", required=True, help="compress 出库 jsonl")
     ap.add_argument("--report", required=True, help="轨道 2 报告 json")
+    ap.add_argument("--track1", default="points", choices=sorted(TRACK1_METRICS),
+                    help="轨道 1 口径：points=必保全要点锚点（工厂材料默认）/ entities=引擎启发式实体")
     ap.add_argument("--out", default=None, help="Markdown 报告输出路径")
     args = ap.parse_args(argv)
 
@@ -143,11 +174,19 @@ def main(argv: list[str] | None = None) -> int:
     if not report.get("batch_valid"):
         print("[✗] 轨道 2 批无效（探针检出率不达标）——按 spec：批作废则先修评委提示词，不定 X")
         return 1
-    cal = calibrate(samples, report)
+    cal = calibrate(samples, report, metric=args.track1)
     if not cal["n"]:
         print("[✗] 没有对齐上的样本，无法定 X")
         return 1
+    other = "entities" if args.track1 == "points" else "points"
+    alt = calibrate(samples, report, metric=other)
     md = format_md(cal, samples_path=args.samples, report_path=args.report, report_meta=report)
+    md += (f"\n\n## 另一种轨道 1 口径（**仅诊断，不采纳**）\n\n"
+           f"- `{alt['metric']}`：P95 = {alt['p95'] * 100:.1f}pp → X = {alt['x'] * 100:.0f}pp"
+           f"（对齐 {alt['n']} 条，跳过 {len(alt['skipped_no_entities'])} 条）\n"
+           "- 口径说明见 `track1_points` / `track1_entities` 的 docstring：实体口径是给**引擎真实轨迹**"
+           "用的启发式，在**合成材料**上抽到的是一堆摘要没义务复述的附带数字 → 保全率成片 0.000、"
+           "diff 满格 → X 算出 100pp 这种**废值**（本报告第一版即此，留档以证口径必须对齐数据源）")
     print(md)
     if args.out:
         Path(args.out).write_text(md + "\n", encoding="utf-8")

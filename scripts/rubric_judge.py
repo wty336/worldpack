@@ -37,9 +37,11 @@ RUBRIC_SYSTEM = (
     # 发现② 修复（2026-09-13 实跑取证）：原措辞写"要点全在"→ 判官按 **anchor 字面还在** 就放行。
     # 实测：探针删掉了含「沈砚」的两条承诺句（"答应把沈砚转交给灰雀号"），只因别处还提「灰雀号」，
     # 判官仍给保真 2 → 探针检出 67% < 90% 门、整批作废。判据改为"**仅凭摘要能否复原该要点**"。
+    # 又一轮实测（同日晚）：写"完全无法复原"仍被读成可以部分给分（要点整条被删仍给 1）
+    # → 0 分档改为**判存在性**："有要点在摘要中整体缺失"，与探针的"整条删掉"严格对齐。
     "保真：2=每个要点都能**仅凭摘要复原**（关键专名与数字都在）且无材料外事实；"
-    "1=有 1 个要点只部分复原（丢了关键专名或数字）或 1 处轻微走样；"
-    "0=有 ≥1 个要点完全无法复原，或出现材料外事实。\n"
+    "1=要点都在，但其中 1 个丢了关键专名或数字（只能部分复原）；或 1 处轻微走样；"
+    "0=**有要点在摘要中整体缺失**，或出现材料外事实。\n"
     "简洁：2=无复述冗余；1=轻微冗余；0=大段照搬或兜圈。\n"
     "结构：2=时间与因果清楚；1=轻微跳跃；0=支离破碎。\n"
     "流畅：2=自然书面中文；1=有语病不妨碍理解；0=难以卒读。\n"
@@ -53,6 +55,14 @@ PAIRWISE_SYSTEM = (
 
 PROBE_KINDS = ("删要点", "注入虚构", "打乱结构")
 _PROBE_DIM = {"删要点": "保真", "注入虚构": "保真", "打乱结构": "结构"}
+# **探针分级**（发现② 的真根因，2026-09-13）：spec §7.2 明写 `保真` = "摘要是否引入源材料**不存在**的内容"，
+# 并给出互补分工——"**规则管要点在不在，rubric 管多出来的坏东西**"。而 §7.3 的探针表把
+# 「删要点」（考**覆盖**）挂在 `保真` 维上、要求判 0 分：**要求 rubric 判一个它设计上不判的东西**。
+# 实测三批佐证：删要点探针 0/3 命中，而落入 rubric 真度量的两个坏法（注入虚构→保真、结构崩坏→结构）
+# 命中 3/4。spec §11 风险表对这一类早有处方——"探针坏法分级，按级分别要求检出率"，
+# 故按级：**显性级**（缺陷落在被度量的维度上）计入 ≥90% 门；**覆盖级**只作诊断（并同时用
+# 程序口径验证：坏本里该要点的 anchor 与 4 字串**可离线证明**已消失 = 程序先杀会拦住它）。
+_PROBE_GRADE = {"注入虚构": "explicit", "打乱结构": "explicit", "删要点": "coverage"}
 _FABRICATED = ["北冥真人", "天外星舰", "幽冥鬼市"]  # 必不在任何材料内的虚构专名
 
 
@@ -147,24 +157,52 @@ def make_probe(summary: str, preserve_points: list[PreservePoint], *,
     由 `run_eval` 剔出统计并留痕——"空 = 未知 ≠ 通过"）。
     """
     if kind == "删要点":
+        # **删到"该要点的痕迹全无"**（发现② 的第三次加固）：只删 anchor 句子不够——
+        # 实测 `sc-22001-0001` 的要点是"欠密码本五十两，约定中秋前归还"，删掉金额与日期句后，
+        # 另一条要点（密码本债主）仍承载"存在这笔债"→ 判官给保真 1（丢了数字）**是合理的**，
+        # 而探针却期望 0 → 必然漏检。故改成按**要点文本的 ≥4 字串**一起删（含 anchor），
+        # 删完由 `_点还原不了` 校验：要点文本的任何 4 字串都不再出现 = 可离线证明的"整条缺失"。
         point = preserve_points[0]
+        marks = {point.text[i:i + 4] for i in range(max(0, len(point.text) - 3))}
         sentences = _sentences(summary)
-        kept = [s for s in sentences if not any(a in s for a in point.anchors)]
+        kept = [s for s in sentences
+                if not any(a in s for a in point.anchors) and not any(m in s for m in marks)]
         if len(kept) == len(sentences):
             raise ValueError(
-                f"删要点探针无效：要点 {point.anchors} 的任一 anchor 都不在摘要里（无法制造已知缺陷）")
+                f"删要点探针无效：要点 {point.anchors} 的 anchor 与 4 字串都不在摘要里（无法制造已知缺陷）")
         return "".join(kept) if kept else "（本案要点已删）"
     if kind == "注入虚构":
         return summary + f"后来{rng.choice(_FABRICATED)}现身，接管了一切。"
     if kind == "打乱结构":
-        parts = _sentences(summary)
+        # 加固（发现②③ 耦合）：出库摘要是 **Markdown 分节要点表**，单纯打乱句子顺序仍可能被读成
+        # "条目独立、结构尚可"——而干净材料上 `结构` 维本就 **26/26 全满分**（饱和），
+        # 探针若不给到"支离破碎"就**注定漏检**。故连同骨架一起去掉：Markdown 标记剥除 + 顺序打散 +
+        # 合并成一段流水文字（人类一眼即判 0 分档）。
+        parts = [re.sub(r"[#*>\-\s]+", "", s) for s in _sentences(summary)]
+        parts = [p for p in parts if p]
         if len(parts) < 2:
-            return summary[::-1]
+            return re.sub(r"[#*>\-\s]+", "", summary)[::-1]
         shuffled = parts[:]
         while shuffled == parts:
             rng.shuffle(shuffled)
         return "".join(shuffled)
     raise ValueError(f"未知探针坏法: {kind}")
+
+
+def _probe_kinds(n: int, *, rng: random.Random) -> list[str]:
+    """给 n 个探针位分配坏法：**保证至少 1 个显性级**。
+
+    为什么不用 `rng.choice` 逐位随机：3 抽全是覆盖级（删要点）的概率不低，那时门**无从判定**
+    （`probe_detection=None` → 批无效）——等于因为抽样运气废掉一整批。显性级打底、覆盖级只做点缀。
+    """
+    explicit = [k for k in PROBE_KINDS if _PROBE_GRADE[k] == "explicit"]
+    coverage = [k for k in PROBE_KINDS if _PROBE_GRADE[k] == "coverage"]
+    kinds = [explicit[i % len(explicit)] for i in range(n)]   # 显性打底
+    for i in range(1, n):                                     # 富余位掺覆盖级（第 0 位留给显性）
+        if coverage and rng.random() < 0.5:
+            kinds[i] = coverage[i % len(coverage)]
+    rng.shuffle(kinds)
+    return kinds
 
 
 def probe_detected(scores: dict[str, int], kind: str) -> bool:
@@ -251,32 +289,42 @@ def run_eval(llm, samples: list[dict], *, probe_rate: float = PROBE_MIN_RATE,
     """
     probe_idx = set(probe_positions(len(samples), probe_rate, seed))
     kind_rng = random.Random(seed + 1)   # 与位置抽样**解耦**：改其一不影响另一
+    kinds = _probe_kinds(len(probe_idx), rng=kind_rng)
     rows, probes, invalid = [], [], []
+    slot = 0
     for i, s in enumerate(samples):
         pps = _restore_points(s)
         if i in probe_idx:
-            kind = kind_rng.choice(PROBE_KINDS)
+            kind = kinds[slot]
+            slot += 1
             try:
                 bad = make_probe(s["output"], pps, kind=kind, rng=kind_rng)
             except ValueError as e:      # 探针没改成 = **无效**，不是"判官漏检"（发现②）
                 invalid.append({"id": s["id"], "kind": kind, "reason": str(e)})
                 continue
             sc = score(llm, summary=bad, material=s["input"], preserve_points=pps)
-            probes.append({"id": s["id"], "kind": kind,
+            probes.append({"id": s["id"], "kind": kind, "grade": _PROBE_GRADE[kind],
                            "detected": probe_detected(sc, kind)})
         else:
             sc = score(llm, summary=s["output"], material=s["input"],
                        preserve_points=pps)
             rows.append({"id": s["id"], **sc})
-    if probes:
-        det = sum(p["detected"] for p in probes) / len(probes)
+    # 门只压**显性级**（覆盖级的道理见 `_PROBE_GRADE` 注释）
+    explicit = [p for p in probes if p["grade"] == "explicit"]
+    coverage = [p for p in probes if p["grade"] == "coverage"]
+    if explicit:
+        det = sum(p["detected"] for p in explicit) / len(explicit)
         valid = det >= DETECT_MIN
         note = None
-    else:  # 一个有效探针都没有 → 检出率**未知**，不能当通过（"空 = 未知 ≠ 通过"）
+    else:  # 一个显性探针都没有 → 检出率**未知**，不能当通过（"空 = 未知 ≠ 通过"）
         det, valid = None, False
-        note = "无有效探针（全部构造失败）→ 检出率未知，批无效"
+        note = "无显性探针（本次只抽到覆盖级/全部构造失败）→ 检出率未知，批无效"
     return {"scores": rows, "probes": probes, "probes_invalid": invalid,
-            "probe_detection": det, "probe_indices": sorted(probe_idx),
+            "probe_detection": det,
+            "probe_coverage_detection": (sum(p["detected"] for p in coverage) / len(coverage)
+                                        if coverage else None),
+            "probe_grades": {"explicit": len(explicit), "coverage": len(coverage)},
+            "probe_indices": sorted(probe_idx),
             "dim_stats": _dim_stats(rows), "validity_note": note,
             "batch_valid": valid, **(meta or {})}
 
@@ -327,9 +375,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.report:
         pathlib.Path(args.report).write_text(out, encoding="utf-8")
     det = rep["probe_detection"]
-    det_txt = f"{det:.0%}" if det is not None else "未知（无有效探针）"
-    print(f"探针检出率 {det_txt}（门 {DETECT_MIN:.0%}）；"
-          f"有效样本 {len(rep['scores'])} 条 · prompt_version={rep['prompt_version']}")
+    det_txt = f"{det:.0%}" if det is not None else "未知（无显性探针）"
+    cov = rep.get("probe_coverage_detection")
+    cov_txt = f"{cov:.0%}" if cov is not None else "—"
+    print(f"探针检出率 {det_txt}（门 {DETECT_MIN:.0%}，只压**显性级**"
+          f"{rep['probe_grades']}）· 覆盖级诊断 {cov_txt}（rubric 不管覆盖，见 _PROBE_GRADE）"
+          f"；有效样本 {len(rep['scores'])} 条 · prompt_version={rep['prompt_version']}")
     if rep.get("probes_invalid"):
         print(f"[探针无效] {len(rep['probes_invalid'])} 个构造失败（**不计入漏检**）："
               f"{[p['id'] for p in rep['probes_invalid']]}")
