@@ -42,12 +42,12 @@ def build_material(card: ScenarioCard) -> str:
         raise MaterializeError("judge/compress 卡必须带 pack + material")
     pack = load_pack(card.pack)
     m = card.material
+    _precheck(card, pack)          # 包级前置：错就早抛，不做无用的组装
     state = GameState.from_pack(pack)
     state.day, state.scene = m.day, m.scene
     state.present_npcs = list(m.present)
     for k, v in m.affections.items():
-        if k in state.affections:
-            state.affections[k] = float(v)
+        state.affections[k] = float(v)   # _precheck 已保证键存在，不再静默跳过
     idx = m.facts if m.facts is not None else [
         i for i, f in enumerate(card.facts) if f.in_material
     ]
@@ -61,17 +61,40 @@ def build_material(card: ScenarioCard) -> str:
         for k, v in m.memories.items()
     }
     text = ContextBuilder.from_pack(pack).status_text(state, None, recent=m.recent)
-    _check(card, pack, text)
+    _check_text(card, pack, text)
     return text
 
 
-def _check(card: ScenarioCard, pack: WorldPack, text: str) -> None:
+def _precheck(card: ScenarioCard, pack: WorldPack) -> None:
+    """包级前置校验：这些错**无法在材料里表达**，必须早抛 —— 否则静默产出坏标签。
+
+    背景（评审指出、已实测）：旧实现把好感覆写写成 `if k in state.affections:`，
+    而 `state.affections` 只含 `schedule.yaml` 列出的对象（`state.py:103`）——
+    于是"卡要 45、包没有该好感轨"时**静默跳过**，而 `status_text` 用
+    `state.affections.get(npc.id, 0.0)` 渲染在场角色卡的语气档，结果材料会
+    **声明过 45 却按 0 档渲染语气**，同时把该 NPC 从好感行里整体略过
+    —— 材料与卡片意图矛盾 = 坏标签（T2 语气冲突卡的整条通路就是好感档）。
+    """
+    m = card.material
+    for npc_id in m.present:
+        if npc_id not in pack.npcs:
+            raise MaterializeError(f"present 的 NPC 不在包里: {npc_id}")
+        if npc_id not in pack.schedule.affections:
+            raise MaterializeError(
+                f"present 的 NPC 没有好感轨（schedule.affections 未声明）: {npc_id}——"
+                "语气档会按 0.0 兜底、好感行会略过它，材料与卡片意图不符")
+    undeclared = [k for k in m.affections if k not in pack.schedule.affections]
+    if undeclared:
+        raise MaterializeError(
+            f"material.affections 声明了包里没有好感轨的对象: {undeclared}——"
+            "该覆写无法落地，语气档会按 0.0 兜底渲染")
+
+
+def _check_text(card: ScenarioCard, pack: WorldPack, text: str) -> None:
     m = card.material
     if not text.strip():
         raise MaterializeError("材料为空")
     for npc_id in m.present:  # 校验①：在场 NPC 角色卡确落材料
-        if npc_id not in pack.npcs:
-            raise MaterializeError(f"present 的 NPC 不在包里: {npc_id}")
         if pack.npcs[npc_id].name not in text:
             raise MaterializeError(f"在场角色卡未落入材料: {npc_id}")
     for f in card.facts:  # 校验②在位（全部 anchors）/ ③泄漏（任一 anchors 出现即泄漏）

@@ -22,7 +22,7 @@
 | --- | --- | --- | --- |
 | 1 卡 schema + §3.3 校验 | ✅ 完成 | `d0b7195` | 发现并修正 3 处计划缺陷（见 Task 1 执行记录） |
 | 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b`（+ 评审补修，见执行记录） | 共修正 **6 处**计划/实现缺陷（执行 3 + 评审 3） |
-| 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 1 处计划缺陷（`-k material` 过滤器两头不准） |
+| 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 2 处（`-k material` 过滤器；好感覆写静默跳过 → 坏标签） |
 | 4 演绎器 + 反向校验 | ✅ 完成 | 见 Task 4 执行记录 | 修正 1 处（自然化指令对 confab 原稿是反的） |
 | 5 rubric 评委四模式 | ⬜ 待做 | — | — |
 | 6 样本构建三分支 + 拒绝采样 | ⬜ 待做 | — | — |
@@ -43,7 +43,7 @@
 - `aa78893` Task 3 Step 5 由"顺手修 spec"改为"核验 spec 已修订"（spec 修正已先行落地）。
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
-Task 2 守卫 **10** + Task 3 守卫 **5** + Task 4 守卫 **5** + `evalmeta` 换行守卫 **1** = **372 passed**。
+Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + `evalmeta` 换行守卫 **1** = **375 passed**。
 
 ---
 
@@ -768,6 +768,42 @@ def test_present_npc_must_be_in_pack():
     card.material.present = ["ghost_npc"]
     with pytest.raises(MaterializeError, match="不在包里"):
         build_material(card)
+
+
+def test_present_npc_without_affection_track_raises():
+    """present NPC 必须在包的 `schedule.affections` 里（评审指出、已实测）。
+
+    否则 `status_text` 会：① 好感行**整体略过**该 NPC；② 在场角色卡的**语气档**按
+    `state.affections.get(npc.id, 0.0)` 兜底 —— 材料"卡里声明过 45、却按 0 档渲染语气"，
+    与卡片意图矛盾 = **坏标签**（T2 语气冲突卡的整条通路就是好感档）。
+    用假包做**单元级前置校验**：真实三包目前都满足 `npcs ⊆ affections`，构造不出来。
+    """
+    pack = SimpleNamespace(npcs={"ghost": SimpleNamespace(name="鬼")},
+                           schedule=SimpleNamespace(affections={"real": None}))
+    card = _setting_card()
+    card.material.present = ["ghost"]
+    with pytest.raises(MaterializeError, match="好感轨"):
+        _precheck(card, pack)
+
+
+def test_material_affection_override_must_be_declared():
+    """卡声明的好感覆写必须能落地：旧实现 `if k in state.affections:` 会**静默跳过**。"""
+    card = _setting_card()
+    card.material.affections = {"nobody_in_schedule": 45.0}
+    with pytest.raises(MaterializeError, match="没有好感轨"):
+        build_material(card)
+
+
+def test_judge_npc_mapping_targets_have_affection_tracks():
+    """`NPC_BY_PACK` 的映射目标必须在对应包的好感轨与角色卡里 ——
+    否则整批该题材的 judge 卡都会被 `_precheck` 丢弃（静默良率归零）。"""
+    for nick, npc in NPC_BY_PACK.items():
+        pack_dir = REPO_ROOT / "world-packs" / nick
+        if not pack_dir.is_dir():
+            continue                     # G1 待造，跳过
+        pack = load_worldpack(pack_dir)
+        assert npc in pack.npcs, f"{nick} 的映射目标 {npc} 没有角色卡"
+        assert npc in pack.schedule.affections, f"{nick} 的映射目标 {npc} 没有好感轨"
 ```
 
 注：测试用真实包 `xianxia_wendao`（仓库先例：`tests/test_second_worldpack.py` 同法）。`material.facts` 省略（None）→ 缺省取 `in_material=true` 下标。**spec 侧已先行改好并提交**（详见 Step 5 的表：A.2/A.3 的 `facts: []` 行已删、`recent` 已字符串化、§3.2 已补 `facts: null` 语义注释），故本 Task **不需要再动 spec**——Step 5 只做核验（`git diff` 应为空）。
@@ -830,12 +866,12 @@ def build_material(card: ScenarioCard) -> str:
         raise MaterializeError("judge/compress 卡必须带 pack + material")
     pack = load_pack(card.pack)
     m = card.material
+    _precheck(card, pack)          # 包级前置：错就早抛，不做无用的组装
     state = GameState.from_pack(pack)
     state.day, state.scene = m.day, m.scene
     state.present_npcs = list(m.present)
     for k, v in m.affections.items():
-        if k in state.affections:
-            state.affections[k] = float(v)
+        state.affections[k] = float(v)   # _precheck 已保证键存在，不再静默跳过
     idx = m.facts if m.facts is not None else [
         i for i, f in enumerate(card.facts) if f.in_material
     ]
@@ -849,17 +885,40 @@ def build_material(card: ScenarioCard) -> str:
         for k, v in m.memories.items()
     }
     text = ContextBuilder.from_pack(pack).status_text(state, None, recent=m.recent)
-    _check(card, pack, text)
+    _check_text(card, pack, text)
     return text
 
 
-def _check(card: ScenarioCard, pack, text: str) -> None:
+def _precheck(card: ScenarioCard, pack: WorldPack) -> None:
+    """包级前置校验：这些错**无法在材料里表达**，必须早抛 —— 否则静默产出坏标签。
+
+    背景（评审指出、已实测）：旧实现把好感覆写写成 `if k in state.affections:`，
+    而 `state.affections` 只含 `schedule.yaml` 列出的对象（`state.py:103`）——
+    于是"卡要 45、包没有该好感轨"时**静默跳过**，而 `status_text` 用
+    `state.affections.get(npc.id, 0.0)` 渲染在场角色卡的语气档，结果材料会
+    **声明过 45 却按 0 档渲染语气**，同时把该 NPC 从好感行里整体略过
+    —— 材料与卡片意图矛盾 = 坏标签（T2 语气冲突卡的整条通路就是好感档）。
+    """
+    m = card.material
+    for npc_id in m.present:
+        if npc_id not in pack.npcs:
+            raise MaterializeError(f"present 的 NPC 不在包里: {npc_id}")
+        if npc_id not in pack.schedule.affections:
+            raise MaterializeError(
+                f"present 的 NPC 没有好感轨（schedule.affections 未声明）: {npc_id}——"
+                "语气档会按 0.0 兜底、好感行会略过它，材料与卡片意图不符")
+    undeclared = [k for k in m.affections if k not in pack.schedule.affections]
+    if undeclared:
+        raise MaterializeError(
+            f"material.affections 声明了包里没有好感轨的对象: {undeclared}——"
+            "该覆写无法落地，语气档会按 0.0 兜底渲染")
+
+
+def _check_text(card: ScenarioCard, pack: WorldPack, text: str) -> None:
     m = card.material
     if not text.strip():
         raise MaterializeError("材料为空")
-    for npc_id in m.present:  # 校验①：在场 NPC 角色卡确落材料
-        if npc_id not in pack.npcs:
-            raise MaterializeError(f"present 的 NPC 不在包里: {npc_id}")
+    for npc_id in m.present:  # 校验①：在场 NPC 角色卡确落材料（存在性由 _precheck 保证）
         if pack.npcs[npc_id].name not in text:
             raise MaterializeError(f"在场角色卡未落入材料: {npc_id}")
     for f in card.facts:  # 校验②在位（全部 anchors）/ ③泄漏（任一 anchors 出现即泄漏）
@@ -873,7 +932,7 @@ def _check(card: ScenarioCard, pack, text: str) -> None:
 - [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
-Expected: **24 passed**（Task 1 的 9 + Task 2 的 10 + Task 3 的 5）
+Expected: **27 passed**（Task 1 的 9 + Task 2 的 10 + Task 3 的 8）
 
 - [x] **Step 5: 核验 spec 已修订 + Commit**
 
@@ -925,6 +984,28 @@ git commit -m "feat(factory): 材料装配器与校验①②③（Task 3）"
 >   "两处定义同值 / ruff 报重复定义"就此消除；
 > - `load_pack`（带缓存的包加载）**提前到本 Task 落地**，而不是留到 Task 7 的 Step 3b 再加；
 >   Task 7 的 Step 3b 已改为"直接复用"。
+>
+> **评审补修（2026-09-12，第二轮）✅ 已修** —— 由外部评审指出、经实测确认（守卫 5 → **8**，
+> 全量 372 → **375 passed**）：
+>
+> 2. **好感覆写被静默跳过 → 材料会主动断言错的语气档**（比"落成初始值"更糟，实测澄清）：
+>    原 `for k, v in m.affections.items(): if k in state.affections:` ——
+>    而 `state.affections` 只含 `schedule.yaml` 列出的对象（`state.py:103`）。
+>    当"present/覆写的 NPC 有角色卡、但没有好感轨"时，后果是**两条**：
+>    ① 好感行里该 NPC **整体消失**（不是落成初始值）；② 在场角色卡的「当前语气」
+>    按 `state.affections.get(npc.id, 0.0)` 兜底 → 渲染**0 档**语气。
+>    实测对照（仙侠包，卡声明 45）：正常 = `苏晚晴 45/100（客气有礼，偶有关切）`；
+>    好感轨缺失 = 好感行无此人、语气却是 `冷淡疏离，公事公办`
+>    → **材料"声明过 45 却按 0 档渲染"= 坏标签**（T2 语气冲突卡的整条通路就是好感档）。
+>    现状：三个包的 `npcs ⊆ affections` 都成立、`NPC_BY_PACK` 三处映射也都命中，故属**潜伏**问题。
+>    修法：抽出 `_precheck(card, pack)` 做**包级前置校验**（错就早抛，不做无用组装）——
+>    ① `present` 的 NPC 必须在 `pack.npcs` 且**有好感轨**；
+>    ② `material.affections` 的每个键必须在 `schedule.affections` 里；
+>    随后 `build_material` 里改为**无条件写入**（不再 `if k in ...`）。
+>    `_check` 拆为 `_precheck`（包级）+ `_check_text`（文本级：① 卡片入材料 / ②在位 / ③泄漏）。
+>    守卫：`test_present_npc_without_affection_track_raises`（假包单元级，真实包构造不出来）、
+>    `test_material_affection_override_must_be_declared`、
+>    `test_judge_npc_mapping_targets_have_affection_tracks`（钉住映射表，防静默良率归零）。
 
 ---
 
@@ -1154,7 +1235,7 @@ git commit -m "feat(factory): 演绎器与 anchors 在位/反向校验（Task 4�
 > **执行记录（2026-09-12）✅ 完成**
 >
 > - Step 2 确认失败 ✓：`ModuleNotFoundError: No module named 'scripts.scenario_factory.verbalize'`
-> - Step 4 确认通过 ✓：`-k verbalize` **5 passed**；整文件 **29 passed**（9+10+5+5）；
+> - Step 4 确认通过 ✓：`-k verbalize` **5 passed**；整文件 **32 passed**（9+10+8+5）；
 >   全量 367 → **372 passed**
 > - 落地：新增 `scripts/scenario_factory/verbalize.py`
 >
@@ -2548,8 +2629,8 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - [ ] **Step 1: 全量测试**
 
 Run: `uv run pytest -q`
-Expected: **342 存量** + 本计划新增 **55 个守卫**（Task 1~9：9+10+5+5+6+9+3+5+3）+ Task 10 的 1 个
-prompt 守卫 = **398 全绿**
+Expected: **342 存量** + 本计划新增 **58 个守卫**（Task 1~9：9+10+8+5+6+9+3+5+3）+ Task 10 的 1 个
+prompt 守卫 = **401 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 在**本计划开工前**是 **341**；
 > 加上计划外先落的 `card_hook` 死字段守卫 1 条 = **342**（= 本表"存量"口径，见文首「进度」节）。

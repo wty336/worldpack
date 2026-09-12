@@ -8,14 +8,20 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from game_agent.worldpack import load_worldpack
 from scripts.scenario_factory.cards import (
     GENRE_EVAL_ONLY,
+    NPC_BY_PACK,
     PACK_BY_GENRE,
     ScenarioCard,
     generate_card,
     layer_of,
 )
-from scripts.scenario_factory.materialize import MaterializeError, build_material
+from scripts.scenario_factory.materialize import (
+    MaterializeError,
+    _precheck,
+    build_material,
+)
 from scripts.scenario_factory.verbalize import verbalize_card
 
 
@@ -290,6 +296,43 @@ def test_present_npc_must_be_in_pack():
     card.material.present = ["ghost_npc"]
     with pytest.raises(MaterializeError, match="不在包里"):
         build_material(card)
+
+
+def test_present_npc_without_affection_track_raises():
+    """present NPC 必须在包的 `schedule.affections` 里（评审指出、已实测）。
+
+    否则 `status_text` 会：① 好感行**整体略过**该 NPC；② 在场角色卡的**语气档**按
+    `state.affections.get(npc.id, 0.0)` 兜底 —— 材料"卡里声明过 45、却按 0 档渲染语气"，
+    与卡片意图矛盾 = **坏标签**（T2 语气冲突卡的整条通路就是好感档）。
+
+    用假包做**单元级前置校验**：真实三包目前都满足 `npcs ⊆ affections`，构造不出来。
+    """
+    pack = SimpleNamespace(npcs={"ghost": SimpleNamespace(name="鬼")},
+                           schedule=SimpleNamespace(affections={"real": None}))
+    card = _setting_card()
+    card.material.present = ["ghost"]
+    with pytest.raises(MaterializeError, match="好感轨"):
+        _precheck(card, pack)
+
+
+def test_material_affection_override_must_be_declared():
+    """卡声明的好感覆写必须能落地：旧实现 `if k in state.affections:` 会**静默跳过**。"""
+    card = _setting_card()
+    card.material.affections = {"nobody_in_schedule": 45.0}
+    with pytest.raises(MaterializeError, match="没有好感轨"):
+        build_material(card)
+
+
+def test_judge_npc_mapping_targets_have_affection_tracks():
+    """`NPC_BY_PACK` 的映射目标必须在对应包的好感轨与角色卡里 ——
+    否则整批该题材的 judge 卡都会被 `_precheck` 丢弃（静默良率归零）。"""
+    for nick, npc in NPC_BY_PACK.items():
+        pack_dir = REPO_ROOT / "world-packs" / nick
+        if not pack_dir.is_dir():
+            continue                     # G1 待造，跳过
+        pack = load_worldpack(pack_dir)
+        assert npc in pack.npcs, f"{nick} 的映射目标 {npc} 没有角色卡"
+        assert npc in pack.schedule.affections, f"{nick} 的映射目标 {npc} 没有好感轨"
 
 
 # --- Task 4：演绎器（anchors 在位 + 反向校验 + 重演丢弃） --------------------
