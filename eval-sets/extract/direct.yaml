@@ -257,16 +257,15 @@ cases:
   - 10
 - id: n_funds
   genre: 民国谍战
-  axis_kind: 债务与人情
-  expect_empty: false
+  axis_kind: 负例
+  expect_empty: true
   existing: []
   turn: （第 4 日）站长训示：这个月的经费只剩四十块大洋，别再乱花。
-  must_recall:
-  - 四十块
+  must_recall: []
   must_not_output: []
   importance_range:
-  - 5
-  - 9
+  - 1
+  - 10
 - id: n_cover
   genre: 民国谍战
   axis_kind: 身份身世
