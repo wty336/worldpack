@@ -1,5 +1,5 @@
 version: 1
-content_version: v3-2026-09-12
+content_version: v4-2026-09-12
 generated_by: scripts/build_judge_corpus.py
 note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
 cases:
@@ -359,6 +359,150 @@ cases:
   note: 程序化：材料 facts 为空，陈老师 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
   present:
   - chen_laoshi
+- id: gen_confab_promise_21
+  category: confab
+  narration: 林夏说：『那封信是我写的，落款处我等你来问。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，林夏 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lin_xia
+- id: gen_confab_promise_22
+  category: confab
+  narration: 林夏说：『那封信是我写的，落款处我等你来问。』——这是你后来回想起来的，林夏确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，林夏 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lin_xia
+- id: gen_confab_promise_23
+  category: confab
+  narration: 林夏道：『周三的广播稿我念到一半停了，后面那段没人写。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，林夏 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lin_xia
+- id: gen_confab_promise_24
+  category: confab
+  narration: 林夏道：『周三的广播稿我念到一半停了，后面那段没人写。』——这是你后来回想起来的，林夏确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，林夏 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lin_xia
+- id: gen_confab_promise_25
+  category: confab
+  narration: 林夏说：『阅览室那排旧刊物周五就要收走了。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，林夏 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - lin_xia
+- id: gen_confab_promise_26
+  category: confab
+  narration: 林夏说：『阅览室那排旧刊物周五就要收走了。』——这是你后来回想起来的，林夏确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，林夏 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - lin_xia
+- id: gen_confab_promise_27
+  category: confab
+  narration: 周牧说：『那封信的事我打听过了，是五班的人写的。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，周牧 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - zhou_mu
+- id: gen_confab_promise_28
+  category: confab
+  narration: 周牧说：『那封信的事我打听过了，是五班的人写的。』——这是你后来回想起来的，周牧确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，周牧 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - zhou_mu
+- id: gen_confab_promise_29
+  category: confab
+  narration: 周牧说：『球场那边新装了两个篮球架，昨天刚焊完。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，周牧 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - zhou_mu
+- id: gen_confab_promise_30
+  category: confab
+  narration: 周牧说：『球场那边新装了两个篮球架，昨天刚焊完。』——这是你后来回想起来的，周牧确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，周牧 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - zhou_mu
+- id: gen_confab_promise_31
+  category: confab
+  narration: 周牧说：『昨晚有人翻窗进过教室，桌肚里多了一张纸条。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，周牧 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - zhou_mu
+- id: gen_confab_promise_32
+  category: confab
+  narration: 周牧说：『昨晚有人翻窗进过教室，桌肚里多了一张纸条。』——这是你后来回想起来的，周牧确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，周牧 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - zhou_mu
+- id: gen_confab_promise_33
+  category: confab
+  narration: 陈老师说：『下周三下午全校大扫除，各班自己排。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，陈老师 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - chen_laoshi
+- id: gen_confab_promise_34
+  category: confab
+  narration: 陈老师说：『下周三下午全校大扫除，各班自己排。』——这是你后来回想起来的，陈老师确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，陈老师 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - chen_laoshi
+- id: gen_confab_promise_35
+  category: confab
+  narration: 陈老师说：『校门口的公告栏换新的了，旧的已经拆下来。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，陈老师 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - chen_laoshi
+- id: gen_confab_promise_36
+  category: confab
+  narration: 陈老师说：『校门口的公告栏换新的了，旧的已经拆下来。』——这是你后来回想起来的，陈老师确实这样答应过你。
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 程序化：材料 facts 为空，陈老师 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - chen_laoshi
 - id: gen_ooc_card_01
   category: ooc
   narration: 林夏撇着嘴道：『绝绝子，这稿子我真是栓Q了，家人们谁懂啊。』
@@ -411,6 +555,78 @@ cases:
   day: 4
   scene: 城南中学·高二(3)班教室
   note: 手工卡面锚定：角色卡 boundaries『不公开批评单个学生的成绩』。
+  present:
+  - chen_laoshi
+- id: gen_ooc_card_07
+  category: ooc
+  narration: 林夏说：『这篇我替你署上你的名字，反正老师看不出来。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 boundaries『不替他人的稿子署名』。
+  present:
+  - lin_xia
+- id: gen_ooc_card_08
+  category: ooc
+  narration: 林夏把社里的稿子拍成照片发出去：『都来看看，热闹。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 boundaries『不把社里的稿子外传』。
+  present:
+  - lin_xia
+- id: gen_ooc_card_09
+  category: ooc
+  narration: 林夏说：『这稿子绝了，姐妹们给我冲！』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 speech_style『语速偏慢，爱引书里的句子，很少用网络用语』。
+  present:
+  - lin_xia
+- id: gen_ooc_card_10
+  category: ooc
+  narration: 林夏盯着稿纸说：『我的每一句话都是模板拼出来的。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 forbidden『不直接承认自己是程序生成的』。
+  present:
+  - lin_xia
+- id: gen_ooc_card_11
+  category: ooc
+  narration: 周牧把纸条塞给你：『老师问就说是你传的呗。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 boundaries『不替别人背锅』（反向：把责任推给同桌）。
+  present:
+  - zhou_mu
+- id: gen_ooc_card_12
+  category: ooc
+  narration: 周牧哈哈大笑：『那个胖子，以后就叫土豆呗。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 boundaries『不给同学起外号』。
+  present:
+  - zhou_mu
+- id: gen_ooc_card_13
+  category: ooc
+  narration: 陈老师在班会上点名：『某些同学的分数我看都不想看，说出来丢人。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 boundaries『不公开批评单个学生的成绩』。
+  present:
+  - chen_laoshi
+- id: gen_ooc_card_14
+  category: ooc
+  narration: 陈老师压低声音：『你排第六，前三名是谁我告诉你。』
+  expected: false
+  day: 4
+  scene: 城南中学·高二(3)班教室
+  note: 手工卡面锚定：角色卡 boundaries『不私下透露其他学生的排名』。
   present:
   - chen_laoshi
 - id: gen_normal_01

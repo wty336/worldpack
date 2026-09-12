@@ -1,5 +1,5 @@
 version: 1
-content_version: v1-2026-09-07
+content_version: v4-2026-09-12
 generated_by: scripts/build_judge_corpus.py
 note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
 cases:
@@ -172,7 +172,7 @@ cases:
   - bai_zhi
 - id: gen_confab_promise_05
   category: confab
-  narration: 苏晚晴道：『你师父的旧事，我答应替你查。三日后来剑峰取信。』
+  narration: 苏晚晴道：『那本《云台剑谱》我借你三日，看完还我。』
   expected: false
   day: 20
   scene: 青云仙宗·丹峰
@@ -181,7 +181,7 @@ cases:
   - su_wanying
 - id: gen_confab_promise_06
   category: confab
-  narration: 苏晚晴道：『你师父的旧事，我答应替你查。三日后来剑峰取信。』——这是你后来回想起来的，苏晚晴确实这样答应过你。
+  narration: 苏晚晴道：『那本《云台剑谱》我借你三日，看完还我。』——这是你后来回想起来的，苏晚晴确实这样答应过你。
   expected: false
   day: 20
   scene: 青云仙宗·丹峰
@@ -260,6 +260,42 @@ cases:
   note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
   present:
   - su_wanying
+- id: gen_confab_promise_15
+  category: confab
+  narration: 白芷说：『丹峰的丹炉今天熄过两次火。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_16
+  category: confab
+  narration: 白芷说：『丹峰的丹炉今天熄过两次火。』——这是你后来回想起来的，白芷确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，白芷 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - bai_zhi
+- id: gen_confab_promise_17
+  category: confab
+  narration: 苏晚晴说：『剑峰后山的石阶上月塌了一段。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - su_wanying
+- id: gen_confab_promise_18
+  category: confab
+  narration: 苏晚晴说：『剑峰后山的石阶上月塌了一段。』——这是你后来回想起来的，苏晚晴确实这样答应过你。
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 程序化：材料 facts 为空，苏晚晴 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - su_wanying
 - id: gen_ooc_card_01
   category: ooc
   narration: 白芷瞪圆眼睛：『卧槽，这丹炉炸得也太绝了，牛！』
@@ -312,6 +348,78 @@ cases:
   day: 20
   scene: 青云仙宗·丹峰
   note: 手工卡面锚定：角色卡 boundaries『不轻易提及师父的旧事』。
+  present:
+  - su_wanying
+- id: gen_ooc_card_07
+  category: ooc
+  narration: 白芷得意道：『我上山的缘由？我爹欠了赌债把我抵来的呗。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『不轻易谈论自己为何入门』。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_08
+  category: ooc
+  narration: 白芷把一颗黑丹弹进井里：『谁喝了这井水，三天别想合眼——我看她不顺眼很久了。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『再生气也不拿丹药害人』。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_09
+  category: ooc
+  narration: 白芷垂着眼，慢吞吞道：『嗯。好。知道了。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 speech_style『语速轻快，爱给人起外号，高兴时手舞足蹈』+ persona『活泼跳脱』——敷衍冷淡与之相反。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_10
+  category: ooc
+  narration: 白芷掏出一瓶冰镇饮料递过来：『来，常温的不解渴。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』。
+  present:
+  - bai_zhi
+- id: gen_ooc_card_11
+  category: ooc
+  narration: 苏晚晴冷笑：『我师父不过是个卖假丹的骗子，死得不冤。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『不轻易提及师父的旧事』+ persona『底线是宗门与同门』。
+  present:
+  - su_wanying
+- id: gen_ooc_card_12
+  category: ooc
+  narration: 苏晚晴背过身去，声音闷闷的：『这几夜我总睡不安稳，你别告诉旁人。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 boundaries『不在人前流露软弱』（向内塌陷式软弱，非哭喊）。
+  present:
+  - su_wanying
+- id: gen_ooc_card_13
+  category: ooc
+  narration: 苏晚晴从袖中取出一部手机：『宗门的传讯阵太慢，用这个。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』。
+  present:
+  - su_wanying
+- id: gen_ooc_card_14
+  category: ooc
+  narration: 苏晚晴淡淡道：『我不过是一段角色设定，剑道也是写出来的。』
+  expected: false
+  day: 20
+  scene: 青云仙宗·丹峰
+  note: 手工卡面锚定：角色卡 forbidden『不直接说破自己是角色或 AI』。
   present:
   - su_wanying
 - id: gen_normal_01

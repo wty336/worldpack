@@ -131,7 +131,11 @@ python -m pytest tests/test_eval_frozen.py -q  # 3) 守卫转绿
 | --- | --- | --- |
 | `scripts/eval_quota_check.py --gate` | 每包每类配额（ooc/setting/confab ≥20、正常 ≥40、对抗合计 ≥60、confab T1 占比 ≥50%） | **6/6 包未达标**（ooc 缺 8、normal 缺 22~26、T1 占比 10~40%） |
 | `scripts/axis_coverage_check.py --gate` | 声明 vs 事实一致（防轴标签自欺）+ holdout 轴上 **T∩E = ∅** | 结构轴 `mainline_band` 两侧共享 `4-6` → **未留出**（G2 的 8~12 节点可补） |
-| `scripts/near_dup_check.py --gate` | 跨来源近似重复（二字组 Jaccard ≥0.6） | 2 对：`ancient`/`xianxia` 的 identity 用例**同句换人名**（0.84）；P2 normal 与 extract 用例同句（0.60） |
+| `scripts/near_dup_check.py --gate` | 跨来源近似重复（二字组 Jaccard ≥0.6）+ **同来源 ≥0.85**（防"同句换人名"） | 2 对：`ancient`/`xianxia` 的 identity 用例**同句换人名**（0.84）；P2 normal 与 extract 用例同句（0.60）。**同日已修**：重写 xianxia identity 与 P2 normal 句、收严同源阈值后又抓出 1 对（ancient 手写 ooc vs 生成 ooc 0.86，已改）→ 现值 **0 对** |
+
+> **配额修正（2026-09-12 同日）**：ooc 已补到 20/20（五包各 +8，卡面锚定）、confab T1 占比全部 ≥50%
+> （P1 +8 条事实断言型种子等）、词面撞卡 8 条已清零。**只剩 `normal` 14~18/40** —— 走真实轨迹（付费），
+> 见 `docs/plan-phase1-data.md` §3.5.6c 开工前体检。
 
 > 配额不是"做得更全"，而是**判据可判性的前提**：`0/18 = 0%` 的 95% 区间是 **0~17.6%**，
 > 门限 10% 在该样本量下根本不可判（`game_agent/evalmeta.py`：Wilson 区间 + 用例集指纹）。

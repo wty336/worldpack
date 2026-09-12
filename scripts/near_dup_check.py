@@ -26,6 +26,7 @@ import yaml
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_THRESHOLD = 0.60
+SAME_SOURCE_HIGH = 0.85  # 同来源（同一包/同一集合）内的近重复线：更高，但也必须报
 
 from game_agent.judge_corpus import load_corpus  # noqa: E402
 
@@ -88,14 +89,25 @@ def collect_file_items(path: pathlib.Path, source: str = "训练集") -> list[di
     return items
 
 
-def find_near_dups(items: list[dict], threshold: float = DEFAULT_THRESHOLD) -> list[tuple]:
-    """跨来源两两比较（同来源跳过——同一个集合内部的改写对是设计使然）。"""
+def find_near_dups(
+    items: list[dict],
+    threshold: float = DEFAULT_THRESHOLD,
+    same_source_threshold: float = SAME_SOURCE_HIGH,
+) -> list[tuple]:
+    """近重复对。
+
+    - **跨来源**：≥ ``threshold``（默认 0.60）即报 —— 防"评测题泄漏进训练集"；
+    - **同来源**：≥ ``same_source_threshold``（默认 0.85）也报 —— 防"同句换人名"式的模板同质
+      （2026-09-12 实例：两包 identity 用例相似度 0.84 却被跨来源阈值漏掉）；
+    - 例外：``dedup`` 集合的改写对是**设计使然**（同一事实换词 → 应判"重复"），同源一律不比。
+    """
     hits = []
     for a, b in itertools.combinations(items, 2):
-        if a["source"] == b["source"]:
+        same = a["source"] == b["source"]
+        if same and a["source"] == "dedup":
             continue
         sim = jaccard(a["text"], b["text"])
-        if sim >= threshold:
+        if sim >= (same_source_threshold if same else threshold):
             hits.append((sim, a, b))
     return sorted(hits, key=lambda t: -t[0])
 
@@ -121,9 +133,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {src:<28} {n}")
 
     if not hits:
-        print("\n[✓] 无跨来源近重复")
+        print("\n[✓] 无近重复（跨来源 ≥%.2f / 同来源 ≥%.2f）" % (args.threshold, SAME_SOURCE_HIGH))
         return 0
-    print(f"\n[!] {len(hits)} 对跨来源近重复（前 {args.top}）：")
+    print(f"\n[!] {len(hits)} 对近重复（跨来源 ≥{args.threshold:.2f} / 同来源 ≥{SAME_SOURCE_HIGH:.2f}，"
+          f"前 {args.top}）：")
     for sim, a, b in hits[: args.top]:
         print(f"  {sim:.2f}  {a['source']}:{a['id']}  ↔  {b['source']}:{b['id']}")
         print(f"        A: {a['text'][:56]}")

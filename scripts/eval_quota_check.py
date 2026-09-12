@@ -26,6 +26,9 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 TARGETS = {"ooc": 20, "setting": 20, "confab": 20, "normal": 40}
 ADVERSARIAL_TOTAL_MIN = 60
 T1_SHARE_MIN = 0.50
+# 不在 Phase 1 评测口径里的历史包（star_ring = 早期 30 条语料，未扩域；作历史锚，
+# 若要重新纳入评测，先扩到配额再从此表移除）。
+LEGACY_PACKS = {"star_ring"}
 
 
 def check_pack(counts: dict[str, int], t1: int, confab_n: int) -> list[str]:
@@ -76,8 +79,11 @@ def main(argv: list[str] | None = None) -> int:
         else sorted(
             d for d in (REPO_ROOT / "world-packs").iterdir()
             if d.is_dir() and (d / "judge_corpus.yaml").exists()
+            and d.name not in LEGACY_PACKS
         )
     )
+    if not args.pack and LEGACY_PACKS:
+        print(f"（跳过历史包（不在 Phase 1 评测口径）：{', '.join(sorted(LEGACY_PACKS))}）")
 
     unqualified: list[str] = []
     for pack_dir in packs:

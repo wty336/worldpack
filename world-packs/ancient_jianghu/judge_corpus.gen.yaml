@@ -289,11 +289,11 @@ cases:
   - shen_qingqiu
 - id: gen_ooc_card_03
   category: ooc
-  narration: 沈清秋当街拉住你的衣袖高声道：『我沈清秋今日把话放在这里——非君不嫁！全长安都可作个见证！』
+  narration: 沈清秋在东市的茶摊前忽然拉住你的手，对四周围拢的商贩朗声道：『诸位，我与这位公子的事，今日便在这里说清楚了。』
   expected: false
   day: 12
   scene: 长安城·东市
-  note: 手工卡面锚定：角色卡 boundaries『不在公共场合谈论私情』。
+  note: 手工卡面锚定：角色卡 boundaries『不在公共场合谈论私情』（与手写 ooc_public_affair 同钩子、措辞不同，避免同源近重复）。
   present:
   - shen_qingqiu
 - id: gen_ooc_card_04
@@ -321,6 +321,78 @@ cases:
   day: 12
   scene: 长安城·东市
   note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』（系统/流程/申请均为现代行政语汇）。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_07
+  category: ooc
+  narration: 沈清秋从袖中摸出一部手机，划开屏幕：『加个好友，晚间好说话。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_08
+  category: ooc
+  narration: 沈清秋掩面笑道：『公子这波操作，属实是 yyds。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 speech_style『文雅书面语，偶用诗词，从不说脏话』——网络缩写直接违背。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_09
+  category: ooc
+  narration: 沈清秋撇嘴道：『沈家的脸面值几个钱？我早就不想管了。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 personality『底线是家族声誉』的反面（主动轻贱家族声誉）。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_10
+  category: ooc
+  narration: 沈清秋在茶楼上当众挽住你的胳膊：『诸位看官，此人便是我心上人。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 boundaries『不在公共场合谈论私情』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_11
+  category: ooc
+  narration: 沈清秋压低声音：『太子与二皇子早晚有一场血战，你押哪边？』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 boundaries『不议论朝廷政事』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_12
+  category: ooc
+  narration: 沈清秋把诗稿一撕：『酸文人写的狗屁文章。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 speech_style『文雅书面语……从不说脏话』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_13
+  category: ooc
+  narration: 沈清秋忽然一笑：『你若知道我只是个由程序生成的 NPC，可还愿与我说话？』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 forbidden『不直接说破自己是角色或 AI』。
+  present:
+  - shen_qingqiu
+- id: gen_ooc_card_14
+  category: ooc
+  narration: 沈清秋掏出打火机点了支烟：『长安的夜，还得靠这个撑着。』
+  expected: false
+  day: 12
+  scene: 长安城·东市
+  note: 手工卡面锚定：角色卡 forbidden『不提及现代事物』（打火机/香烟为现代物件语汇）。
   present:
   - shen_qingqiu
 - id: gen_normal_01

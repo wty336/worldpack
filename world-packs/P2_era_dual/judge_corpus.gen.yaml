@@ -1,5 +1,5 @@
 version: 1
-content_version: v3-2026-09-12
+content_version: v4-2026-09-12
 generated_by: scripts/build_judge_corpus.py
 note: 机器生成，勿手改；手写语料仍在 judge_corpus.yaml（load_corpus 合并两者）
 cases:
@@ -377,6 +377,42 @@ cases:
   note: 程序化：材料 facts 为空，赵科长 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
   present:
   - zhao_kezhang
+- id: gen_confab_promise_21
+  category: confab
+  narration: 小马说：『那批轴承是上个月返修的，标号都换过。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，小马 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - xiao_ma
+- id: gen_confab_promise_22
+  category: confab
+  narration: 小马说：『那批轴承是上个月返修的，标号都换过。』——这是你后来回想起来的，小马确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，小马 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - xiao_ma
+- id: gen_confab_promise_23
+  category: confab
+  narration: 王大姐说：『三号楼的暖气管道昨天上过水了。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，王大姐 的任何承诺/约定均不存在（叙事直接断言对方许下承诺）。
+  present:
+  - wang_dajie
+- id: gen_confab_promise_24
+  category: confab
+  narration: 王大姐说：『三号楼的暖气管道昨天上过水了。』——这是你后来回想起来的，王大姐确实这样答应过你。
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 程序化：材料 facts 为空，王大姐 的任何承诺/约定均不存在（叙事把不存在的事后回忆当作既成事实）。
+  present:
+  - wang_dajie
 - id: gen_ooc_card_01
   category: ooc
   narration: 李主任把两条烟塞回你怀里，笑道：『行，这事我收下了，往后好说。』
@@ -431,6 +467,78 @@ cases:
   note: 手工卡面锚定：角色卡 boundaries『不认错』+ personality『明面上挑不出错』——当众认错道歉，违背。
   present:
   - zhao_kezhang
+- id: gen_ooc_card_07
+  category: ooc
+  narration: 李主任把两瓶酒拎进办公室：『放这儿，我回头喝。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不收礼，也不收烟』。
+  present:
+  - li_zhuren
+- id: gen_ooc_card_08
+  category: ooc
+  narration: 李主任当着众人道：『这事你别找我，我早把记录烧了。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不替人打掩护』（销毁记录属主动掩盖）。
+  present:
+  - li_zhuren
+- id: gen_ooc_card_09
+  category: ooc
+  narration: 王大姐嗑着瓜子：『你可知道粮站老刘家那点事？我跟你说细点。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不传别人家的私事』。
+  present:
+  - wang_dajie
+- id: gen_ooc_card_10
+  category: ooc
+  narration: 王大姐把车间里的棉纱塞进包里：『拿回去纳鞋底正好。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不占公家的便宜』。
+  present:
+  - wang_dajie
+- id: gen_ooc_card_11
+  category: ooc
+  narration: 陈姨把表格一推：『你是我侄子，这章我给你盖了。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不搞特殊，亲戚也一样』。
+  present:
+  - chen_yi
+- id: gen_ooc_card_12
+  category: ooc
+  narration: 陈姨压低声音：『会上定了，下月裁人名单第一个是老周，你别外传。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不把会上说的话往外传』。
+  present:
+  - chen_yi
+- id: gen_ooc_card_13
+  category: ooc
+  narration: 老孙头摆摆手：『进来吧，别登记了，我认得你。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不放外人进厂』。
+  present:
+  - lao_sun
+- id: gen_ooc_card_14
+  category: ooc
+  narration: 小马把你推到墙角：『检查的一问，你就说是你干的，回头我请你吃一个月。』
+  expected: false
+  day: 6
+  scene: 红星机械厂·二车间
+  note: 手工卡面锚定：角色卡 boundaries『不出卖朋友』（反向：把责任推给发小）。
+  present:
+  - xiao_ma
 - id: gen_normal_01
   category: normal
   narration: 李主任把图纸摊在机床台面上，用铅笔点了点：『按这个尺寸走，公差别超。』
@@ -494,7 +602,7 @@ cases:
   - zhao_kezhang
 - id: gen_normal_08
   category: normal
-  narration: 你把手套摘下来搭在机床上，袖口蹭了一道黑机油。
+  narration: 车间窗户开着一道缝，风把铁屑吹到过道上。
   expected: true
   day: 6
   scene: 红星机械厂·二车间

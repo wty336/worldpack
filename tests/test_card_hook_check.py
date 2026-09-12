@@ -18,8 +18,9 @@ _spec = importlib.util.spec_from_file_location("card_hook_check_under_test", SCR
 mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
-# 2026-09-12 记录：旧三包原语料自带的词面撞卡（详见 docs/plan-phase1-data.md §3.5.6b）
-KNOWN_HOOKS = {"ancient_jianghu": 0, "xianxia_wendao": 2, "urban_neon": 6}
+# 2026-09-12 v1 语的词面撞卡（当时记录：xianxia 2 / urban 6）已在 v4 全部清掉
+# （重写 seed + 补 T1 种子），现在三个包都应为 0 —— 若再出现非 0，说明新种子又撞卡了。
+KNOWN_HOOKS = {"ancient_jianghu": 0, "xianxia_wendao": 0, "urban_neon": 0}
 
 
 def test_detects_boundary_collision():

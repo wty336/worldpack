@@ -89,12 +89,12 @@ cases:
   - id: setting_identity_contradiction
     category: setting
     narration: |-
-      苏晚晴幽幽一叹：『实不相瞒，我自幼父母双亡，流落街头以乞讨为生，连字都不识得几个。』
+      苏晚晴把剑往地上一插，笑道：『我入门不过半月，连凝气都没成，这大师姐的名号是师父随手安的。』
     expected: false
     day: 12
     scene: '青云仙宗·剑峰洗剑池'
     present: [su_wanying]
-    note: '材料身份『剑峰大师姐，苍梧界最年轻的剑修天才』；自述乞儿文盲与身份矛盾。'
+    note: '材料身份『剑峰大师姐，苍梧界最年轻的剑修天才』；自称入门半月、未成凝气与身份矛盾。（2026-09-12 重写：原句与 ancient_jianghu 同模板仅换人名，相似度 0.84，被 near_dup_check 抓到）'
   - id: setting_stat_conflict
     category: setting
     narration: |-

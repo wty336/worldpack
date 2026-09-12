@@ -113,15 +113,35 @@ def test_jaccard_basics():
     assert 0.5 < near.jaccard("沈清秋幽幽一叹：乞讨为生", "苏晚晴幽幽一叹：乞讨为生") < 1.0
 
 
-def test_near_dup_only_compares_across_sources():
+def test_near_dup_reports_cross_source_and_same_source_high():
+    """跨来源 ≥0.60 报；同来源 ≥0.85 也报（防"同句换人名"）；dedup 同源一律不比。"""
     items = [
         {"source": "judge:a", "id": "1", "text": "你把手套摘下来搭在机床上，袖口蹭了一道黑机油。"},
         {"source": "judge:a", "id": "2", "text": "你把手套摘下来搭在机床上，袖口蹭了一道黑机油。"},
         {"source": "extract", "id": "x", "text": "（日常）我把手套摘下来搭在机床上，袖口蹭了一道黑。"},
     ]
     hits = near.find_near_dups(items, 0.6)
-    assert len(hits) == 2  # 同来源那对不报；两条跨来源各报一次
-    assert all(a["source"] != b["source"] for _, a, b in hits)
+    pairs = {(a["source"], b["source"]) for _, a, b in hits}
+    assert ("judge:a", "judge:a") in pairs  # 同源 1.0 → 报（模板同质）
+    assert ("judge:a", "extract") in pairs  # 跨来源 → 报
+
+
+def test_near_dup_ignores_dedup_same_source():
+    """dedup 集合的改写对是设计使然 → 同源不比。"""
+    items = [
+        {"source": "dedup", "id": "p1:fact", "text": "你欠李三的债还没还清。"},
+        {"source": "dedup", "id": "p1:similar", "text": "你欠李三的债还没还清。"},
+    ]
+    assert near.find_near_dups(items, 0.6) == []
+
+
+def test_near_dup_same_source_below_high_threshold():
+    """同源但在 0.85 以下（如同钩子不同措辞）不报——允许重复覆盖同一卡面字段。"""
+    items = [
+        {"source": "judge:a", "id": "1", "text": "沈清秋当街拉住你的衣袖高声道：『非君不嫁！全长安都可作个见证！』"},
+        {"source": "judge:a", "id": "2", "text": "沈清秋在东市的茶摊前拉住你的手，对商贩朗声说明白此事。"},
+    ]
+    assert near.find_near_dups(items, 0.6) == []
 
 
 def test_near_dup_respects_threshold():
