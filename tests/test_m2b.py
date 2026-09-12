@@ -133,11 +133,12 @@ def test_compression_triggers_and_keeps_pairing():
 
 
 def test_compression_skips_when_summary_fails():
-    """压缩调用返回空摘要 → 历史保持不变（静默降级）。"""
+    """压缩调用返回空摘要（升级重试后仍空）→ 历史保持不变（静默降级）。"""
     pack, state, game = _game_for_compression(
         [
             resp(msg(tool_calls=[SUBMIT])),
-            resp(msg(content="")),  # 空摘要 → 放弃压缩
+            resp(msg(content="")),  # 首次空 → 升级预算重试
+            resp(msg(content="")),  # 重试仍空 → 放弃压缩
             resp(msg(tool_calls=[SUBMIT])),
         ],
         threshold=1,
@@ -146,6 +147,47 @@ def test_compression_skips_when_summary_fails():
     view = game.say("第二句")
     assert view.narration == "叙事内容"
     assert not game.history[0]["content"].startswith("【剧情摘要】")
+
+
+def test_compression_abandons_truncated_summary():
+    """截断摘要**不得采纳**：它会替换历史前缀 = 静默丢内容，比不压缩更糟。
+
+    首次截断 → 升级预算重试；重试仍截断 → 放弃本次压缩，历史保持原样。
+    """
+    from game_agent.budgets import COMPRESS_MAX_TOKENS, retry_tokens_for
+
+    pack, state, game = _game_for_compression(
+        [
+            resp(msg(tool_calls=[SUBMIT])),
+            resp(msg(content="【剧情摘要】半截……"), finish_reason="length"),
+            resp(msg(content="【剧情摘要】还是半截……"), finish_reason="length"),
+            resp(msg(tool_calls=[SUBMIT])),
+        ],
+        threshold=1,
+    )
+    game.say("第一句")
+    game.say("第二句")
+    assert not game.history[0]["content"].startswith("【剧情摘要】")
+    calls = game.llm._client.chat.completions.calls
+    assert calls[1]["max_tokens"] == COMPRESS_MAX_TOKENS
+    assert calls[2]["max_tokens"] == retry_tokens_for(COMPRESS_MAX_TOKENS)
+
+
+def test_compression_adopts_successful_retry():
+    """首次截断、重试成功 → 采纳重试摘要（内容完整）。"""
+    pack, state, game = _game_for_compression(
+        [
+            resp(msg(tool_calls=[SUBMIT])),
+            resp(msg(content="【剧情摘要】半截"), finish_reason="length"),
+            resp(msg(content="剧情摘要：二人约定七月暗号。"), finish_reason="stop"),
+            resp(msg(tool_calls=[SUBMIT])),
+        ],
+        threshold=1,
+    )
+    game.say("第一句")
+    game.say("第二句")
+    assert game.history[0]["content"].startswith("【剧情摘要】")
+    assert "七月暗号" in game.history[0]["content"]
 
 
 def test_judge_feedback_injected_on_failure():

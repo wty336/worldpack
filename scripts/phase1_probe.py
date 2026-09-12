@@ -30,6 +30,12 @@ from pathlib import Path
 from dotenv import dotenv_values
 from openai import OpenAI
 
+from game_agent.budgets import (
+    COMPRESS_MAX_TOKENS,
+    REFLECT_MAX_TOKENS,
+    TRUNCATED_FINISH_REASON,
+    complete_checked,
+)
 from game_agent.compression import (
     COMPRESS_SYSTEM,
     SUMMARY_MAX_TARGET,
@@ -251,18 +257,38 @@ def main(argv: list[str] | None = None) -> int:
                                         f"<新增历史>\n{s['new_text']}\n</新增历史>"},
         ]
         t0 = time.perf_counter()
-        out_f = llm_f.complete(msgs, max_tokens=2000, purpose="compress")
+        out_f, fin_f = complete_checked(
+            llm_f, msgs, purpose="compress", max_tokens=COMPRESS_MAX_TOKENS
+        )
         el_f = round(time.perf_counter() - t0, 2)
-        out_l = llm_l.complete(msgs, max_tokens=2000, purpose="compress") if llm_l else None
+        if llm_l:
+            out_l, fin_l = complete_checked(
+                llm_l, msgs, purpose="compress", max_tokens=COMPRESS_MAX_TOKENS
+            )
+        else:
+            out_l, fin_l = None, None
         el_l = round(time.perf_counter() - t0 - el_f, 2) if llm_l else None
         results["compress"].append({
             "id": s["id"],
-            "flash": {"output": out_f, "eval": eval_compress(s, out_f), "elapsed_s": el_f},
-            "local": ({"output": out_l, "eval": eval_compress(s, out_l), "elapsed_s": el_l}
-                      if out_l is not None else None),
+            "flash": {
+                "output": out_f,
+                "truncated": fin_f == TRUNCATED_FINISH_REASON,
+                "eval": eval_compress(s, out_f),
+                "elapsed_s": el_f,
+            },
+            "local": (
+                {
+                    "output": out_l,
+                    "truncated": fin_l == TRUNCATED_FINISH_REASON,
+                    "eval": eval_compress(s, out_l),
+                    "elapsed_s": el_l,
+                }
+                if out_l is not None else None
+            ),
         })
         print(f"[compress] {s['id']} "
-              f"flash={len(out_f)}字/{results['compress'][-1]['flash']['eval']['preserve_rate']} "
+              f"flash={len(out_f)}字/{results['compress'][-1]['flash']['eval']['preserve_rate']}"
+              f"{'（截断）' if fin_f == TRUNCATED_FINISH_REASON else ''} "
               f"local={len(out_l or '')}字"
               f"/{results['compress'][-1]['local']['eval']['preserve_rate'] if out_l else '-'}")
 
@@ -273,9 +299,15 @@ def main(argv: list[str] | None = None) -> int:
             {"role": "user", "content": f"<角色>{s['npc_name']}</角色>\n\n"
                                         f"<近期记忆>\n{numbered}\n</近期记忆>"},
         ]
-        out_f = llm_f.complete(msgs, max_tokens=200, temperature=0.0, purpose="reflect")
-        out_l = (llm_l.complete(msgs, max_tokens=200, temperature=0.0, purpose="reflect")
-                 if llm_l else None)
+        out_f, _fin_f = complete_checked(
+            llm_f, msgs, purpose="reflect", max_tokens=REFLECT_MAX_TOKENS, temperature=0.0
+        )
+        out_l = (
+            complete_checked(
+                llm_l, msgs, purpose="reflect", max_tokens=REFLECT_MAX_TOKENS, temperature=0.0
+            )[0]
+            if llm_l else None
+        )
         results["reflect"].append({
             "id": s["id"],
             "flash": {"output": out_f, "eval": eval_reflect(s["facts"], out_f)},

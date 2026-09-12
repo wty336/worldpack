@@ -187,10 +187,15 @@ def test_sidechannel_budgets_obey_floor_and_upgrade_rule():
     }
     for purpose, value in base.items():
         assert value >= budgets.MIN_CALL_TOKENS, f"{purpose} 预算低于规则下限"
-    # 仅约束启用空响应升级的四个判定类侧信道（turn 有自己的协议重试循环，
-    # compress 的空响应是安全降级——二者不适用本策略）
-    for purpose in ("judge", "dedup", "reflect", "extract"):
-        assert budgets.EMPTY_RETRY_TOKENS > base[purpose], f"{purpose} 的升级预算没有升级"
+    # 启用空响应/截断升级的侧信道：升级预算必须严格大于基础预算
+    # （compress 自 2026-09-11 起纳入：实测 53% 的 flash 调用顶在 2000 附近）
+    for purpose in ("judge", "dedup", "reflect", "extract", "compress"):
+        assert budgets.retry_tokens_for(base[purpose]) > base[purpose], (
+            f"{purpose} 的升级预算没有升级"
+        )
+    # 升级规则本身：小任务取 2000 下限，大任务取 2×（compress 4000 → 8000）
+    assert budgets.retry_tokens_for(budgets.JUDGE_MAX_TOKENS) == budgets.EMPTY_RETRY_TOKENS
+    assert budgets.retry_tokens_for(budgets.COMPRESS_MAX_TOKENS) == 2 * budgets.COMPRESS_MAX_TOKENS
 
 
 def test_call_sites_share_the_single_source_of_truth():

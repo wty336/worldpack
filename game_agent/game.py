@@ -16,6 +16,8 @@ from .budgets import (
     COMPRESS_MAX_TOKENS,
     EXTRACT_MAX_TOKENS,
     REFLECT_MAX_TOKENS,
+    TRUNCATED_FINISH_REASON,
+    complete_checked,
     complete_with_empty_retry,
 )
 from .compression import (
@@ -410,7 +412,8 @@ class Game:
             else ""
         )
         try:
-            merged = self.llm.complete(
+            merged, finish_reason = complete_checked(
+                self.llm,
                 [
                     {
                         "role": "system",
@@ -422,13 +425,15 @@ class Game:
                         f"{history_text(new_part)}\n</新增历史>",
                     },
                 ],
-                max_tokens=COMPRESS_MAX_TOKENS,
                 purpose="compress",
+                max_tokens=COMPRESS_MAX_TOKENS,
             )
         except Exception:  # noqa: BLE001
             return  # 压缩失败静默降级：保留原历史，下回合重试
         if not merged.strip():
-            return
+            return  # 空摘要（升级重试后仍空）：放弃本次压缩
+        if finish_reason == TRUNCATED_FINISH_REASON:
+            return  # 截断摘要会替换历史前缀 = 静默丢内容 → 宁可放弃压缩（重试已在上游做过）
         rebuilt = rebuild_history(self.history, summary_idx, merged.strip(), cut)
         if not ensure_pairing(rebuilt):
             return  # 兜底：重建后配对不变量不成立则放弃本次压缩
