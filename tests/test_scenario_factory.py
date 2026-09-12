@@ -901,6 +901,47 @@ def test_run_eval_injects_probes_and_validates_batch():
     assert rep["batch_valid"] is True and len(rep["scores"]) == 8
 
 
+def test_make_probe_delete_point_removes_every_mention():
+    """发现② 的探针侧：删要点必须**删干净**（同一要点常在多处提到），否则探针形同没坏却被算漏检。"""
+    pts = [PreservePoint(text="玩家答应把沈砚转交给灰雀号", anchors=["沈砚", "灰雀号"])]
+    summary = "他答应了沈砚那件事。灰雀号当前泊位不明。后来他又去追查灰雀号的下落。"
+    bad = make_probe(summary, pts, kind="删要点", rng=random.Random(1))
+    assert "沈砚" not in bad and "灰雀号" not in bad      # 两个 anchor 的句子都删掉
+    # 一处都删不掉 → **报错**（无效探针 ≠ 漏检）
+    with pytest.raises(ValueError, match="探针无效"):
+        make_probe("完全无关的一段摘要。", pts, kind="删要点", rng=random.Random(1))
+
+
+def test_run_eval_excludes_invalid_probes_from_detection_rate():
+    """探针构造失败 → 剔出统计并留痕，**不得**记成"判官漏检"（否则尺子把自己的毛病算给评委）。"""
+    rows = _compress_rows(10)
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    # 让被抽中的探针样本的 output 不含任何 anchor → make_probe 抛错
+    for i in probe_positions(10, 0.2, 1):
+        rows[i]["output"] = "无关摘要：什么都没提。"
+    llm = StubLLM([good] * 10)
+    rep = run_eval(llm, rows, probe_rate=0.2, seed=1)
+    assert rep["probes"] == [] and len(rep["probes_invalid"]) == 2
+    assert rep["probe_detection"] is None, "无有效探针时检出率是**未知**，不是 1.0"
+    assert rep["batch_valid"] is False and "无有效探针" in rep["validity_note"]
+
+
+def test_run_eval_reports_dim_saturation():
+    """发现③：三维全满分要**报出来**（`dim_stats[...]['saturated']`），否则报告只显示一串 2、
+    看不出"这批材料上评委没有区分度"。"""
+    rows = _compress_rows(4)
+    good = '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'
+    rep = run_eval(StubLLM([good] * 4), rows, probe_rate=0.25, seed=1)
+    assert rep["dim_stats"]["结构"]["saturated"] is True
+    assert rep["dim_stats"]["结构"]["2"] == len(rep["scores"])   # 全满分
+    assert rep["dim_stats"]["结构"]["mean"] == 2.0            # 均值 = 满分（饱和的量化形态）
+    # 让**第一个（非探针位）**样本拿 1 分 → 保真不再是清一色 2
+    mixed = StubLLM(['{"保真": 1, "简洁": 1, "结构": 1, "流畅": 1}', good, good, good])
+    rep2 = run_eval(mixed, rows, probe_rate=0.25, seed=1)
+    assert rep2["dim_stats"]["保真"]["saturated"] is False
+    assert rep2["dim_stats"]["保真"]["1"] == 1 and rep2["dim_stats"]["保真"]["2"] == 2
+
+
 def test_report_carries_provenance_fingerprints():
     """spec §6.4/§9.2：报告必须自证口径（缺一即为不合格报告）。"""
     rows = _compress_rows(4)

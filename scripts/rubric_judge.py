@@ -34,7 +34,12 @@ MAX_TOKENS = MIN_CALL_TOKENS
 RUBRIC_SYSTEM = (
     "你是压缩摘要的质量评委。对照【材料】与【必保全要点】，按四维量规给【待评摘要】打 0/1/2 分，"
     "只输出一行 JSON，不要任何额外文字。\n"
-    "保真：2=要点全在且无材料外事实；1=缺 1 个要点或 1 处轻微走样；0=缺 ≥2 个要点或出现材料外事实。\n"
+    # 发现② 修复（2026-09-13 实跑取证）：原措辞写"要点全在"→ 判官按 **anchor 字面还在** 就放行。
+    # 实测：探针删掉了含「沈砚」的两条承诺句（"答应把沈砚转交给灰雀号"），只因别处还提「灰雀号」，
+    # 判官仍给保真 2 → 探针检出 67% < 90% 门、整批作废。判据改为"**仅凭摘要能否复原该要点**"。
+    "保真：2=每个要点都能**仅凭摘要复原**（关键专名与数字都在）且无材料外事实；"
+    "1=有 1 个要点只部分复原（丢了关键专名或数字）或 1 处轻微走样；"
+    "0=有 ≥1 个要点完全无法复原，或出现材料外事实。\n"
     "简洁：2=无复述冗余；1=轻微冗余；0=大段照搬或兜圈。\n"
     "结构：2=时间与因果清楚；1=轻微跳跃；0=支离破碎。\n"
     "流畅：2=自然书面中文；1=有语病不妨碍理解；0=难以卒读。\n"
@@ -133,11 +138,22 @@ def _sentences(text: str) -> list[str]:
 
 def make_probe(summary: str, preserve_points: list[PreservePoint], *,
                kind: str, rng: random.Random) -> str:
-    """探针模式·程序改坏（spec §7.3）：返回一份已知缺陷样本。"""
+    """探针模式·程序改坏（spec §7.3）：返回一份**已知缺陷**样本。
+
+    **"删要点"必须删干净**（发现② 修复）：原实现只删「第一个 anchor」命中的句子，
+    而实测摘要里同一要点常有**多处**提及（"答应把沈砚转交给灰雀号"在人物关系与承诺两节各写一遍），
+    于是删一处、留一处 → 判官按残留的另一个 anchor（`灰雀号`）放行 → 探针**形同没坏**，
+    却被计入"漏检"。现在删掉命中**任一 anchor** 的句子；**一处都删不掉就报错**（无效探针 ≠ 漏检，
+    由 `run_eval` 剔出统计并留痕——"空 = 未知 ≠ 通过"）。
+    """
     if kind == "删要点":
-        anchor = preserve_points[0].anchors[0]
-        kept = [s for s in _sentences(summary) if anchor not in s]
-        return "".join(kept) if kept else "（要点已删）"
+        point = preserve_points[0]
+        sentences = _sentences(summary)
+        kept = [s for s in sentences if not any(a in s for a in point.anchors)]
+        if len(kept) == len(sentences):
+            raise ValueError(
+                f"删要点探针无效：要点 {point.anchors} 的任一 anchor 都不在摘要里（无法制造已知缺陷）")
+        return "".join(kept) if kept else "（本案要点已删）"
     if kind == "注入虚构":
         return summary + f"后来{rng.choice(_FABRICATED)}现身，接管了一切。"
     if kind == "打乱结构":
@@ -235,12 +251,16 @@ def run_eval(llm, samples: list[dict], *, probe_rate: float = PROBE_MIN_RATE,
     """
     probe_idx = set(probe_positions(len(samples), probe_rate, seed))
     kind_rng = random.Random(seed + 1)   # 与位置抽样**解耦**：改其一不影响另一
-    rows, probes = [], []
+    rows, probes, invalid = [], [], []
     for i, s in enumerate(samples):
         pps = _restore_points(s)
         if i in probe_idx:
             kind = kind_rng.choice(PROBE_KINDS)
-            bad = make_probe(s["output"], pps, kind=kind, rng=kind_rng)
+            try:
+                bad = make_probe(s["output"], pps, kind=kind, rng=kind_rng)
+            except ValueError as e:      # 探针没改成 = **无效**，不是"判官漏检"（发现②）
+                invalid.append({"id": s["id"], "kind": kind, "reason": str(e)})
+                continue
             sc = score(llm, summary=bad, material=s["input"], preserve_points=pps)
             probes.append({"id": s["id"], "kind": kind,
                            "detected": probe_detected(sc, kind)})
@@ -248,10 +268,33 @@ def run_eval(llm, samples: list[dict], *, probe_rate: float = PROBE_MIN_RATE,
             sc = score(llm, summary=s["output"], material=s["input"],
                        preserve_points=pps)
             rows.append({"id": s["id"], **sc})
-    det = (sum(p["detected"] for p in probes) / len(probes)) if probes else 1.0
-    return {"scores": rows, "probes": probes, "probe_detection": det,
-            "probe_indices": sorted(probe_idx),
-            "batch_valid": det >= DETECT_MIN, **(meta or {})}
+    if probes:
+        det = sum(p["detected"] for p in probes) / len(probes)
+        valid = det >= DETECT_MIN
+        note = None
+    else:  # 一个有效探针都没有 → 检出率**未知**，不能当通过（"空 = 未知 ≠ 通过"）
+        det, valid = None, False
+        note = "无有效探针（全部构造失败）→ 检出率未知，批无效"
+    return {"scores": rows, "probes": probes, "probes_invalid": invalid,
+            "probe_detection": det, "probe_indices": sorted(probe_idx),
+            "dim_stats": _dim_stats(rows), "validity_note": note,
+            "batch_valid": valid, **(meta or {})}
+
+
+def _dim_stats(rows: list[dict]) -> dict:
+    """四维分档计数 + **饱和标记**（发现③）：三维全满分 = 这批材料上评委没有区分度。
+
+    根因不是评委坏了，而是出库样本本为"程序先杀幸存者"（超长/虚构/缺要点已在上游被杀）——
+    幸存者天然干净。把饱和**报出来**（而不是让报告只显示一串 2），下游才知道
+    成对比较/选优在这批上会退化成随机。
+    """
+    out: dict[str, dict] = {}
+    for d in DIMS:
+        counts = {str(v): sum(1 for r in rows if r.get(d) == v) for v in (0, 1, 2)}
+        n = len(rows)
+        out[d] = {**counts, "mean": round(sum(r.get(d, 0) for r in rows) / n, 2) if n else None,
+                  "saturated": bool(n) and counts["2"] == n}
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,11 +326,20 @@ def main(argv: list[str] | None = None) -> int:
     out = json.dumps(rep, ensure_ascii=False, indent=2)
     if args.report:
         pathlib.Path(args.report).write_text(out, encoding="utf-8")
-    print(f"探针检出率 {rep['probe_detection']:.0%}（门 {DETECT_MIN:.0%}）；"
+    det = rep["probe_detection"]
+    det_txt = f"{det:.0%}" if det is not None else "未知（无有效探针）"
+    print(f"探针检出率 {det_txt}（门 {DETECT_MIN:.0%}）；"
           f"有效样本 {len(rep['scores'])} 条 · prompt_version={rep['prompt_version']}")
+    if rep.get("probes_invalid"):
+        print(f"[探针无效] {len(rep['probes_invalid'])} 个构造失败（**不计入漏检**）："
+              f"{[p['id'] for p in rep['probes_invalid']]}")
+    saturated = [d for d, s in rep["dim_stats"].items() if s["saturated"]]
+    if saturated:  # 发现③：饱和必须报出来，否则报告只显示一串 2、看不出评委没有区分度
+        print(f"[维度饱和] {'/'.join(saturated)} 全部满分（{len(rep['scores'])} 条）——"
+              "这批材料上该维**无区分度**（出库样本是程序先杀的幸存者），成对比较/选优会退化")
     if not rep["batch_valid"]:
-        print("[✗] 探针检出率不达标——当批成绩全部作废（报告已带 batch_valid=false 留痕），"
-              "修评委提示词后整批重评")
+        print(f"[✗] 批无效：{rep.get('validity_note') or '探针检出率不达标'}——"
+              "当批成绩全部作废（报告已带 batch_valid=false 留痕），修评委提示词后整批重评")
         return 1
     return 0
 
