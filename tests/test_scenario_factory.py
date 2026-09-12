@@ -694,3 +694,82 @@ def test_quality_gate_drop_rate():
     assert quality_gate(ok) is None
     bad = BatchStats(built=6, dropped=4)  # 40% > 30%
     assert "丢弃率" in quality_gate(bad)
+
+
+# --- Task 8：配额计数 + 前缀去重 + sha256 出库 --------------------------------
+
+
+import json  # noqa: E402
+
+from game_agent.evalmeta import file_digest  # noqa: E402
+
+from scripts.scenario_factory.assemble import (  # noqa: E402
+    dedup,
+    fingerprint,
+    quota_gaps,
+    write_layer,
+)
+
+
+def _rows(mod, genres, n_input="输入"):
+    return [{"id": f"{mod}-{i}", "module": mod, "genre": g,
+             "input": f"{n_input}{i}", "long_input": i % 2 == 0}
+            for i, g in enumerate(genres)]
+
+
+def test_fingerprint_prefix_sensitive():
+    a = fingerprint("甲" * 64 + "尾巴A")
+    b = fingerprint("甲" * 64 + "尾巴B")
+    assert a == b                      # 前缀 64 字符相同 → 同指纹
+    assert fingerprint("甲" * 64) != fingerprint("乙" * 64)
+
+
+def test_dedup_drops_second_same_prefix():
+    rows = [{"id": "1", "input": "同一段开头" * 20},
+            {"id": "2", "input": "同一段开头" * 20}]
+    out, dup = dedup(rows, set())
+    assert len(out) == 1 and dup == 1
+
+
+def test_dedup_handles_judge_samples_without_input_key():
+    """judge 样本只有 narration（无 input 键）——原稿在此处 KeyError。"""
+    rows = [{"id": "j1", "narration": "同一段开头" * 20},
+            {"id": "j2", "narration": "同一段开头" * 20},
+            {"id": "j3", "narration": "截然不同的另一段叙事"}]
+    out, dup = dedup(rows, set())
+    assert [s["id"] for s in out] == ["j1", "j3"] and dup == 1
+
+
+def test_quota_gaps_reports_genre_skew():
+    balanced = _rows("extract", ["古代武侠"] * 5 + ["仙侠"] * 5)
+    assert quota_gaps(balanced) == []
+    skewed = _rows("extract", ["古代武侠"] * 19 + ["仙侠"])
+    assert any("仙侠" in g and "<" in g for g in quota_gaps(skewed))
+
+
+def test_write_layer_manifest_sha_matches(tmp_path):
+    rows = _rows("extract", ["古代武侠", "仙侠"], n_input="样例")
+    manifest = write_layer("dev", rows, tmp_path)
+    f = tmp_path / "dev" / "extract.jsonl"
+    assert f.exists() and len(f.read_text(encoding="utf-8").splitlines()) == 2
+    sha = file_digest(f)
+    assert manifest["modules"]["extract"]["sha256"] == sha
+    assert manifest["frozen"] is False
+    ev = write_layer("eval", rows, tmp_path)
+    assert ev["frozen"] is True and (tmp_path / "eval" / "OPEN_LOG.md").exists()
+
+
+def test_pipeline_calls_both_gates():
+    """门禁**定义了必须被调用**（原稿定义了 `hook_gate` 却从未调用 = 门禁不存在）。
+
+    放在本 Task 而非 Task 7：本断言要求 `quality_sample(` 已出现在 `assemble.py` 里，
+    而质检员的接线在**本 Task 的 `main`**（Task 7 只接 `hook_gate`）。
+    """
+    import inspect
+
+    from scripts.scenario_factory import assemble
+
+    src = inspect.getsource(assemble)
+    assert "hook_gate(" in src, "hook_gate 定义了却没被调用"
+    assert "quality_sample(" in src, "quality_sample 定义了却没被调用"
+    assert "quality_sample(llm, samples" in src, "质检员没接在 main 的产线上"

@@ -27,7 +27,7 @@
 | 5 rubric 评委四模式 | ✅ 完成 | 见 Task 5 执行记录 | 修正 1 处（`-k` 过滤器；顺带审计了全部 Task 的过滤器） |
 | 6 样本构建三分支 + 拒绝采样 | ✅ 完成 | 见 Task 6 执行记录 | 修正 1 处（compress 样本存裸文本；评审补修） |
 | 7 质量门 + 门禁接线 + 人读清单 | ✅ 完成 | 见 Task 7 执行记录 | 修正 1 处（守卫顺序：`test_pipeline_calls_both_gates` 移到 Task 8） |
-| 8 配额/去重/出库 CLI | ⬜ 待做 | — | 出库摘要须走 `file_digest`（见下） |
+| 8 配额/去重/出库 CLI | ✅ 完成 | 见 Task 8 执行记录 | ⚠️ 遗留一项：§4.4 轴矩阵未全量落实（见执行记录） |
 | 9 轨道 2 批跑 + 定 X | ⬜ 待做 | — | — |
 | 10 EXTRACT_SYSTEM 收紧实验 | ⬜ 待做 | — | 需 GPU 机；不阻塞 M1~M4 |
 | 11 总装验收 + 成本回填 | ⬜ 待做 | — | — |
@@ -44,7 +44,7 @@
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
 Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
-Task 6 守卫 **10** + Task 7 守卫 **2** + `evalmeta` 换行守卫 **1** = **393 passed**。
+Task 6 守卫 **10** + Task 7 守卫 **2** + Task 8 守卫 **6** + `evalmeta` 换行守卫 **1** = **399 passed**。
 
 ---
 
@@ -2143,7 +2143,7 @@ git commit -m "feat(factory): 质量门、confab 卡中性门禁与人读清单�
 - Modify: `scripts/scenario_factory/assemble.py`（追加）
 - Test: `tests/test_scenario_factory.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 import json
@@ -2218,14 +2218,14 @@ def test_pipeline_calls_both_gates():
     assert "quality_sample(llm, samples" in src, "质检员没接在 main 的产线上"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k "fingerprint or dedup or quota or write_layer"`
 Expected: FAIL（`ImportError`）
 
 > （Step 4 改用整文件 + 累计数，见该处说明。）
 
-- [ ] **Step 3: 实现（追加到 assemble.py）**
+- [x] **Step 3: 实现（追加到 assemble.py）**
 
 ```python
 # ---- 配额 / 去重 / 出库（spec §8：三层种子空间；eval 冻结纪律） ----
@@ -2430,7 +2430,7 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + dry-run 配额预演（零成本）**
+- [x] **Step 4: 跑测试确认通过 + dry-run 配额预演（零成本）**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: **56 passed**（Task 1~7 的 50 + Task 8 的 6）
@@ -2442,12 +2442,47 @@ Expected: **56 passed**（Task 1~7 的 50 + Task 8 的 6）
 Run: `uv run python -m scripts.scenario_factory.assemble --layer train --extract 100 --judge 80 --compress 30 --dry-run`
 Expected: 打印各模块卡数、题材分布、长输入占比；无 API 调用（`--dry-run` 在 `load_settings` 之前 return，故不需要 key）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/scenario_factory/assemble.py tests/test_scenario_factory.py
 git commit -m "feat(factory): 配额/去重/sha256 出库 CLI 与三层种子空间（Task 8）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成**
+>
+> - Step 2 确认失败 ✓：`ImportError: cannot import name 'dedup'`
+> - Step 4 确认通过 ✓：整文件 **56 passed**（Task 1~7 的 50 + Task 8 的 6）；
+>   全量 393 → **399 passed**
+> - 落地：`assemble.py` 追加 `fingerprint` / `_sample_text` / `dedup` / `quota_gaps` /
+>   `write_layer` / `_build_module` / `main`（含 `--dry-run`）
+> - **无计划缺陷**（前几轮已把模板/过滤器/顺序问题清掉）
+>
+> **dry-run 配额预演（零成本，实测三层）** —— 顺带验证**决策 19 在 CLI 层也成立**：
+>
+> | 层 | extract 题材 | 留出轴纪律 |
+> | --- | --- | --- |
+> | train | 7 个基础题材 | 无留出轴 ✓ |
+> | dev | 8 个（含**抗战谍战** 5 张） | 无「民国谍战」✓ |
+> | eval | 7 个（含**民国谍战** 10 张） | 无「抗战谍战」✓ |
+> | judge（三层） | 仅仙侠/古代武侠/现代都市 | 只出**有包可物化**的题材（G1 待造）✓ |
+>
+> 另验证：`--layer train --seed-base 20000` 被正确拒绝（exit 1，"seed 与层不一致"）。
+>
+> **出库产物可被下游消费（round-trip 实测）**：三模块各造一条样本 → `write_layer('eval', …)`
+> → 读回 JSONL **与样本完全等价**、`manifest.sha256` 与 `file_digest` 一致、
+> `frozen=True`、`OPEN_LOG.md` 追加计数行 ✓。
+> 字段契约：extract `{input, existing, expect_empty, labels, …}`、
+> judge `{material, narration, expect, category, speaker, pack, …}`、
+> compress `{input, output, preserve_points, candidates, long_input, …}`
+> —— 与 Task 9 `run_eval` 将直接取用的字段一致。
+>
+> ⚠️ **遗留一项（不阻塞，需决策）**：spec §3.3 要求"按 `plan-phase1-data.md` §4.4 矩阵出卡，
+> **每格 ≥N 未达标不出库**"，但 `quota_gaps` 目前只落实了 **2/9 条轴**
+> （题材占比 ≥10%、compress 长输入档 ≥20%）；其余轴（语体/实体类型/数值系统/关系动力/
+> 违规形态/结构规模）未计数。且现有实现只检**偏斜**（份额）不检**绝对量**——
+> 单条样本的单模块永远报不出缺口。§4.4 的配额是散文，需先转成常量表。
+> **建议列入 Task 11 总装验收的待办，或另开 Task 8.1。**
 
 ---
 

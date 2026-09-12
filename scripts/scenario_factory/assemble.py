@@ -15,6 +15,11 @@ compress 拒绝采样三档（spec §6）：off=单次直出；long=仅长输入
 """
 from __future__ import annotations
 
+import argparse
+import datetime
+import hashlib
+import json
+import pathlib
 import re
 import sys
 from collections import Counter
@@ -22,11 +27,12 @@ from dataclasses import dataclass, field as dc_field
 
 from game_agent.budgets import COMPRESS_MAX_TOKENS, complete_checked
 from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
+from game_agent.evalmeta import file_digest
 from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import WorldPack
 from scripts.rubric_judge import select
 
-from .cards import REPO_ROOT, ScenarioCard
+from .cards import REPO_ROOT, ScenarioCard, generate_card, layer_of
 from .materialize import MaterializeError, build_material, load_pack
 from .verbalize import verbalize_card
 
@@ -225,3 +231,203 @@ def manual_review_row(sample: dict) -> dict:
     """
     return {"id": sample["id"], "material": sample["material"],
             "narration": sample["narration"], "expect": sample["expect"]}
+
+
+# ---------------------------------------------------------------------------
+# 配额 / 去重 / 出库（spec §8：三层种子空间；eval 冻结纪律）
+# ---------------------------------------------------------------------------
+
+DATA_ROOT = REPO_ROOT / "data" / "route-a"
+PREFIX_N = 64                # 前缀指纹长度（字符）：防跨层泄漏与近复用
+# ⚠️ 已知风险（实施时盯住丢弃率）：演绎文本开头常同形（同一 VERBALIZE_SYSTEM + 同题材），
+# 64 字前缀可能把**不同样本**判成重复；而 dup 计入 dropped → 可能把丢弃率推过
+# GATE_MAX_DROP_RATE，形成"越像越丢、越丢越像"的反馈。若"前缀去重"占 dropped 的比例
+# 异常高（>1/3），改用整文 hash 作精确去重 + 二字组 Jaccard 判近重复
+# （复用 scripts/near_dup_check.py 口径）。
+GENRE_MIN_SHARE = 0.10       # 层内每题材 ≥10%（plan-phase1-data.md §4.4 轴矩阵按层计数）
+LONG_MIN_SHARE = 0.20        # compress 长输入档 ≥20%（决策 18：合成/真实分列计数）
+LAYER_BASE = {"train": 10000, "dev": 20000, "eval": 30000}
+
+
+def fingerprint(text: str) -> str:
+    return hashlib.sha256(text[:PREFIX_N].encode("utf-8")).hexdigest()[:16]
+
+
+def _sample_text(s: dict) -> str:
+    """跨模块取"表面文本"：extract/compress 用 `input`，judge 用 `narration`。
+
+    （原稿只取 `s["input"]`，而 `build_judge_sample` **不产出 input 键** → judge 一跑就 KeyError。）
+    """
+    return s.get("input") or s.get("narration") or ""
+
+
+def dedup(samples: list[dict], seen: set[str]) -> tuple[list[dict], int]:
+    out, dup = [], 0
+    for s in samples:
+        fp = fingerprint(_sample_text(s))
+        if fp in seen:
+            dup += 1
+            continue
+        seen.add(fp)
+        out.append(s)
+    return out, dup
+
+
+def quota_gaps(samples: list[dict]) -> list[str]:
+    """配额缺口清单（空=达标）。只报告不硬杀：缺口由产线补产，不是丢样本的理由。"""
+    gaps: list[str] = []
+    by_mod: dict[str, list[dict]] = {}
+    for s in samples:
+        by_mod.setdefault(s["module"], []).append(s)
+    for mod, rows in by_mod.items():
+        for g, n in Counter(r.get("genre", "?") for r in rows).items():
+            if n / len(rows) < GENRE_MIN_SHARE:
+                gaps.append(f"{mod}/{g}: {n}/{len(rows)} < {GENRE_MIN_SHARE:.0%}")
+    comp = by_mod.get("compress", [])
+    if comp:
+        long_n = sum(1 for r in comp if r.get("long_input"))
+        if long_n / len(comp) < LONG_MIN_SHARE:
+            gaps.append(f"compress 长输入档: {long_n}/{len(comp)} < {LONG_MIN_SHARE:.0%}"
+                        "（合成/真实须分列计数，决策 18）")
+    return gaps
+
+
+def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path) -> dict:
+    """出库：{layer}/{module}.jsonl + manifest.json（sha256/计数/冻结标志）。"""
+    layer_dir = out_dir / layer
+    layer_dir.mkdir(parents=True, exist_ok=True)
+    by_mod: dict[str, list[dict]] = {}
+    for s in samples:
+        by_mod.setdefault(s["module"], []).append(s)
+    manifest = {"layer": layer, "version": SAMPLE_VERSION,
+                "written_at": datetime.date.today().isoformat(),
+                "frozen": layer == "eval", "modules": {}}
+    for mod, rows in sorted(by_mod.items()):
+        f = layer_dir / f"{mod}.jsonl"
+        f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+                     encoding="utf-8")
+        # 出库摘要走 file_digest（换行归一化）：Windows 下 write_text 会把 \n 落成 CRLF，
+        # 裸 read_bytes() 摘要会让同一份数据集在不同平台得到两个 sha（与 eval-sets 同因）
+        manifest["modules"][mod] = {
+            "count": len(rows), "file": str(f.relative_to(out_dir)),
+            "sha256": file_digest(f),
+        }
+    (layer_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    if layer == "eval":  # 冻结纪律（spec §8 + plan-phase1-data.md §3.3 扩展）
+        with (layer_dir / "OPEN_LOG.md").open("a", encoding="utf-8") as fh:
+            fh.write(f"- {manifest['written_at']} WRITE 出库 "
+                     f"{sum(m['count'] for m in manifest['modules'].values())} 条；"
+                     "此后每次打开（读取用于决策）须在此追加一行计数。\n")
+        print("[eval 层已冻结] 请打 git tag：git tag eval-route-a-YYYYMMDD")
+    return manifest
+
+
+def _build_module(llm, module: str, count: int, seed_base: int, sampling: str,
+                  stats: BatchStats, seen: set[str]) -> list[dict]:
+    builders = {"extract": build_extract_sample, "judge": build_judge_sample}
+    out = []
+    for i in range(count):
+        card = generate_card(seed_base + i, i, module)
+        if module == "compress":
+            r = build_compress_sample(llm, card, sampling=sampling)
+        else:
+            r = builders[module](llm, card)
+        if r.sample is None:
+            stats.dropped += 1
+            stats.reasons[r.dropped_reason.split(":")[0]] += 1
+            continue
+        out.append(r.sample)
+        stats.built += 1
+    rows, dup = dedup(out, seen)
+    stats.dropped += dup
+    stats.reasons["前缀去重"] += dup
+    return rows
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description="场景卡工厂出库（三层种子空间，spec §8）")
+    p.add_argument("--layer", required=True, choices=["train", "dev", "eval"])
+    p.add_argument("--extract", type=int, default=0)
+    p.add_argument("--judge", type=int, default=0)
+    p.add_argument("--compress", type=int, default=0)
+    p.add_argument("--sampling", default="off", choices=["off", "long", "all"])
+    p.add_argument("--seed-base", type=int, default=None,
+                   help="缺省按层取 10000/20000/30000")
+    p.add_argument("--out", default=str(DATA_ROOT))
+    p.add_argument("--dry-run", action="store_true",
+                   help="只出卡做配额预演，不调 LLM、不出库（零成本）")
+    args = p.parse_args(argv)
+
+    seed_base = args.seed_base if args.seed_base is not None else LAYER_BASE[args.layer]
+    if layer_of(seed_base) != args.layer:
+        print(f"[✗] seed 与层不一致（seed={seed_base} 属 {layer_of(seed_base)} 层）——"
+              "三层空间隔离，spec §8")
+        return 1
+    out_dir = pathlib.Path(args.out)
+
+    if args.dry_run:  # 配额预演：零 API 成本，先看轴分布再决定产多少
+        for mod, n in (("extract", args.extract), ("judge", args.judge),
+                       ("compress", args.compress)):
+            if not n:
+                continue
+            genres = Counter(generate_card(seed_base + i, i, mod).axes.genre
+                             for i in range(n))
+            long_n = sum(1 for i in range(n)
+                         if generate_card(seed_base + i, i, mod
+                                          ).history_spec.target_tokens >= LONG_INPUT_TOKENS)
+            print(f"[dry-run] {mod}: {n} 卡，题材 {dict(genres)}，长输入 {long_n}/{n}")
+        return 0
+
+    from game_agent.config import load_settings
+    from game_agent.llm import LLMClient
+    from game_agent.usage import UsageTracker
+    from scripts.rubric_judge import quality_sample
+
+    # usage 记账：**必须显式建 tracker 并传进 LLMClient** —— 落盘只发生在
+    # `LLMClient._record_usage`，`complete_checked` 本身**不接触** UsageTracker。
+    # 走 `from_settings` 同时带来：模型路由（judge/compress 档）+ 侧信道关思考。
+    settings = load_settings()
+    if not settings.has_api_key:
+        print("[✗] 未配置 DEEPSEEK_API_KEY（.env）")
+        return 1
+    tracker = UsageTracker("reports/usage-route-a.jsonl")
+    llm = LLMClient.from_settings(settings, [], tracker=tracker)
+
+    stats = BatchStats()
+    seen: set[str] = set()
+    seen_file = out_dir / "seen_fingerprints.json"  # 跨层去重真源：train 先产，dev/eval 复用
+    if seen_file.exists():
+        seen |= set(json.loads(seen_file.read_text(encoding="utf-8")))
+    samples: list[dict] = []
+    for mod, n in (("extract", args.extract), ("judge", args.judge),
+                   ("compress", args.compress)):
+        if n:
+            samples += _build_module(llm, mod, n, seed_base, args.sampling, stats, seen)
+    if why := quality_gate(stats):
+        print(f"[✗] 质量门未过：{why}——批作废，先停产线")
+        return 1
+    # §7.4 质检员（常驻关卡，Task 7 Step 3b）：抽检自然度，<1 剔除重造
+    bad_ids = quality_sample(llm, samples, rate=QUALITY_SAMPLE_RATE)
+    if bad_ids:
+        print(f"[质检] 自然度 <1 剔除 {len(bad_ids)} 条（须重造）：{bad_ids[:10]}")
+        bad_set = set(bad_ids)
+        samples = [s for s in samples if s["id"] not in bad_set]
+    for g in quota_gaps(samples):
+        print(f"[配额缺口] {g}")
+    manifest = write_layer(args.layer, samples, out_dir)
+    seen_file.write_text(json.dumps(sorted(seen)), encoding="utf-8")
+    confab = [s for s in samples if s.get("category") == "confab"]
+    if confab:  # 决策 16：人读清单随批交付
+        mr = out_dir / args.layer / f"confab-manual-review-{args.layer}.jsonl"
+        mr.write_text("\n".join(json.dumps(manual_review_row(s), ensure_ascii=False)
+                                for s in confab) + "\n", encoding="utf-8")
+        print(f"[人读清单] {mr}（{len(confab)} 条 confab，决策 16 待人工复核）")
+    print(f"[✓] {args.layer} 出库 "
+          f"{sum(m['count'] for m in manifest['modules'].values())} 条"
+          f"（丢弃 {stats.dropped}：{dict(stats.reasons)}）")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
