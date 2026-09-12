@@ -24,7 +24,7 @@
 | 2 轴空间 + 确定性生成器 | ✅ 完成 | `f81a40b`（+ 评审补修，见执行记录） | 共修正 **6 处**计划/实现缺陷（执行 3 + 评审 3） |
 | 3 材料装配器 + 校验①②③ | ✅ 完成 | 见 Task 3 执行记录 | 修正 2 处（`-k material` 过滤器；好感覆写静默跳过 → 坏标签） |
 | 4 演绎器 + 反向校验 | ✅ 完成 | 见 Task 4 执行记录 | 修正 1 处（自然化指令对 confab 原稿是反的） |
-| 5 rubric 评委四模式 | ⬜ 待做 | — | — |
+| 5 rubric 评委四模式 | ✅ 完成 | 见 Task 5 执行记录 | 修正 1 处（`-k` 过滤器；顺带审计了全部 Task 的过滤器） |
 | 6 样本构建三分支 + 拒绝采样 | ⬜ 待做 | — | — |
 | 7 质量门 + 门禁接线 + 人读清单 | ⬜ 待做 | — | — |
 | 8 配额/去重/出库 CLI | ⬜ 待做 | — | 出库摘要须走 `file_digest`（见下） |
@@ -43,7 +43,8 @@
 - `aa78893` Task 3 Step 5 由"顺手修 spec"改为"核验 spec 已修订"（spec 修正已先行落地）。
 
 **测试基线**（`pytest -q`）：存量 **342**（含 card_hook 守卫 1）+ Task 1 守卫 **9** +
-Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + `evalmeta` 换行守卫 **1** = **375 passed**。
+Task 2 守卫 **10** + Task 3 守卫 **8** + Task 4 守卫 **5** + Task 5 守卫 **6** +
+`evalmeta` 换行守卫 **1** = **381 passed**。
 
 ---
 
@@ -1264,7 +1265,7 @@ git commit -m "feat(factory): 演绎器与 anchors 在位/反向校验（Task 4�
 - Create: `scripts/rubric_judge.py`
 - Test: `tests/test_scenario_factory.py`（追加；StubLLM 已在 Task 4 段定义，直接复用）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 import random
@@ -1350,12 +1351,19 @@ def test_quality_sample_flags_template_like_output():
     assert quality_sample(llm, rows, rate=1.0, seed=1) == ["a"]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k "score or pairwise or select or probe"`
+Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: FAIL（`ModuleNotFoundError: No module named 'scripts.rubric_judge'`）
 
-- [ ] **Step 3: 实现 rubric_judge.py**
+> **为什么不用 `-k`**（与其他 Task 同一课）：`-k "score or pairwise or select or probe"` 会把
+> Task 2 的 `test_fact_anchors_are_pairwise_disjoint` 一起命中（含 "pairwise"）→ 实际 7 个。
+> **过滤器审计结论**（逐个按名字核过）：Task 4 的 `-k verbalize`、Task 6 的 `-k "build_ or compress"`、
+> Task 8 的 `-k "fingerprint or dedup or quota or write_layer"`、Task 9 的 `-k "run_eval or report"`
+> 四个**已验证准确**（与各自 Task 的守卫一一对应，无多无少），继续沿用；
+> **Task 3/5/7 三个不准**（或漏或混），一律改为跑整文件 + 看**累计**数。
+
+- [x] **Step 3: 实现 rubric_judge.py**
 
 ```python
 """rubric 评委（spec §7）：选优 / 打分 / 成对比较 / 探针校准，一个入口四种模式。
@@ -1533,17 +1541,35 @@ def quality_sample(llm, samples: list[dict], *, rate: float = 0.20,
     return bad
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k "score or pairwise or select or probe or quality"`
-Expected: 6 passed
+Run: `uv run pytest tests/test_scenario_factory.py -q`
+Expected: **38 passed**（Task 1 的 9 + Task 2 的 10 + Task 3 的 8 + Task 4 的 5 + Task 5 的 6）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/rubric_judge.py tests/test_scenario_factory.py
 git commit -m "feat(factory): rubric 评委四模式与探针改坏/检出口径（Task 5）"
 ```
+
+> **执行记录（2026-09-12）✅ 完成**
+>
+> - Step 2 确认失败 ✓：`ModuleNotFoundError: No module named 'scripts.rubric_judge'`
+> - Step 4 确认通过 ✓：整文件 **38 passed**（9+10+8+5+6）；全量 375 → **381 passed**
+> - 落地：新增 `scripts/rubric_judge.py`（`score` / `select` / `pairwise` / `make_probe` /
+>   `probe_detected` 五件 + §7.4 质检员 `naturalness` / `quality_sample`）
+>
+> **执行中发现并修正的 1 处计划缺陷（同类第三次）**：
+> `-k "score or pairwise or select or probe"` 会把 Task 2 的
+> `test_fact_anchors_are_pairwise_disjoint` 一起命中（含 "pairwise"）→ 实际 7 个而非 6 个。
+>
+> **顺带做了全量过滤器审计**（逐个按测试名核对），结论写进 Step 2 的注：
+> **准确**（继续沿用）= Task 4 `-k verbalize`、Task 6 `-k "build_ or compress"`、
+> Task 8 `-k "fingerprint or dedup or quota or write_layer"`、Task 9 `-k "run_eval or report"`；
+> **不准**（已改为跑整文件 + 累计数）= Task 3 `-k material`、Task 5 本处、
+> Task 7 `-k "hook or quality"`。根因是 `-k` 在同文件里按**子串**匹配，跨 Task 必然互相干扰 ——
+> 一次审完，省得后面每个 Task 都踩。
 
 ---
 
@@ -1898,8 +1924,11 @@ def test_quality_gate_drop_rate():
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k "hook or quality"`
+Run: `uv run pytest tests/test_scenario_factory.py -q`
 Expected: FAIL（`ImportError: cannot import name 'BatchStats'`）
+
+> 不用 `-k "hook or quality"`：它**漏掉**本 Task 的 `test_pipeline_calls_both_gates`
+> （名字里既无 hook 也无 quality），又**混进** Task 5 的 `test_quality_sample_flags_template_like_output`。
 
 - [ ] **Step 3: 实现（追加到 assemble.py）**
 
@@ -1999,8 +2028,8 @@ def test_pipeline_calls_both_gates():
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `uv run pytest tests/test_scenario_factory.py -q -k "hook or quality"`
-Expected: 3 passed
+Run: `uv run pytest tests/test_scenario_factory.py -q`
+Expected: **50 passed**（前五 Task 的 38 + Task 6 的 9 + Task 7 的 3）
 
 - [ ] **Step 5: Commit**
 

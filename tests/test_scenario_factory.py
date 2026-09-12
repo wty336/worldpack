@@ -1,6 +1,7 @@
 """场景卡工厂守卫测试（离线；StubLLM 见 Task 4）。"""
 from __future__ import annotations
 
+import random
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +24,15 @@ from scripts.scenario_factory.materialize import (
     build_material,
 )
 from scripts.scenario_factory.verbalize import verbalize_card
+from scripts.rubric_judge import (
+    make_probe,
+    pairwise,
+    probe_detected,
+    quality_sample,
+    score,
+    select,
+)
+from scripts.scenario_factory.cards import PreservePoint
 
 
 def _judge_card(**over):
@@ -423,3 +433,81 @@ def test_verbalize_confab_requires_the_fabricated_anchor():
 
     missing_claim = "叙事：" + "、".join(rest)            # 没说出编造 → 丢弃
     assert verbalize_card(StubLLM([missing_claim]), card).dropped
+
+
+# --- Task 5：rubric 评委四模式 + 质检员 -------------------------------------
+
+
+class MsgLLM(StubLLM):
+    """StubLLM + 记录 messages（验证 pairwise 的位置交换）。"""
+
+    def __init__(self, texts, finish="stop"):
+        super().__init__(texts, finish)
+        self.msgs = []
+
+    def complete_with_meta(self, messages, **kw):
+        self.msgs.append(list(messages))
+        return super().complete_with_meta(messages, **kw)
+
+
+_PP = [PreservePoint(text="玩家的剑名为「听雨」", anchors=["听雨"])]
+
+
+def test_score_parses_json_and_validates_range():
+    llm = StubLLM(['{"保真": 2, "简洁": 1, "结构": 2, "流畅": 2}'])
+    s = score(llm, summary="摘要", material="材料", preserve_points=_PP)
+    assert s == {"保真": 2, "简洁": 1, "结构": 2, "流畅": 2}
+    assert llm.calls[0]["temperature"] == 0.0  # 评委一律 temp=0（spec §7.3）
+
+
+def test_score_extracts_json_from_noisy_output():
+    llm = StubLLM(['好的，评分如下：{"保真": 1, "简洁": 2, "结构": 1, "流畅": 2} 完毕'])
+    assert score(llm, summary="s", material="m", preserve_points=_PP)["保真"] == 1
+    bad = StubLLM(["无法评分"])
+    with pytest.raises(ValueError, match="JSON"):
+        score(llm=bad, summary="s", material="m", preserve_points=_PP)
+    out = StubLLM(['{"保真": 3, "简洁": 0, "结构": 0, "流畅": 0}'])
+    with pytest.raises(ValueError, match="越界"):
+        score(llm=out, summary="s", material="m", preserve_points=_PP)
+
+
+def test_pairwise_swaps_positions_and_majority_rules():
+    # 评委永远偏好"先看到的那份"：A位/B位各半 → 映射回原始后 a 全胜
+    llm = MsgLLM(['{"winner": "A"}', '{"winner": "B"}'] * 3)
+    w = pairwise(llm, a="摘要甲", b="摘要乙", material="材料", preserve_points=_PP)
+    assert w == "A" and len(llm.msgs) == 6  # 位置交换 ×3 重复 = 6 次（spec §10.2 口径）
+    users = [m[-1]["content"] for m in llm.msgs]
+    assert users[0].index("摘要甲") < users[0].index("摘要乙")  # 第 1 次 a 在前
+    assert users[1].index("摘要乙") < users[1].index("摘要甲")  # 第 2 次已交换
+    tie = MsgLLM(['{"winner": "A"}'] * 6)  # 恒定判 A 位 → 3:3 → tie
+    assert pairwise(tie, a="甲", b="乙", material="m", preserve_points=_PP) == "tie"
+
+
+def test_select_picks_highest_total():
+    llm = StubLLM([
+        '{"保真": 1, "简洁": 1, "结构": 1, "流畅": 1}',  # 总 4
+        '{"保真": 2, "简洁": 2, "结构": 2, "流畅": 1}',  # 总 7 ←
+        '{"保真": 1, "简洁": 2, "结构": 1, "流畅": 1}',  # 总 5
+    ])
+    assert select(llm, candidates=["c0", "c1", "c2"], material="m",
+                  preserve_points=_PP) == 1
+
+
+def test_make_probe_kinds_and_detection():
+    clean = "玩家的剑名为「听雨」。他答应中秋前还银。渡口无事。"
+    rng = random.Random(1)
+    p1 = make_probe(clean, _PP, kind="删要点", rng=rng)
+    assert "听雨" not in p1
+    p2 = make_probe(clean, _PP, kind="注入虚构", rng=rng)
+    assert "听雨" in p2 and len(p2) > len(clean)
+    p3 = make_probe(clean, _PP, kind="打乱结构", rng=rng)
+    assert sorted(p3) == sorted(clean) and p3 != clean
+    assert probe_detected({"保真": 0, "简洁": 1, "结构": 1, "流畅": 1}, "删要点")
+    assert not probe_detected({"保真": 1, "简洁": 1, "结构": 0, "流畅": 1}, "删要点")
+
+
+def test_quality_sample_flags_template_like_output():
+    """spec §7.4 质检员：自然度 <1 的样本须被剔除（抽检是常驻关卡，不是一次性检查）。"""
+    llm = StubLLM(['{"自然度": 0}', '{"自然度": 2}'])
+    rows = [{"id": "a", "input": "填空式模板文本"}, {"id": "b", "input": "自然叙事"}]
+    assert quality_sample(llm, rows, rate=1.0, seed=1) == ["a"]
