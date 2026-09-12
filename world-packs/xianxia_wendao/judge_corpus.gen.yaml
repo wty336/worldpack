@@ -315,7 +315,7 @@ cases:
   - su_wanying
 - id: gen_normal_01
   category: normal
-  narration: 白芷歪头看你：『师兄又来了？今儿的丹药我可没炸炉。』
+  narration: 白芷歪头看你：『又是你呀？今儿的丹药我可没炸炉。』
   expected: true
   day: 20
   scene: 青云仙宗·丹峰
@@ -327,7 +327,7 @@ cases:
   narration: 苏晚晴立在剑峰之上，手中剑诀一引，山风自她衣袂间掠过。
   expected: true
   day: 20
-  scene: 青云仙宗·丹峰
+  scene: 青云仙宗·剑峰
   note: 程序化：与材料一致，应判通过（误报率口径）。
   present:
   - su_wanying
@@ -345,7 +345,7 @@ cases:
   narration: 你沿着石阶往剑峰走，云雾漫过脚边。
   expected: true
   day: 20
-  scene: 青云仙宗·丹峰
+  scene: 青云仙宗·山道
   note: 程序化：与材料一致，应判通过（误报率口径）。
 - id: gen_normal_05
   category: normal

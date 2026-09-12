@@ -230,7 +230,9 @@ cases:
     day: 12
     scene: '长安城·东市'
     present: [shen_qingqiu]
-    note: '赠书答谢，礼节得体，无越界承诺。'
+    facts:
+      - '前日沈清秋曾向玩家提起，想寻一册某家诗集'
+    note: '赠书答谢，礼节得体，无越界承诺。（2026-09-12 补：追述的旧事必须进材料——否则 Judge 会把"前日提及此书"判为虚构事实，判官当时是对的）'
   - id: normal_night_pond
     category: normal
     narration: |-

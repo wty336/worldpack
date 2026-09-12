@@ -280,7 +280,9 @@ cases:
     expected: true
     day: 5
     scene: '苍梧界·青云坊市'
-    note: '日常采买，无人物互动。'
+    facts:
+      - '玩家此前猎得一枚妖丹，尚未出手'
+    note: '日常采买，无人物互动。（2026-09-12 补：交易前提「拥有妖丹」必须进材料——否则 Judge 会把该交易判为虚构事实，判官当时是对的）'
   - id: normal_peak_sword
     category: normal
     narration: |-

@@ -336,7 +336,7 @@ cases:
   narration: 你沿着朱雀大街往前走，街边胡饼的香气混着酒旗的招展。
   expected: true
   day: 12
-  scene: 长安城·东市
+  scene: 长安城·朱雀大街
   note: 程序化：与材料一致，应判通过（误报率口径）。
 - id: gen_normal_03
   category: normal
@@ -349,7 +349,7 @@ cases:
   - shen_qingqiu
 - id: gen_normal_04
   category: normal
-  narration: 你把手按在剑柄上，静静看着那几个人退开。
+  narration: 你把手按在剑柄上，听风从檐角掠过。
   expected: true
   day: 12
   scene: 长安城·东市
@@ -365,7 +365,7 @@ cases:
   - shen_qingqiu
 - id: gen_normal_06
   category: normal
-  narration: 灶上的水开了，你替老樵夫把柴担搁到檐下。
+  narration: 你在东市的茶摊前坐下，要了碗粗茶。
   expected: true
   day: 12
   scene: 长安城·东市

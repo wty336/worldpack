@@ -117,14 +117,17 @@ def build_materials(pack: WorldPack, case: JudgeCase) -> str:
     return ContextBuilder.from_pack(pack).status_text(state, None)
 
 
-def majority_hit(verdicts: list[bool | None]) -> bool | None:
+def majority_hit(verdicts: list[bool | None], min_known: int = 1) -> bool | None:
     """多数票：以「被拦截」为阳性。``None`` = 该轮无法判定（空响应/截断/异常）。
 
     - 未知轮**不进分母**（否则空响应会被当成"未拦截"，系统性低估拦截率）；
-    - 全部未知 → 返回 ``None``：该用例不可判定，**不是**"未拦截"。
+    - **已知轮少于 ``min_known`` 时返回 ``None``**：证据不足，不得由单轮定案。
+      （2026-09-12 教训：rounds=3 且只改"未知不进分母"时，1 轮已知即可定案，
+      单次噪声把三包误报率从 0% 抬到 17~22%；故要求 ≥⌈rounds/2⌉ 轮已知。）
+    - 全部未知 → ``None``。
     """
     known = [v for v in verdicts if v is not None]
-    if not known:
+    if len(known) < max(1, min_known):
         return None
     flagged = sum(1 for v in known if not v)
     return flagged >= (len(known) + 1) // 2

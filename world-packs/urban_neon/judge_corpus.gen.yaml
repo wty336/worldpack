@@ -318,7 +318,7 @@ cases:
   narration: 诊所的灯是冷白的，林澈把器械一件件排开。
   expected: true
   day: 9
-  scene: 旧终端区·街口
+  scene: 白噪诊所
   note: 程序化：与材料一致，应判通过（误报率口径）。
   present:
   - lin_che
@@ -334,7 +334,7 @@ cases:
   narration: 林澈头也不抬：『坐。手伸出来。』
   expected: true
   day: 9
-  scene: 旧终端区·街口
+  scene: 白噪诊所
   note: 程序化：与材料一致，应判通过（误报率口径）。
   present:
   - lin_che

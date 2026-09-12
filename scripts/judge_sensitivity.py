@@ -49,7 +49,7 @@ def _run_case(judge, pack, case, rounds):
         ok, verdict = judge.check(case.narration, materials)
         verdicts.append(ok)
         rounds_detail.append({"round": r, "passed": ok, "verdict": verdict})
-    return majority_hit(verdicts), rounds_detail
+    return majority_hit(verdicts, min_known=(rounds + 1) // 2), rounds_detail
 
 
 def _summarize(results: list[dict]) -> tuple[dict, bool]:

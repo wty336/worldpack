@@ -92,12 +92,24 @@ def test_judge_api_error_is_unknown():
 
 
 def test_majority_hit_ignores_unknown_rounds():
-    assert majority_hit([False, None, None]) is True  # 唯一已知轮被拦
+    assert majority_hit([False, None, None]) is True  # 唯一已知轮被拦（min_known 默认 1）
     assert majority_hit([True, None, None]) is False  # 唯一已知轮通过 → 未拦
     assert majority_hit([False, False, True]) is True  # 2/3 拦截
     assert majority_hit([False, True, True]) is False  # 1/3 拦截
     assert majority_hit([None, None, None]) is None  # 全部未知 → 不可判定
     assert majority_hit([]) is None
+
+
+def test_majority_hit_requires_min_known_rounds():
+    """证据不足不得定案：rounds=3 时要求 ≥2 轮已知（2026-09-12 教训）。
+
+    只改"未知不进分母"而不设下限时，1 轮已知即可定案 → 单次噪声把误报率抬高 17~22pp。
+    """
+    assert majority_hit([False, None, None], min_known=2) is None
+    assert majority_hit([True, None, None], min_known=2) is None
+    assert majority_hit([False, False, None], min_known=2) is True
+    assert majority_hit([True, True, None], min_known=2) is False
+    assert majority_hit([False, None, None]) is True  # 默认 min_known=1 时仍可定案（向后兼容）
 
 
 # ---------------------------------------------------------------------------
@@ -116,18 +128,22 @@ class _StubJudge:
 
 
 def test_gate_run_case_excludes_unknown_rounds():
+    """门禁：未知轮不进分母；**已知轮 <2（rounds=3）不定案**（证据不足，2026-09-12 收严）。"""
     mod = _load_script("judge_sensitivity_under_test", "judge_sensitivity.py")
     pack = load_worldpack(PACK_PATH)
     case = load_corpus(PACK_PATH)[0]
 
-    hit, detail = mod._run_case(_StubJudge([False, None, None]), pack, case, 3)
+    hit, detail = mod._run_case(_StubJudge([False, False, None]), pack, case, 3)
     assert hit is True and len(detail) == 3
 
-    hit, _ = mod._run_case(_StubJudge([True, None, None]), pack, case, 3)
+    hit, _ = mod._run_case(_StubJudge([True, True, None]), pack, case, 3)
     assert hit is False
 
+    hit, _ = mod._run_case(_StubJudge([False, None, None]), pack, case, 3)
+    assert hit is None  # 仅 1 轮已知 → 不可判定（单轮噪声不得翻案）
+
     hit, _ = mod._run_case(_StubJudge([None, None, None]), pack, case, 3)
-    assert hit is None  # 不可判定，不能算"未拦截"
+    assert hit is None  # 全部未知
 
 
 def test_gate_summary_counts_unknown_separately():
