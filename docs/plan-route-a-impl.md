@@ -299,8 +299,13 @@ git commit -m "feat(factory): 场景卡 schema 与 §3.3 校验规则（Task 1�
 - [ ] **Step 1: 写失败测试（追加到测试文件）**
 
 ```python
-# 本 Task 起把 Task 1 的那行导入**扩为**下面这行（generate_card 在 Task 2 Step 3 落地）：
-from scripts.scenario_factory.cards import PACK_BY_GENRE, generate_card, layer_of
+# 本 Task 起把 Task 1 的那行导入**扩为**下面这行（保留 ScenarioCard，追加三个符号）：
+from scripts.scenario_factory.cards import (
+    PACK_BY_GENRE,
+    ScenarioCard,
+    generate_card,
+    layer_of,
+)
 
 
 def test_layer_of():
@@ -355,6 +360,24 @@ def test_fact_anchors_are_pairwise_disjoint():
         for mod in ("extract", "judge", "compress"):
             anchors = [a for f in generate_card(10231, seq, mod).facts for a in f.anchors]
             assert len(anchors) == len(set(anchors)), f"{mod}#{seq} anchors 相交: {anchors}"
+
+
+def test_corruption_detail_quotes_are_parseable():
+    """Task 4 的 `_corruption_swap` 用 `「([^」]+)」` 解析 detail：
+    嵌套「」（如把整条 text 引进去）会解出残缺串 → 该卡**恒被丢弃**，
+    而 confab 占 judge 配额 ≥40% —— 是静默良率损失，必须钉住。"""
+    for seq in range(40):
+        c = generate_card(10231, seq, "judge")
+        cor = c.corruptions[0]
+        assert cor.detail.count("「") == cor.detail.count("」"), cor.detail
+        quoted = re.findall(r"「([^」]+)」", cor.detail)
+        assert all("「" not in q and "」" not in q for q in quoted), cor.detail
+        if cor.category == "setting":
+            assert len(quoted) == 2, f"setting 需「原值」「新值」两引（反向校验依赖）: {cor.detail}"
+        elif cor.category == "confab":
+            assert len(quoted) == 1, f"confab 只应引被断言的 anchor 一个「」: {cor.detail}"
+        else:  # ooc：改写语气/底线，不涉及具体值 → 无引用
+            assert quoted == [], cor.detail
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -381,6 +404,11 @@ PACK_BY_GENRE = {
     "仙侠": "world-packs/xianxia_wendao",
     "民国谍战": "world-packs/G1_republic_spy",  # G1 待造，见 §10.3 依赖说明
 }
+
+# judge 卡必带 pack 的题材 → 该包现有 NPC（材料装配用；无映射的用中性占位）
+NPC_BY_PACK = {"xianxia_wendao": "bai_zhi", "urban_neon": "lin_che",
+               "ancient_jianghu": "shen_qingqiu"}
+DEFAULT_JUDGE_NPC = "station_chief"  # G1 待造，先用占位（材料装配排在 G1 之后）
 
 _FACT_TPL = [  # (type, importance, text 模板, anchors 模板)
     # {g1} = 流派词；{n0}/{n1} = **本事实独占**的专名槽（不可跨模板共用！
@@ -456,36 +484,39 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
     if module == "judge":
         genre = axes.genre if axes.genre in PACK_BY_GENRE else rng.choice(
             list(PACK_BY_GENRE))
-        axes = axes.model_copy(update={"genre": genre})
-        base["axes"] = axes
+        base["axes"] = axes = axes.model_copy(update={"genre": genre})
         category = rng.choice(["setting", "confab", "ooc"])
         if category == "setting":
+            # 反向校验需要「原值 → 新值」两个「」引用（Task 4 的 _corruption_swap 依赖此格式）
             kept = [f.model_copy() for f in facts[:2]]
             cor = CorruptionSpec(category="setting", target_fact=0, method="近义改写",
                 detail=f"「{kept[0].anchors[0]}」演绎为「{n3}」",
                 expect="问题类型：设定矛盾")
         elif category == "confab":
+            # 断言型编造：整条事实不在材料里。detail 只引 **一个**「」（被断言的 anchor），
+            # 不得嵌套引用整条 text（text 自带「」，会让 Task 4 的正则解析出残缺串 → 该卡恒被丢弃）
             kept = [f.model_copy(update={"in_material": False}) for f in facts[:2]]
             cor = CorruptionSpec(category="confab", target_fact=0, method="近义改写",
-                detail=f"把「{kept[0].text}」当作既成事实断言——材料里从未有过",
+                detail=f"把「{kept[0].anchors[0]}」这件事当作既成事实断言——材料里从未有过",
                 expect="问题类型：虚构事实")
         else:
             kept = facts[:2]
             cor = CorruptionSpec(category="ooc", target_fact=None, method="近义改写",
                 detail="说话人语气撞其角色卡 speech_style", expect="问题类型：OOC")
-        npc = {"xianxia_wendao": "bai_zhi", "urban_neon": "lin_che",
-               "ancient_jianghu": "shen_qingqiu"}.get(
-                   PACK_BY_GENRE[genre].rsplit("/", 1)[-1], "station_chief")
+        npc = NPC_BY_PACK.get(PACK_BY_GENRE[genre].rsplit("/", 1)[-1], DEFAULT_JUDGE_NPC)
         return ScenarioCard(pack=PACK_BY_GENRE[genre], facts=kept, corruptions=[cor],
             material=MaterialSpec(day=rng.randint(2, 15), scene=f"{genre}·场景",
                 present=[npc], affections={npc: 45}, recent=f"玩家向{n2}问起{n3}"),
             **base)
     if module == "compress":
-        # input_form（spec §3.2）：首压 = 无旧摘要；增量合并 = 带旧摘要（生产 user 模板的第一段）
+        # input_form（spec §3.2）：首压 = 无旧摘要；增量合并 = 带旧摘要（生产 user 模板首段）
         form = "增量合并" if seq % 4 == 0 else "首压"
+        # 注意：base 已含 axes，须**改 base 再解包**，不能同时传 axes= 与 **base
+        #（否则 TypeError: got multiple values for keyword argument 'axes'）
+        base["axes"] = axes.model_copy(update={"input_form": form})
         return ScenarioCard(
-            facts=facts, axes=axes.model_copy(update={"input_form": form}),
-            old_summary=("【剧情摘要】此前玩家已与" + n2 + "相识，旧事略。") if form == "增量合并" else "",
+            facts=facts,
+            old_summary="【剧情摘要】" + f"此前玩家已与{n2}相识，旧事略。" if form == "增量合并" else "",
             preserve_points=[PreservePoint(text=f.text, anchors=f.anchors) for f in facts[:2]],
             events=[f"事件{i}：玩家与{n2}周旋" for i in range(3)], **base)
     return ScenarioCard(facts=facts, **base)  # reflect（照造，不进第一批训练）
@@ -496,7 +527,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q`
-Expected: 15 passed（Task 1 的 9 + Task 2 的 6）
+Expected: 16 passed（Task 1 的 9 + Task 2 的 7）
 
 - [ ] **Step 5: Commit**
 
@@ -758,6 +789,26 @@ def test_verbalize_corruption_reverse_check():
     # 坏样本：把原 anchor 写回去 → 必须丢弃（这就是反向校验）
     bad = "叙事：" + "、".join(rest_anchors + [quoted[-1], hit.anchors[0]])
     assert verbalize_card(StubLLM([bad]), card).dropped
+
+
+def test_verbalize_confab_requires_the_fabricated_anchor():
+    """confab：叙事**必须**把编造的 anchor 说出来 —— 与 setting 的"原词不得出现"方向相反。
+
+    早先一版把 confab 也按 setting 处理（同一条 anchor 既要求在位、又列为不得出现），
+    结果 confab 卡恒被丢弃；而 confab 占 judge 配额 ≥40%，是重大静默损失。
+    """
+    card = next(c for s in range(20)
+                if (c := generate_card(10231, s, "judge")).corruptions[0].category == "confab")
+    cor = card.corruptions[0]
+    assert cor.target_fact is not None
+    wanted = re.findall(r"「([^」]+)」", cor.detail)      # 被断言的 anchor
+    rest = [a for i, f in enumerate(card.facts) if i != cor.target_fact for a in f.anchors]
+
+    good = "叙事：" + "、".join(rest + wanted)            # 说出了编造 → 收下
+    assert not verbalize_card(StubLLM([good]), card).dropped
+
+    missing_claim = "叙事：" + "、".join(rest)            # 没说出编造 → 丢弃
+    assert verbalize_card(StubLLM([missing_claim]), card).dropped
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -795,28 +846,37 @@ class VerbalizeResult:
     dropped: bool = False
 
 
-def _corruption_swap(card: ScenarioCard) -> tuple[int | None, list[str]]:
-    """被命中事实的下标 + detail 中「」引用值（演绎后须在位；原 anchor 不得出现）。"""
+def _corruption_swap(card: ScenarioCard) -> tuple[int | None, list[str], list[str]]:
+    """按 category 返回 (被命中事实下标, **须在位**的值, **须缺席**的原值)。
+
+    三类语义不同，早先一版把它们当成同一件事，导致 confab 卡**恒被丢弃**：
+      - setting：原值须缺席、新值须在位（detail 格式 `「原值」演绎为「新值」`）
+      - confab ：被断言的 anchor **须在位**（叙事必须把编造说出来），无缺席要求
+      - ooc    ：不涉及具体值 → hit_idx=None（全部事实 anchors 须在位）
+    """
     if card.module != "judge" or not card.corruptions:
-        return None, []
+        return None, [], []
     c = card.corruptions[0]
-    return c.target_fact, re.findall(r"「([^」]+)」", c.detail)
+    quoted = re.findall(r"「([^」]+)」", c.detail)
+    if c.category == "setting" and c.target_fact is not None:
+        absent = [a for a in card.facts[c.target_fact].anchors if a in quoted]
+        return c.target_fact, [q for q in quoted if q not in absent], absent
+    if c.category == "confab":
+        return c.target_fact, quoted, []
+    return None, quoted, []
 
 
 def _missing_anchors(card: ScenarioCard, text: str) -> list[str]:
-    hit_idx, wanted = _corruption_swap(card)
+    hit_idx, present, _ = _corruption_swap(card)
     missing = [a for i, f in enumerate(card.facts) if i != hit_idx
                for a in f.anchors if a not in text]
-    if hit_idx is not None and wanted and not any(w in text for w in wanted):
-        missing.append(f"corruption 引用值{wanted}")
+    missing += [p for p in present if p not in text]
     return missing
 
 
 def _originals_present(card: ScenarioCard, text: str) -> list[str]:
-    hit_idx, wanted = _corruption_swap(card)
-    if hit_idx is None or not wanted:
-        return []
-    return [a for a in card.facts[hit_idx].anchors if a in text]
+    _, _, absent = _corruption_swap(card)
+    return [a for a in absent if a in text]
 
 
 def verbalize_card(llm, card: ScenarioCard) -> VerbalizeResult:
@@ -846,7 +906,7 @@ def verbalize_card(llm, card: ScenarioCard) -> VerbalizeResult:
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_scenario_factory.py -q -k verbalize`
-Expected: 4 passed
+Expected: 5 passed
 
 - [ ] **Step 5: Commit**
 
@@ -1628,9 +1688,9 @@ git commit -m "feat(factory): 质量门、confab 卡中性门禁与人读清单�
 - [ ] **Step 1: 写失败测试（追加）**
 
 ```python
-import hashlib
 import json
 
+from game_agent.evalmeta import file_digest
 from scripts.scenario_factory.assemble import (
     dedup, fingerprint, quota_gaps, write_layer,
 )
@@ -1677,7 +1737,7 @@ def test_write_layer_manifest_sha_matches(tmp_path):
     manifest = write_layer("dev", rows, tmp_path)
     f = tmp_path / "dev" / "extract.jsonl"
     assert f.exists() and len(f.read_text(encoding="utf-8").splitlines()) == 2
-    sha = hashlib.sha256(f.read_bytes()).hexdigest()
+    sha = file_digest(f)
     assert manifest["modules"]["extract"]["sha256"] == sha
     assert manifest["frozen"] is False
     ev = write_layer("eval", rows, tmp_path)
@@ -1697,6 +1757,8 @@ import argparse
 import datetime
 import hashlib
 import json
+
+from game_agent.evalmeta import file_digest
 
 from .cards import generate_card, layer_of
 
@@ -1768,9 +1830,11 @@ def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path) -> dict:
         f = layer_dir / f"{mod}.jsonl"
         f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
                      encoding="utf-8")
+        # 出库摘要同样走 file_digest（换行归一化）：Windows 下 write_text 会把 \n 落成 CRLF，
+        # 裸 read_bytes() 摘要会让同一份数据集在不同平台得到两个 sha（与 eval-sets 那次同因）
         manifest["modules"][mod] = {
             "count": len(rows), "file": str(f.relative_to(out_dir)),
-            "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
+            "sha256": file_digest(f),
         }
     (layer_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2200,9 +2264,10 @@ uv run python scripts/extract_eval.py --repeat 3 --temperature 0
 ```
 
 **对照基线怎么读**（原稿也引错了）：`reports/extract-eval-20260912-141241.json` 的 `summary`
-是**极性修正前**的口径（`recall 42/96`、`eval_set_sha256=c4214adf…`），**并不含** 45.2%（42/93）
-与"11 负例"——那两个数来自 spec §12.C 决策 20 的**离线重切**（分母 93 = 31 正 × 3，
-负例 33 = 11 × 3）。做对照时按新口径比，**不要直接读那个 JSON 的 summary**。
+是**极性修正前**的口径（`recall 42/96`、`eval_set_sha256=c4214adf…` —— 该值正是修正前那份
+`direct.yaml` 的**归一化（LF）摘要**，与 Windows 侧记录的 `9a552245cd9a` 是同一文件），
+**并不含** 45.2%（42/93）与"11 负例"——那两个数来自 spec §12.C 决策 20 的**离线重切**
+（分母 93 = 31 正 × 3，负例 33 = 11 × 3）。做对照时按新口径比，**不要直接读那个 JSON 的 summary**。
 
 **验收判据**（spec 决策 15 封板口径；1、2 两条**同时**成立才算达标）：
 
@@ -2232,12 +2297,13 @@ git commit -m "feat(memory): EXTRACT_SYSTEM 判定式收紧（Task 10，决策 1
 - [ ] **Step 1: 全量测试**
 
 Run: `uv run pytest -q`
-Expected: **341 存量** + 本计划新增 **50 个守卫**（Test 1~9：9+6+5+4+6+9+3+5+3）+ Task 10 的 1 个
-prompt 守卫 = **392 全绿**
+Expected: **341 存量** + 本计划新增 **52 个守卫**（Task 1~9：9+7+5+5+6+9+3+5+3）+ Task 10 的 1 个
+prompt 守卫 = **394 全绿**
 
 > 计数口径（2026-09-12 实测）：`pytest --collect-only -q` 当前 **341**（原稿写 279，是 Step 0 之后的旧数）；
-> 计划枚举的守卫数逐个数为 50（原稿写 30 也不对）。Task 3 的夹具拆分把 4 变 5、Task 5 加了质检员、
-> Task 6 加了三条模板/负例守卫、Task 8 加了 judge 去重守卫、Task 9 加了报告指纹守卫。
+> 计划枚举的守卫数逐个数为 52（原稿写 30 也不对）。Task 2 加了 anchors 不相交 + detail 可解析
+> 两条守卫（执行时发现的两处真缺陷）、Task 3 的夹具拆分把 4 变 5、Task 4 加了 confab 反向校验守卫、
+> Task 5 加了质检员、Task 6 加了三条模板/负例守卫、Task 8 加了 judge 去重守卫、Task 9 加了报告指纹守卫。
 
 - [ ] **Step 2: M1~M4 验收项核对（对照 spec §10.3 逐项打勾）**
 
