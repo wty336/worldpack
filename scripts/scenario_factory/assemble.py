@@ -32,8 +32,10 @@ from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
 from game_agent.evalmeta import file_digest
 from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import WorldPack
-from scripts.rubric_judge import select
+from scripts.rubric_judge import (QUALITY_SAMPLE_SEED, label_check, quality_sample,
+                                  sample_positions, select)
 
+from . import worklog
 from .cards import (REPO_ROOT, LONG_INPUT_TOKENS, ScenarioCard, card_seed,
                     generate_card, layer_of)
 from .materialize import MaterializeError, build_material, load_pack
@@ -474,8 +476,14 @@ def drop_flagged(samples: list[dict], bad_ids: list[str]) -> tuple[list[dict], i
     return kept, len(samples) - len(kept)
 
 
-def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path) -> dict:
-    """出库：{layer}/{module}.jsonl + manifest.json（sha256/计数/冻结标志）。"""
+def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path,
+                progress: dict | None = None) -> dict:
+    """出库：{layer}/{module}.jsonl + manifest.json（sha256/计数/冻结标志）。
+
+    `progress`（2026-09-13 断点续跑改造）：发布可以**分模块、分片**进行，所以"这份数据集
+    是不是最终态"必须能从 manifest 里读出来 —— 否则按 300/1000 发布出来的半成品，
+    与全量成品长得一模一样（下游只会看到"就这么点数据"）。
+    """
     ids = [s["id"] for s in samples]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:  # 发现①：撞 id 会让下游按 id 对齐/剔除**连坐**，故在出库口直接拒写
@@ -490,6 +498,9 @@ def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path) -> dict:
     manifest = {"layer": layer, "version": SAMPLE_VERSION,
                 "written_at": datetime.date.today().isoformat(),
                 "frozen": layer == "eval", "modules": {}}
+    if progress:
+        manifest["progress"] = progress
+        manifest["complete"] = all(p["pending"] == 0 for p in progress.values())
     for mod, rows in sorted(by_mod.items()):
         f = layer_dir / f"{mod}.jsonl"
         f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
@@ -511,29 +522,367 @@ def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path) -> dict:
     return manifest
 
 
-def _build_module(llm, module: str, count: int, seed_base: int, sampling: str,
-                  stats: BatchStats, seen: set[str]) -> list[dict]:
+def _journal_entry(card: ScenarioCard, i: int, r, seen: set[str]) -> dict:
+    """一枚日志行。**前缀去重在这里判**（口径与旧 `dedup` 一致：先产出的留、后产出的丢）。
+
+    为什么去重必须挪到产出当时：样本一旦入日志就"已完成"，续跑不会再产它；若去重仍留到
+    最后统一做，那被丢掉的那张卡在续跑时会被当成"没去过重"或"已丢"——两种口径都会算错账。
+    """
+    if r.sample is None:
+        return {"i": i, "status": worklog.DROPPED, "card_id": card.card_id,
+                "reason": r.dropped_reason}
+    rows, dup = dedup([r.sample], seen)   # 去重口径复用 dedup（单一真源，不另写一份）
+    if dup:
+        return {"i": i, "status": worklog.DROPPED, "card_id": card.card_id,
+                "reason": "前缀去重"}
+    return {"i": i, "status": worklog.KEPT, "card_id": card.card_id, "sample": rows[0]}
+
+
+def _produce(llm, module: str, indices: list[int], seed_base: int, sampling: str,
+             journal: worklog.Journal, seen: set[str]) -> int:
+    """按索引产卡并**每张卡立刻入日志**（中断只丢正在产的那一张）。返回本次新增条数。"""
     builders = {"extract": build_extract_sample, "judge": build_judge_sample}
-    out = []
-    for i in range(count):
+    for i in indices:
         # seed 走 card_seed（层内按模块错开）：三模块共用 seed_base+i 会让 card_id 撞车（发现①）
         card = generate_card(card_seed(seed_base, i, module), i, module)
         if module == "compress":
             r = build_compress_sample(llm, card, sampling=sampling)
         else:
             r = builders[module](llm, card)
-        if r.sample is None:
-            stats.drop(r.dropped_reason, card.card_id)   # 留档：丢的是哪张卡（诊断用）
+        journal.append(_journal_entry(card, i, r, seen))
+    return len(indices)
+
+
+def _stats_from_journals(journals: dict[str, worklog.Journal]) -> BatchStats:
+    """批统计**从日志重算**（不是"本次跑了多少"）。
+
+    否则分片续跑会把丢弃率算成本次那一小片的（300 张里丢 3 张 = 1%，而整层可能是 22%）——
+    质量门就形同虚设。`rejected`（质检剔除）计入 built：它确实产出来了，剔除另计
+    （与旧版 `drop_flagged` 的账法一致：built − 剔除 = 出库）。
+    """
+    stats = BatchStats()
+    for j in journals.values():
+        for e in j.entries_in_order():
+            if e["status"] in (worklog.KEPT, worklog.REJECTED):
+                stats.built += 1
+            else:
+                stats.drop(e.get("reason") or "未记原因", e["card_id"])
+    return stats
+
+
+def _judge_quality(llm, journals: dict[str, worklog.Journal]) -> list[str]:
+    """§7.4 质检员（常驻关卡）：只判**还没判过的**，判定写回日志（返回点名剔除的 id）。
+
+    为什么判定要入日志：旧版每次发布都对整层重抽 20% —— 分片发布时累计重判（10 片 ≈ 多花
+    ¥11），更要命的是同一条样本**这次过、下次不过**，出库内容随发布次数抖动。
+    """
+    pool = [(m, e) for m in sorted(journals) for e in journals[m].unjudged()]
+    if not pool:
+        return []
+    samples = [e["sample"] for _, e in pool]
+    # 抽检位置与 quality_sample **同源**（`sample_positions` 是唯一真源）：不这样就没法记"判过哪几条"
+    pos = set(sample_positions(len(samples), QUALITY_SAMPLE_RATE, QUALITY_SAMPLE_SEED))
+    bad = set(quality_sample(llm, samples, rate=QUALITY_SAMPLE_RATE))
+    for n, (mod, e) in enumerate(pool):
+        judged = n in pos
+        # **判据用 `id in bad` 而不是 `judged and id in bad`**：`bad` 就是"评委说这条不行"，
+        # 与抽样位置无关（`judged` 只用于报表"抽检了几条"）。位置与判定不一致时（例如替身/口径
+        # 变更），以**评委的话**为准 —— 否则一条被判坏的样本会因为"没抽到它"而进数据集。
+        fail = samples[n]["id"] in bad
+        upd = {**e, "sampled": judged, "status": worklog.REJECTED if fail else worklog.KEPT,
+               "quality": (0 if fail else 2) if judged else 1}   # 0 不通过 / 1 未抽检 / 2 通过
+        if fail:
+            upd["reason"] = "质检自然度<1"
+        journals[mod].append(upd)
+    print(f"[质检] 抽检 {len(pos)}/{len(samples)} 条（口径 {QUALITY_SAMPLE_RATE:.0%}，"
+          f"未抽检 {len(samples) - len(pos)} 条）→ 自然度 <1 剔除 {len(bad)} 条；"
+          "判定已入日志（续跑/再发布不重判）")
+    return sorted(bad)
+
+
+def _layer_seen_file(out_dir: pathlib.Path, layer: str) -> pathlib.Path:
+    return out_dir / "seen" / f"{layer}.json"
+
+
+def _write_layer_seen(out_dir: pathlib.Path, layer: str,
+                      journals: dict[str, worklog.Journal]) -> int:
+    """本层指纹落盘（**纯函数于本层日志**）→ 跨层去重的durable真源。
+
+    为什么**按层分文件**（而不是旧版那个全局 `seen_fingerprints.json`）：全局文件里删不掉某一层
+    的指纹，于是 `--fresh` 重做时——重造出的样本文本与旧版**前 64 字往往一样**（同一张卡 + 同一
+    演绎提示词）——会被自己的旧指纹当成重复**全灭**。分文件后，本层重做 = 本层指纹随日志一起
+    重算，别的层不受影响。
+
+    ⚠️ 迁移：旧的 `data/route-a/seen_fingerprints.json` 不再被读取（它记的是**上一代**数据集
+    的指纹，拿它去卡新数据集只会造成"越像越丢"）；随旧数据集一起删掉即可。
+    """
+    fps = sorted({fingerprint(_sample_text(e["sample"]))
+                  for j in journals.values() for e in j.entries.values() if "sample" in e})
+    f = _layer_seen_file(out_dir, layer)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(fps), encoding="utf-8")
+    return len(fps)
+
+
+def _seen_from_disk(out_dir: pathlib.Path, layer: str,
+                    pending: dict[str, set[int]]) -> set[str]:
+    """跨层去重真源 = **别的层**的指纹文件 ∪ 各层日志里已产样本的指纹。
+
+    两条都必须：
+    - **别的层**：本层重做时不能拿自己的旧指纹卡自己（见 `_write_layer_seen`）；
+    - **排除本次要重产的索引**（`pending`）：质检剔除的样本重造时，它自己的前缀指纹还在日志里
+      —— 不排除就会把重造版当成"重复"再丢一次，那张卡永远造不出来。
+    """
+    seen: set[str] = set()
+    for other in ("train", "dev", "eval"):
+        if other != layer:
+            f = _layer_seen_file(out_dir, other)
+            if f.exists():
+                seen |= set(json.loads(f.read_text(encoding="utf-8")))
+        for mod in ("extract", "judge", "compress"):
+            j = worklog.read_journal(worklog.journal_path(out_dir, other, mod))
+            skip = pending.get(mod, set()) if other == layer else set()
+            seen |= {fingerprint(_sample_text(e["sample"]))
+                     for i, e in j.entries.items()
+                     if i not in skip and "sample" in e
+                     and e["status"] in (worklog.KEPT, worklog.REJECTED)}
+    return seen
+
+
+def _label_side(out_dir: pathlib.Path, layer: str) -> pathlib.Path:
+    return out_dir / layer / f"label-check-{layer}.json"
+
+
+def _label_runs(side: pathlib.Path) -> list[dict]:
+    """读标签自检证据文件。**兼容旧格式**（旧版是单个 dict，每次覆盖 → 分片发布时证据被冲掉）。"""
+    if not side.exists():
+        return []
+    data = json.loads(side.read_text(encoding="utf-8"))
+    return data if isinstance(data, list) else [data]
+
+
+def _label_recheck(llm, out_dir: pathlib.Path, layer: str, samples: list[dict]) -> dict:
+    """§7.5 标签自检（**报告-only**）：只查"还没被抽检过的那批"，证据按次**追加**。
+
+    旧版每次发布覆盖证据文件，分片发布时前一版的证据直接消失、累计覆盖量也无从统计。
+    """
+    side = _label_side(out_dir, layer)
+    covered = {i for r in _label_runs(side) for i in r.get("produced_ids", [])}
+    fresh = [s for s in samples if s["id"] not in covered]
+    if not fresh:
+        return {}
+    lc = label_check(llm, fresh, rate=LABEL_CHECK_RATE)
+    lc.update({"at": datetime.date.today().isoformat(), "produced": len(fresh),
+               "produced_ids": [s["id"] for s in fresh]})
+    write_side_file(side, _label_runs(side) + [lc])
+    return lc
+
+
+def _progress(journals: dict[str, worklog.Journal], targets: dict[str, int]) -> dict:
+    """每模块的发布进度（进 manifest）。**没声明目标也没产出的模块不进表** ——
+    列一行 `target 0 / pending 0` 会让读的人以为"这个模块已完成"，而它其实还没开始。"""
+    out = {}
+    for mod, j in sorted(journals.items()):
+        target = targets.get(mod, 0)
+        if not target and not j.entries:
             continue
-        out.append(r.sample)
-        stats.built += 1
-    rows, dup = dedup(out, seen)
-    if dup:  # 去重丢的是**样本**（id 即卡 id）→ 同样留档
-        kept_ids = {s["id"] for s in rows}
-        for s in out:
-            if s["id"] not in kept_ids:
-                stats.drop("前缀去重", s["id"])
-    return rows
+        out[mod] = {"target": target, "kept": len(j.kept()),
+                    "dropped": len(j.done) - len(j.kept()),
+                    "rejected": len(j.rejected), "pending": len(j.pending(target)) if target else 0}
+    return out
+
+
+def publish_layer(llm, *, layer: str, out_dir: pathlib.Path, journals: dict[str, worklog.Journal],
+                  targets: dict[str, int]) -> dict | None:
+    """发布一层：质检判定（幂等）→ 质量门 → 标签自检 → 配额 → 出库 → 留档。
+
+    **发布是幂等的**：内容全部来自日志（不是"本次产了多少"），故分模块/分片跑多次发布会得到
+    同一份数据集（旧版会把 manifest 覆盖成"只剩本次模块"，`extract.jsonl` 还在盘上却无人认领）。
+    """
+    stats = _stats_from_journals(journals)
+    if why := quality_gate(stats):
+        print(f"[✗] 质量门未过：{why}——批作废，先停产线")
+        return None
+    bad_ids = _judge_quality(llm, journals)                    # 判定写回日志 → 再发布不重判
+    samples = [s for j in journals.values() for s in j.built_samples()]
+    if bad_ids:
+        samples, removed = drop_flagged(samples, bad_ids)
+        extra = removed - len(bad_ids)
+        print(f"[质检] 自然度 <1 剔除 {removed} 条（须重造，点名 {len(bad_ids)} 个 id"
+              + (f"，**按 id 连坐多剔 {extra} 条**" if extra else "") + f"）：{bad_ids[:10]}")
+    if lc := _label_recheck(llm, out_dir, layer, samples):
+        print(f"[标签自检] 本批 {lc['produced']} 条抽检 {lc['checked']} 条 → 报告不一致 "
+              f"{len(lc['violations'])} 条（**仅报告不剔除**，证据 {_label_side(out_dir, layer).name}）；"
+              f"未判定 {len(lc['unknown'])} 条（**未知 ≠ 通过**）；跳过 {lc['skipped']} 条（无标签可校）")
+    for g in quota_gaps(samples):
+        print(f"[配额缺口] {g}")
+    progress = _progress(journals, targets)
+    manifest = write_layer(layer, samples, out_dir, progress=progress)
+    if not manifest.get("complete"):
+        print(f"[未完成] 本层仍有待产卡：{ {m: p['pending'] for m, p in progress.items() if p['pending']} }"
+              "——**重跑同一命令即可续跑**（已产的不重产）")
+    if stats.dropped_ids:  # 丢弃留档：事后要能回答"丢的是哪张卡"（发现④⑥ 的诊断口子）
+        drop_file = out_dir / layer / f"dropped-{layer}.json"
+        drop_file.write_text(json.dumps(
+            {"counts": {k: len(v) for k, v in stats.dropped_ids.items()},
+             "ids": stats.dropped_ids,
+             "detail": stats.dropped_detail},          # 完整原因（含撞词/缺项）——修下一轮靠它
+            ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[丢弃留档] {drop_file.relative_to(out_dir)}（{stats.dropped} 张，按原因分列）")
+    n_fp = _write_layer_seen(out_dir, layer, journals)
+    print(f"[去重真源] seen/{layer}.json（{n_fp} 条指纹，供 dev/eval 跨层去重）")
+    confab = [s for s in samples if s.get("category") == "confab"]
+    if confab:  # 决策 16：人读清单随批交付
+        mr = out_dir / layer / f"confab-manual-review-{layer}.jsonl"
+        mr.write_text("\n".join(json.dumps(manual_review_row(s), ensure_ascii=False)
+                                for s in confab) + "\n", encoding="utf-8")
+        print(f"[人读清单] {mr}（{len(confab)} 条 confab，决策 16 待人工复核）")
+    return manifest
+
+
+def print_status(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: str,
+                 targets: dict[str, int]) -> None:
+    """`--status`：只读进度（零 API 成本）——十来小时的批，随时要能回答"跑到哪了"。"""
+    print(f"[进度] {out_dir}/{layer}")
+    for mod in ("extract", "judge", "compress"):
+        j = worklog.read_journal(worklog.journal_path(out_dir, layer, mod))
+        if not j.entries and not j.header:
+            if mod in targets:
+                print(f"  {mod:<9} 未开始（目标 {targets[mod]}）")
+            continue
+        want = _journal_header(layer, mod, seed_base, sampling)
+        note = worklog.header_mismatch(j.header, want)
+        target = targets.get(mod, 0)
+        pend = len(j.pending(target)) if target else "-"
+        print(f"  {mod:<9} 已产 {len(j.done):>5}（保留 {len(j.kept()):>5} / 丢弃 "
+              f"{len(j.done) - len(j.kept()):>4} / 质检剔除 {len(j.rejected):>3}）"
+              f" 待产 {pend}" + (f"  ⚠ 头不一致：{note}" if note else ""))
+        if j.corrupt:
+            print(f"            ⚠ 日志有 {j.corrupt} 行解析不出（**不算已完成**，会被重产）")
+
+
+def _model_names() -> list[str]:
+    """日志头里的模型三元组（主/judge/compress 档）：换模型续跑 = 两种分布混一份数据集。"""
+    from game_agent.config import load_settings
+
+    s = load_settings()
+    return [s.model, s.judge_model, s.compress_model]
+
+
+def factory_version() -> str:
+    """**生成器指纹**：提示词 + 卡生成器源码 + 关键旋钮（断点续跑日志头的守卫）。
+
+    口径：宁可**过度失效**（改了 `verbalize.py` 的注释也会让旧日志作废、重做要花钱），
+    也不能**失效不足**（两代产线的样本混进同一份数据集，出库时**看不出来**）。
+    真要接着旧日志跑，只能显式 `--fresh` —— 账要认在明处。
+
+    `cards.py` / `verbalize.py` 收**源码摘要**而不是几个常量：卡由 `(seed, i, module)` 确定性
+    生成（`generate_card` 的 docstring 就是这条契约），改模板/名字池/轴分布都会让同一个 `i`
+    变出**另一张卡**，而那不在任何常量里。
+    """
+    from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
+    from game_agent.memory import EXTRACT_SYSTEM
+    from scripts.rubric_judge import label_check_version, prompt_version
+
+    from . import cards as cards_mod
+    from . import verbalize as verbalize_mod
+
+    knobs = {
+        "sample_version": SAMPLE_VERSION,
+        "extract_system": EXTRACT_SYSTEM,
+        "compress_system": COMPRESS_SYSTEM.format(target=SUMMARY_MAX_TARGET),
+        "verbalize_system": verbalize_mod.VERBALIZE_SYSTEM,
+        "prompt_version": prompt_version(),
+        "label_check_version": label_check_version(),
+        "hook_n": FACTORY_HOOK_N, "prefix_n": PREFIX_N,
+        "length_tolerance": LENGTH_TOLERANCE, "candidates_n": CANDIDATES_N,
+        "summary_temperature": SUMMARY_TEMPERATURE,
+        "long_input_tokens": LONG_INPUT_TOKENS,
+        "cards_py": file_digest(cards_mod.__file__),
+        "verbalize_py": file_digest(verbalize_mod.__file__),
+    }
+    return hashlib.sha256(json.dumps(knobs, ensure_ascii=False, sort_keys=True).encode(
+        "utf-8")).hexdigest()[:16]
+
+
+def _journal_header(layer: str, module: str, seed_base: int, sampling: str) -> dict:
+    return {"journal": worklog.JOURNAL_VERSION, "layer": layer, "module": module,
+            "seed_base": seed_base, "sampling": sampling,
+            "factory_version": factory_version(), "models": _model_names()}
+
+
+def _make_llm():
+    """建生产 LLM（usage 记账 + 侧信道路由）；未配 key → `None`。测试的替身注入点。"""
+    from game_agent.config import load_settings
+    from game_agent.llm import LLMClient
+    from game_agent.usage import UsageTracker
+
+    # usage 记账：**必须显式建 tracker 并传进 LLMClient** —— 落盘只发生在
+    # `LLMClient._record_usage`，`complete_checked` 本身**不接触** UsageTracker。
+    # 走 `from_settings` 同时带来：模型路由（judge/compress 档）+ 侧信道关思考。
+    settings = load_settings()
+    if not settings.has_api_key:
+        return None
+    return LLMClient.from_settings(settings, [],
+                                   tracker=UsageTracker("reports/usage-route-a.jsonl"))
+
+
+def targets_file(out_dir: pathlib.Path, layer: str) -> pathlib.Path:
+    return out_dir / layer / worklog.WORK_DIR / "targets.json"
+
+
+def read_targets(out_dir: pathlib.Path, layer: str) -> dict:
+    f = targets_file(out_dir, layer)
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+
+
+def update_targets(out_dir: pathlib.Path, layer: str, targets: dict[str, int],
+                   *, persist: bool = True) -> dict:
+    """层目标（**粘性**：取历史最大值，落盘）。
+
+    为什么要落盘：发布可以分模块、分片进行，"这份数据是不是最终态"不能由**本次命令行写了多少**
+    决定 —— 否则 `--extract 300`（将来要做 1000）发布出来的 300 条会被标成 `complete`，
+    而它与成品长得一模一样。目标写在盘上后，`--status` 不带参数也能回答"还差多少"。
+
+    `persist=False` 只给 `--status` 用（只读命令不写盘）。
+    """
+    cur = read_targets(out_dir, layer)
+    for mod, n in targets.items():
+        cur[mod] = max(int(cur.get(mod, 0)), int(n))
+    if persist:
+        f = targets_file(out_dir, layer)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(cur, ensure_ascii=False, indent=2, sort_keys=True),
+                     encoding="utf-8")
+    return cur
+
+
+def _load_journals(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: str,
+                   targets: dict[str, int], fresh: bool) -> tuple[dict, str | None]:
+    """装载本层三个模块的日志（**三个都装**：发布要出整层，不只出本次请求的模块）。
+
+    - 请求产出的模块：校验**完整头**（含 sampling）
+    - 其余模块：只校验 `sampling` 以外的头 —— 采样档是"这一批怎么产的"记录、不影响可比性；
+      而 `factory_version`/模型/种子段不一致必须拒绝（否则会把两代产线一起发布出去）。
+    """
+    journals: dict[str, worklog.Journal] = {}
+    for mod in ("extract", "judge", "compress"):
+        jp = worklog.journal_path(out_dir, layer, mod)
+        producing = mod in targets
+        if producing and fresh and jp.exists():
+            was = len(worklog.read_journal(jp).done)
+            jp.unlink()
+            print(f"[重做] {layer}/{mod}：清掉进度（{was} 张已产样本作废，"
+                  "**已花的调用费不可回收**）")
+        j = worklog.read_journal(jp)
+        want = _journal_header(layer, mod, seed_base, sampling)
+        check = want if producing else {k: v for k, v in want.items() if k != "sampling"}
+        if (j.header or j.entries) and (why := worklog.header_mismatch(j.header, check)):
+            return {}, (f"{layer}/{mod} 的进度与当前产线不一致：{why}\n"
+                        "    —— 续跑会把**两代产线**的样本混进同一份数据集（出库时看不出来）。\n"
+                        "    要么把代码改回去，要么 --fresh 重做（已产样本作废，账要认）。")
+        journals[mod] = worklog.Journal.open(out_dir, layer, mod, want)
+    return journals, None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -548,6 +897,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default=str(DATA_ROOT))
     p.add_argument("--dry-run", action="store_true",
                    help="只出卡做配额预演，不调 LLM、不出库（零成本）")
+    p.add_argument("--status", action="store_true",
+                   help="只打印进度（零成本）：已产/丢弃/质检剔除/还差多少")
+    p.add_argument("--fresh", action="store_true",
+                   help="重做：清掉本次请求模块的进度（已产样本作废）")
+    p.add_argument("--no-publish", action="store_true",
+                   help="只产卡入日志，不质检不出库（攒够了再跑一次发布）")
     args = p.parse_args(argv)
 
     seed_base = args.seed_base if args.seed_base is not None else LAYER_BASE[args.layer]
@@ -556,12 +911,15 @@ def main(argv: list[str] | None = None) -> int:
               "三层空间隔离，spec §8")
         return 1
     out_dir = pathlib.Path(args.out)
+    # `requested` = **本次显式请求**（唯一驱动产出的东西：说好只跑一部分，就不能顺带把别的模块也跑了）
+    requested = {mod: n for mod, n in (("extract", args.extract), ("judge", args.judge),
+                                       ("compress", args.compress)) if n}
+    # `targets` = 层目标（粘性，取历史最大值）：只用于**账目**（manifest 的 complete / 待产数），
+    # **不驱动产出** —— 说好只跑一部分，就不能因为盘上还有个更大的目标而顺带把别的模块也跑了
+    targets = update_targets(out_dir, args.layer, requested, persist=False)
 
     if args.dry_run:  # 配额预演：零 API 成本，先看轴分布再决定产多少
-        for mod, n in (("extract", args.extract), ("judge", args.judge),
-                       ("compress", args.compress)):
-            if not n:
-                continue
+        for mod, n in sorted(requested.items()):
             genres = Counter(generate_card(card_seed(seed_base, i, mod), i, mod).axes.genre
                              for i in range(n))
             long_n = sum(1 for i in range(n)
@@ -570,74 +928,59 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[dry-run] {mod}: {n} 卡，题材 {dict(genres)}，长输入 {long_n}/{n}")
         return 0
 
-    from game_agent.config import load_settings
-    from game_agent.llm import LLMClient
-    from game_agent.usage import UsageTracker
-    from scripts.rubric_judge import label_check, quality_sample
+    if args.status:
+        print_status(out_dir, args.layer, seed_base, args.sampling, targets)
+        return 0
 
-    # usage 记账：**必须显式建 tracker 并传进 LLMClient** —— 落盘只发生在
-    # `LLMClient._record_usage`，`complete_checked` 本身**不接触** UsageTracker。
-    # 走 `from_settings` 同时带来：模型路由（judge/compress 档）+ 侧信道关思考。
-    settings = load_settings()
-    if not settings.has_api_key:
+    journals, err = _load_journals(out_dir, args.layer, seed_base, args.sampling,
+                                   requested, args.fresh)
+    if err:
+        print(f"[✗] {err}")
+        return 1
+    targets = update_targets(out_dir, args.layer, requested)   # 落盘（粘性目标）
+
+    pending = {m: j.pending(requested[m]) for m, j in journals.items() if m in requested}
+    for m in sorted(journals):
+        j = journals[m]
+        if m not in requested and not j.entries:
+            continue
+        print(f"[{m}] 已完成 {len(j.done)}/{targets.get(m, 0)}"
+              + (f"，质检待重造 {len(j.rejected)}" if j.rejected else "")
+              + (f"，本次新增 {len(pending[m])}" if m in requested else ""))
+    n_new = sum(len(v) for v in pending.values())
+    if not n_new and args.no_publish:
+        print("[✓] 目标已全部产出（--no-publish：未发布）")
+        return 0
+
+    llm = _make_llm()
+    if llm is None:
         print("[✗] 未配置 DEEPSEEK_API_KEY（.env）")
         return 1
-    tracker = UsageTracker("reports/usage-route-a.jsonl")
-    llm = LLMClient.from_settings(settings, [], tracker=tracker)
 
-    stats = BatchStats()
-    seen: set[str] = set()
-    seen_file = out_dir / "seen_fingerprints.json"  # 跨层去重真源：train 先产，dev/eval 复用
-    if seen_file.exists():
-        seen |= set(json.loads(seen_file.read_text(encoding="utf-8")))
-    samples: list[dict] = []
-    for mod, n in (("extract", args.extract), ("judge", args.judge),
-                   ("compress", args.compress)):
-        if n:
-            samples += _build_module(llm, mod, n, seed_base, args.sampling, stats, seen)
-    if why := quality_gate(stats):
-        print(f"[✗] 质量门未过：{why}——批作废，先停产线")
+    seen = _seen_from_disk(out_dir, args.layer, {m: set(v) for m, v in pending.items()})
+    try:
+        for mod in ("extract", "judge", "compress"):
+            if not pending.get(mod):
+                continue
+            _produce(llm, mod, pending[mod], seed_base, args.sampling, journals[mod], seen)
+            print(f"[{mod}] 本次产出 {len(pending[mod])} 张（**已逐张入日志**，随时可中断）")
+    except KeyboardInterrupt:
+        n_done = sum(len(j.done) for j in journals.values())
+        print(f"\n[中断] 已落盘 {n_done} 张（{worklog.WORK_DIR}/ 下的工作日志）——"
+              "**重跑同一命令即从断点续跑**，已产的不重产。")
+        return 130
+
+    if args.no_publish:
+        print(f"[✓] 本次新增 {n_new} 张已入日志（--no-publish：未质检、未出库）")
+        return 0
+    manifest = publish_layer(llm, layer=args.layer, out_dir=out_dir, journals=journals,
+                             targets=targets)
+    if manifest is None:
         return 1
-    # §7.4 质检员（常驻关卡，Task 7 Step 3b）：抽检自然度，<1 剔除重造
-    bad_ids = quality_sample(llm, samples, rate=QUALITY_SAMPLE_RATE)
-    if bad_ids:
-        samples, removed = drop_flagged(samples, bad_ids)
-        extra = removed - len(bad_ids)
-        print(f"[质检] 自然度 <1 剔除 {removed} 条（须重造，点名 {len(bad_ids)} 个 id"
-              + (f"，**按 id 连坐多剔 {extra} 条**" if extra else "") + f"）：{bad_ids[:10]}")
-    # §7.5 标签自检（发现①⑦ 的防复发层）：程序只查得出"anchor 在不在"，
-    # 查不出"这条事实是否**被当成本身所述的那种东西**成立"——演绎器悄悄改写标签正是坏标签的来源。
-    # **报告-only（2026-09-13 规模预演取证）**：执行者是**生成时门禁**（它还能重演把样本救回来），
-    # 而这里按**单条 LLM 判定**丢样本 = 双重惩罚 + 误杀：预演里它点名 3 条，独立全量复检判 **0/27 不成立**
-    # （其中 2 条是校验器对*同一样本*自我矛盾）⇒ 改为只写证据、不剔除。
-    lc = label_check(llm, samples, rate=LABEL_CHECK_RATE)
-    if lc["violations"] or lc["unknown"]:
-        side = out_dir / args.layer / f"label-check-{args.layer}.json"
-        write_side_file(side, lc)
-        print(f"[标签自检] 抽检 {lc['checked']} 条 → 报告不一致 {len(lc['violations'])} 条"
-              f"（**仅报告不剔除**，证据 {side.name}；执行者是生成时门禁）；"
-              f"未判定 {len(lc['unknown'])} 条（**未知 ≠ 通过**）；跳过 {lc['skipped']} 条（无标签可校）")
-    for g in quota_gaps(samples):
-        print(f"[配额缺口] {g}")
-    manifest = write_layer(args.layer, samples, out_dir)
-    if stats.dropped_ids:  # 丢弃留档：事后要能回答"丢的是哪张卡"（发现④⑥ 的诊断口子）
-        drop_file = out_dir / args.layer / f"dropped-{args.layer}.json"
-        drop_file.write_text(json.dumps(
-            {"counts": {k: len(v) for k, v in stats.dropped_ids.items()},
-             "ids": stats.dropped_ids,
-             "detail": stats.dropped_detail},          # 完整原因（含撞词/缺项）——修下一轮靠它
-            ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[丢弃留档] {drop_file.relative_to(out_dir)}（{stats.dropped} 张，按原因分列）")
-    seen_file.write_text(json.dumps(sorted(seen)), encoding="utf-8")
-    confab = [s for s in samples if s.get("category") == "confab"]
-    if confab:  # 决策 16：人读清单随批交付
-        mr = out_dir / args.layer / f"confab-manual-review-{args.layer}.jsonl"
-        mr.write_text("\n".join(json.dumps(manual_review_row(s), ensure_ascii=False)
-                                for s in confab) + "\n", encoding="utf-8")
-        print(f"[人读清单] {mr}（{len(confab)} 条 confab，决策 16 待人工复核）")
+    stats = _stats_from_journals(journals)
     print(f"[✓] {args.layer} 出库 "
           f"{sum(m['count'] for m in manifest['modules'].values())} 条"
-          f"（丢弃 {stats.dropped}：{dict(stats.reasons)}）")
+          f"（丢弃 {stats.dropped}：{dict(stats.reasons)}；complete={manifest.get('complete')}）")
     return 0
 
 

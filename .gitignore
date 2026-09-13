@@ -14,6 +14,9 @@ build/
 .ruff_cache/
 .coverage
 
+# 产线工作日志（断点续跑用；体积≈数据集两倍，且可由它重生成）
+data/**/.work/
+
 # IDE
 .idea/
 .vscode/

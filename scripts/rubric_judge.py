@@ -228,15 +228,20 @@ def naturalness(llm, *, text: str) -> int:
     return v
 
 
+QUALITY_SAMPLE_SEED = 20260912  # 质检抽检位置（原为函数默认值里的字面量，见 sample_positions）
+
+
 def quality_sample(llm, samples: list[dict], *, rate: float = 0.20,
-                   seed: int = 20260912) -> list[str]:
-    """按 rate 抽检合成样本，返回自然度 <1 的 id（调用方剔除并重造）。**常驻关卡**，非一次性。"""
+                   seed: int = QUALITY_SAMPLE_SEED) -> list[str]:
+    """按 rate 抽检合成样本，返回自然度 <1 的 id（调用方剔除并重造）。**常驻关卡**，非一次性。
+
+    抽检位置由 `sample_positions` 决定；调用方要记录"判过哪几条"时**必须**用同一个
+    `(len(samples), rate, seed)` 去算，不得自己再实现一遍抽样。
+    """
     if not samples:
         return []
-    rng = random.Random(seed)
-    k = min(max(1, math.ceil(len(samples) * rate)), len(samples))
     bad: list[str] = []
-    for i in sorted(rng.sample(range(len(samples)), k=k)):  # 升序消费，结果与顺序无关
+    for i in sample_positions(len(samples), rate, seed):
         s = samples[i]
         if naturalness(llm, text=s.get("input") or s.get("narration") or "") < 1:
             bad.append(s["id"])
@@ -353,9 +358,7 @@ def label_check(llm, samples: list[dict], *, rate: float = LABEL_CHECK_RATE,
            "violations": [], "unknown": [], "prompt_version": label_check_version()}
     if not checkable:
         return out
-    rng = random.Random(seed)
-    k = min(max(1, math.ceil(len(checkable) * rate)), len(checkable))
-    for i in sorted(rng.sample(range(len(checkable)), k=k)):
+    for i in sample_positions(len(checkable), rate, seed):   # 口径单一真源（已升序）
         s, payload = checkable[i]
         r = (check_judge_label(llm, **payload) if payload
              else check_labels(llm, labels=_checkable_labels(s), text=s.get("input", "")))
@@ -402,12 +405,24 @@ def budget_policy() -> str:
         pathlib.Path(_b.__file__).read_bytes()).hexdigest()[:12]
 
 
-def probe_positions(n: int, rate: float, seed: int = PROBE_SEED) -> list[int]:
-    """探针抽样位置（**与 run_eval 同源**：测试据此构造夹具、报告据此留痕）。"""
+def sample_positions(n: int, rate: float, seed: int) -> list[int]:
+    """抽检位置（升序）——**所有抽检口径的唯一真源**（探针/质检/标签自检共用）。
+
+    为什么单独导出一个函数（2026-09-13 断点续跑改造）：质检判定现在要**写回产线日志**
+    （判过的样本不再重判 → 发布幂等，详见 `scenario_factory/worklog.py`），
+    而调用方必须知道"到底判了哪几条"。口径写在这里，调用方与 `quality_sample` 取同一组位置，
+    不靠"再实现一遍"对齐（那种对齐会悄悄漂移）。
+    **升序消费**：结果与传入顺序无关（同一 seed 约定）。
+    """
     if n <= 0:
         return []
     k = min(max(1, math.ceil(n * rate)), n)
     return sorted(random.Random(seed).sample(range(n), k=k))
+
+
+def probe_positions(n: int, rate: float, seed: int = PROBE_SEED) -> list[int]:
+    """探针抽样位置（**与 run_eval 同源**：测试据此构造夹具、报告据此留痕）。"""
+    return sample_positions(n, rate, seed)
 
 
 def _restore_points(sample: dict) -> list[PreservePoint]:

@@ -826,20 +826,28 @@ def test_long_input_flag_requires_realized_length_not_just_card_tier():
     assert r2.sample["realized_chars"] == len("\n".join(big_pieces))
 
 
-def test_batch_stats_records_which_cards_were_dropped():
+def test_batch_stats_records_which_cards_were_dropped(tmp_path):
     """丢弃留档（发现④⑥ 的诊断口子）：原先只记"丢了几张"，事后无法回答"丢的是谁"——
-    验收时诊断 compress 全杀与 confab 撞卡都只能靠重跑花钱。"""
-    from scripts.scenario_factory.assemble import _build_module
+    验收时诊断 compress 全杀与 confab 撞卡都只能靠重跑花钱。
 
-    stats = BatchStats()
+    2026-09-13 断点续跑改造后，丢弃**逐张写进工作日志**（不再是"跑完在内存里统计"），
+    故这里改成走真实路径：产卡 → 日志 → 从日志重算统计。
+    """
+    from scripts.scenario_factory import worklog
+    from scripts.scenario_factory.assemble import _produce, _stats_from_journals
+
     llm = StubLLM(["没有专名的文本"])          # anchors 不在 → 每张卡都演绎丢弃
-    rows = _build_module(llm, "extract", 3, 10000, "off", stats, set())
-    assert rows == [] and stats.dropped == 3
+    j = worklog.Journal.open(tmp_path, "train", "extract", {"journal": 1})
+    _produce(llm, "extract", [0, 1, 2], 10000, "off", j, set())
+    stats = _stats_from_journals({"extract": j})
+    assert j.kept() == [] and stats.dropped == 3
     assert stats.reasons["演绎丢弃"] == 3
     assert stats.dropped_ids["演绎丢弃"] == ["sc-10000-0000", "sc-10001-0001", "sc-10002-0002"]
     # 明细也要留：聚合键会把 `confab 撞卡: 甲/乙` 截成 `confab 撞卡`，下一轮就看不到撞词了
     # （演绎丢弃同理：明细里带着**缺了哪些 anchor**，2026-09-13 补）
     assert stats.dropped_detail["演绎丢弃"]["sc-10000-0000"].startswith("演绎丢弃: ")
+    # 续跑的前提：丢过的卡也要留在日志里（否则重跑会再烧一遍钱）
+    assert j.done == {0, 1, 2} and j.pending(3) == []
 
 
 def test_quota_gaps_names_the_nominal_long_tier():
