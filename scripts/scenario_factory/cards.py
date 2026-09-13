@@ -191,6 +191,20 @@ _FACT_TPL = [  # (type, importance, text 模板, anchors 模板, **槽位池**)
 ]
 # 情节骨架的两个槽（`n2` = 对话对象 / `n3` = 话题）：同样按池取、且与事实名**全局不重名**
 SKELETON_KINDS = ("person", "item")
+# 输入长度档位（2026-09-13 实测重定）：**长档只对 compress 开放**。
+# 依据：extract 的输入是"一个回合"、judge 的是"一段叙事"，生产端**不可能**出现 20K token 的它们；
+# 而 compress 的输入是"一整段历史"——实测真实存档被压缩的历史段达 **12,179 / 15,557 字**
+# （`saves/smoke-local14b-xianxia_wendao.json` / `saves/longrun-xianxia_wendao.json`），
+# 且**压缩质量只在这个长端才重要**（短历史怎么压都不丢）。故长档目标由 20000 重定为 **12000**
+# （`est_tokens` 按字符计，正对实测量级），并由演绎器**分块续写**真正产出。
+TIERS_BY_MODULE = {
+    "extract": (600, 3000),
+    "judge": (600, 3000),
+    "compress": (600, 3000, 12000),
+    "reflect": (600, 3000),
+}
+LONG_INPUT_TOKENS = 8000   # "长档"判定阈值（沿用；长档 12000 ≥ 8000 ✓）
+CHUNK_TOKENS = 3000        # 长卡**分块续写**的每块目标（给供应商单次输出上限留足余量）
 RECENT_TEXT = "玩家近日独自打理杂物，未与旁人来往"   # 材料检索上下文：**去专名**
 # 去专名的原因：recent 虽不渲染进材料（只作 rank_facts/select_lore 的打分输入），
 # 但若带上本卡专名，就会污染检索命中、且语义上与"材料代表最近玩家发言"不符；
@@ -266,7 +280,7 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
                               text=x.format(**slots),
                               anchors=[a.format(**slots) for a in al]))
     hs = HistorySpec(turns=rng.randint(1, 8),
-                     target_tokens=rng.choice([600, 3000, 20000]), noise="日常寒暄")
+                     target_tokens=rng.choice(TIERS_BY_MODULE[module]), noise="日常寒暄")
     base = dict(card_id=f"sc-{seed}-{seq:04d}", seed=seed, module=module,
                 axes=axes, history_spec=hs)
     if module == "extract":

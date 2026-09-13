@@ -34,7 +34,8 @@ from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import WorldPack
 from scripts.rubric_judge import select
 
-from .cards import REPO_ROOT, ScenarioCard, card_seed, generate_card, layer_of
+from .cards import (REPO_ROOT, LONG_INPUT_TOKENS, ScenarioCard, card_seed,
+                    generate_card, layer_of)
 from .materialize import MaterializeError, build_material, load_pack
 from .verbalize import verbalize_card
 
@@ -48,7 +49,7 @@ from card_hook_check import CARD_FIELDS, _grams  # noqa: E402
 FACTORY_HOOK_N = 4
 
 SAMPLE_VERSION = "route-a-v1"
-LONG_INPUT_TOKENS = 8000   # spec §6「长输入档」阈值（计划口径；spec 原话为"20K 级"）
+# LONG_INPUT_TOKENS 的单一真源在 `cards.py`（卡空间定义档位；长档只对 compress 开放，2026-09-13 实测重定）
 CANDIDATES_N = 4
 SUMMARY_TEMPERATURE = 0.7  # 候选需多样性（spec §6 的 temp 0.8 档）；评委仍 temp=0
 

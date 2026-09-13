@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 import re
 from pathlib import Path
@@ -41,6 +42,7 @@ from scripts.scenario_factory.assemble import (
     write_layer,
 )
 from scripts.scenario_factory.cards import (
+    CHUNK_TOKENS,
     GENRE_EVAL_ONLY,
     NAME_POOLS,
     NPC_BY_PACK,
@@ -647,18 +649,45 @@ def test_build_extract_dedup_discipline_negative_with_existing():
     assert r.sample["input"].startswith(f"已有事实：{card.existing[0]}")
 
 
-def _compress_card(tokens=20000):
+def _chunked(text: str, chunks: int) -> list[str]:
+    """把整段文本切成**恰好 `chunks` 块**，且**按「，」「。」子句边界切**。
+
+    为什么不能直接按字符均分：块之间产线会用 `"\\n".join` 拼接，字符均分会把专名劈成两半
+    （实测「青瓷」被拆到两块 → 拼接后 anchor 检查假红）。
+    """
+    parts = [p for p in re.split(r"(?<=[，。])", text) if p]
+    chunks = max(1, chunks)
+    if len(parts) >= chunks:
+        groups: list[list[str]] = [[] for _ in range(chunks)]
+        for i, p in enumerate(parts):
+            groups[i * chunks // len(parts)].append(p)   # 顺序保持，且每块都有子句
+        return ["".join(g) for g in groups]
+    size = max(1, math.ceil(len(text) / chunks))         # 兜底：子句比块数还少
+    return [text[i:i + size] for i in range(0, len(text), size)]
+
+
+def _compress_card(tokens=12000):
+    """取一张指定档位的 compress 卡（默认长档 = `cards.TIERS_BY_MODULE['compress'][-1]`）。"""
     return next(c for s in range(60)
                 if (c := generate_card(10231, s, "compress")
                    ).history_spec.target_tokens == tokens)
 
 
-def _history_and_summary(card):
+def _history_and_summary(card, chunks: int | None = None):
+    """返回 `(历史文本, 摘要, 分块列表)`。
+
+    长卡（目标 > `CHUNK_TOKENS`）在 `verbalize_card` 里走**分块续写**（每块一次调用），
+    故桩要按块给文本；`chunks=None` = 按卡面档位自动算块数（与产线 `_chunk_plan` 同口径）。
+    `历史文本` 返回**拼接后**的形态（`"\\n".join`），与产线一致。
+    """
+    if chunks is None:
+        chunks = max(1, math.ceil(card.history_spec.target_tokens / CHUNK_TOKENS))
     anchors = _all_anchors(card)
-    history = "长历史：" + "，".join(anchors) + "。" + "流水账。" * 50
+    raw = "长历史：" + "，".join(anchors) + "。" + "流水账。" * 50
+    pieces = _chunked(raw, chunks)
     keep = [a for p in card.preserve_points for a in p.anchors]
     summary = "要点摘要：" + "，".join(keep) + "。"
-    return history, summary
+    return "\n".join(pieces), summary, pieces
 
 
 def test_compress_input_matches_production_template():
@@ -668,8 +697,8 @@ def test_compress_input_matches_production_template():
     于是样本里存裸文本这件事整批漏过 —— 与 extract 侧的断言方式不对称）。
     """
     card = _compress_card()
-    history, summary = _history_and_summary(card)
-    r = build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    history, summary, pieces = _history_and_summary(card)
+    r = build_compress_sample(StubLLM([*pieces, summary]), card, sampling="off")
     assert r.sample["input"] == compress_messages(card, history)[1]["content"]
     assert r.sample["input"].startswith("<旧摘要>")
     assert r.sample["input"].endswith("</新增历史>")
@@ -689,41 +718,41 @@ def test_compress_incremental_sample_carries_old_summary():
     """
     card = next(c for s in range(60)
                 if (c := generate_card(10231, s, "compress")).old_summary)
-    history, summary = _history_and_summary(card)
-    r = build_compress_sample(StubLLM([history, summary]), card, sampling="off")
+    history, summary, pieces = _history_and_summary(card)
+    r = build_compress_sample(StubLLM([*pieces, summary]), card, sampling="off")
     assert card.old_summary in r.sample["input"]
     assert "<旧摘要>" in r.sample["input"]
 
 
 def test_compress_off_single_candidate_no_select():
     card = _compress_card()
-    history, summary = _history_and_summary(card)
-    llm = StubLLM([history, summary])  # 1 次历史 + 1 次摘要；off 档不选优
+    history, summary, pieces = _history_and_summary(card)
+    llm = StubLLM([*pieces, summary])  # 长卡 4 块历史 + 1 次摘要；off 档不选优
     r = build_compress_sample(llm, card, sampling="off")
-    assert r.sample and r.sample["candidates"] == 1 and len(llm.calls) == 2
-    # 卡面属长档（20000）但这段夹具历史很短 → 发现⑤ 改判后 long_input=False（旧断言钉的是"看卡面"）
-    assert r.sample["target_tokens"] == 20000
+    assert r.sample and r.sample["candidates"] == 1 and len(llm.calls) == 5
+    # 卡面属长档（12000）但这段夹具历史很短 → 发现⑤ 改判后 long_input=False（旧断言钉的是"看卡面"）
+    assert r.sample["target_tokens"] == 12000
     assert r.sample["long_input"] is False
 
 
 def test_compress_long_tier_runs_n4_and_select():
     card = _compress_card()
-    history, summary = _history_and_summary(card)
+    history, summary, pieces = _history_and_summary(card)
     scores = ['{"保真": 2, "简洁": 2, "结构": 2, "流畅": 2}'] * 4
-    llm = StubLLM([history, summary, summary, summary, summary] + scores)
+    llm = StubLLM([*pieces, summary, summary, summary, summary] + scores)
     r = build_compress_sample(llm, card, sampling="long")
-    assert r.sample["candidates"] == 4 and len(llm.calls) == 1 + 4 + 4
+    assert r.sample["candidates"] == 4 and len(llm.calls) == 4 + 4 + 4
 
 
 def test_compress_program_kill_fabrication_and_missing_point():
     card = _compress_card()
-    history, good = _history_and_summary(card)
+    history, good, pieces = _history_and_summary(card)
     bad = "摘要提到「北冥真人」。"  # 历史外「」词 → 虚构杀
-    llm = StubLLM([history, bad, bad, bad, bad])
+    llm = StubLLM([*pieces, bad, bad, bad, bad])
     r = build_compress_sample(llm, card, sampling="long")
     assert r.sample is None and "虚构" in r.dropped_reason
     no_point = "只写了些无关紧要的话。"
-    llm2 = StubLLM([history, no_point])
+    llm2 = StubLLM([*pieces, no_point])
     r2 = build_compress_sample(llm2, card, sampling="off")
     assert r2.sample is None and "缺要点" in r2.dropped_reason
 
@@ -736,9 +765,9 @@ def _padded(summary: str, total: int) -> str:
 
 def test_compress_prefers_within_target_candidate():
     """发现④：候选里有达标（≤800 字）的**优先选它** ——「超长」从**硬杀**降级为**偏好**。"""
-    card = _compress_card()          # 20K 卡 → sampling="long" 时 n=4
-    history, good = _history_and_summary(card)
-    llm = StubLLM([history, _padded(good, 900), good, _padded(good, 900), _padded(good, 900)])
+    card = _compress_card()          # 长档卡 → sampling="long" 时 n=4
+    history, good, pieces = _history_and_summary(card)
+    llm = StubLLM([*pieces, _padded(good, 900), good, _padded(good, 900), _padded(good, 900)])
     r = build_compress_sample(llm, card, sampling="long")
     assert r.sample is not None
     assert r.sample["output"] == good and r.sample["over_target"] is False
@@ -754,9 +783,9 @@ def test_compress_falls_back_to_shortest_over_target_instead_of_dropping():
     只跑 compress 时批级丢弃率必然超 30% 门 → 属于**比生产更严**的误杀。
     """
     card = _compress_card()
-    history, good = _history_and_summary(card)
+    history, good, pieces = _history_and_summary(card)
     cands = [_padded(good, 1200), _padded(good, 900), _padded(good, 2000), _padded(good, 1000)]
-    llm = StubLLM([history, *cands])
+    llm = StubLLM([*pieces, *cands])
     r = build_compress_sample(llm, card, sampling="long")
     assert r.sample is not None, "全超长不该丢卡"
     assert r.sample["output"] == min(cands, key=len)
@@ -767,9 +796,9 @@ def test_compress_falls_back_to_shortest_over_target_instead_of_dropping():
 def test_compress_over_target_fallback_does_not_rescue_hard_kills():
     """反向守卫：把"超长"降级为偏好，**不得**顺手放过 虚构/缺要点（硬杀仍是硬杀）。"""
     card = _compress_card()
-    history, _ = _history_and_summary(card)
+    history, _, pieces = _history_and_summary(card)
     over_and_fabricated = _padded("摘要提到「北冥真人」。" * 3, 1200)  # 既超长又虚构
-    llm = StubLLM([history] + [over_and_fabricated] * 4)
+    llm = StubLLM([*pieces] + [over_and_fabricated] * 4)
     r = build_compress_sample(llm, card, sampling="long")
     assert r.sample is None and "虚构" in r.dropped_reason
 
@@ -779,18 +808,22 @@ def test_long_input_flag_requires_realized_length_not_just_card_tier():
     **4,323 token**（出库历史 404~4,127 字）→「长输入档 ≥20%」是**名义达标**。
 
     改判：卡面属长档 **且** 实测字数兑现（≥ 目标的一半，同 `est_tokens` 口径）。
+    （2026-09-13 档位重定后：长档 = 12000；长卡走**分块续写**，故桩按块给、实测 = 拼接后长度。）
     """
-    card = _compress_card(tokens=20000)
-    _, summary = _history_and_summary(card)
+    card = _compress_card(tokens=12000)
+    _, summary, _ = _history_and_summary(card)
     short = "短历史：" + "，".join(_all_anchors(card)) + "。"
-    r = build_compress_sample(StubLLM([short, summary]), card, sampling="off")
-    assert r.sample["target_tokens"] == 20000
-    assert r.sample["realized_chars"] == len(short)
+    short_pieces = _chunked(short, 4)
+    r = build_compress_sample(StubLLM([*short_pieces, summary]), card, sampling="off")
+    assert r.sample["target_tokens"] == 12000
+    assert r.sample["realized_chars"] == len("\n".join(short_pieces))
     assert r.sample["long_input"] is False, "卡面是长档但没兑现 → 不算长输入样本"
 
     big = "长历史：" + "，".join(_all_anchors(card)) + "。" + "流水账。" * 3000
-    r2 = build_compress_sample(StubLLM([big, summary]), card, sampling="off")
-    assert r2.sample["long_input"] is True and r2.sample["realized_chars"] == len(big)
+    big_pieces = _chunked(big, 4)
+    r2 = build_compress_sample(StubLLM([*big_pieces, summary]), card, sampling="off")
+    assert r2.sample["long_input"] is True
+    assert r2.sample["realized_chars"] == len("\n".join(big_pieces))
 
 
 def test_batch_stats_records_which_cards_were_dropped():
@@ -819,10 +852,43 @@ def test_quota_gaps_names_the_nominal_long_tier():
 
 def test_compress_short_input_tier_stays_single_under_long():
     card = _compress_card(tokens=600)
-    history, summary = _history_and_summary(card)
-    llm = StubLLM([history, summary])
+    history, summary, pieces = _history_and_summary(card, chunks=1)   # 短卡：单次演绎
+    llm = StubLLM([*pieces, summary])
     r = build_compress_sample(llm, card, sampling="long")  # 600 < 阈值 → 仍 n=1
     assert r.sample["candidates"] == 1 and r.sample["long_input"] is False
+
+
+# --- 输入长度档位重定（2026-09-13）：长档只给 compress + 分块续写 ---------------
+
+
+def test_long_tier_only_applies_to_compress():
+    """**长档只对 compress 开放**（实测依据）：extract 的输入是"一个回合"、judge 的是"一段叙事"，
+    生产端不可能出现 12K token 的它们；而 compress 的输入是"一整段历史"——实测真实存档被压缩的
+    历史段达 **12,179 / 15,557 字**，且压缩质量**只在这个长端才重要**。
+    """
+    for mod, ok in (("extract", {600, 3000}), ("judge", {600, 3000}),
+                    ("compress", {600, 3000, 12000}), ("reflect", {600, 3000})):
+        got = {generate_card(20000 + i, i, mod).history_spec.target_tokens for i in range(80)}
+        assert got == ok, f"{mod} 的档位错了：{got} ≠ {ok}"
+
+
+def test_long_card_is_verbalized_in_chunks():
+    """长档卡（> `CHUNK_TOKENS`）走**分块续写**：每块一次调用、块间带"续写"指令。
+
+    依据：单次调用写不出 12K（20K 档实测最长 4.3K token、12K 档实测最长 6.9K 字），
+    而生产端真的需要 12–15K 字的历史输入 ⇒ 必须分块写、块间续写、拼起来。
+    """
+    card = _compress_card(tokens=12000)
+    pieces = _chunked("长历史：" + "，".join(_all_anchors(card)) + "。" + "流水账。" * 50, 4)
+    summary = "要点摘要：" + "，".join(a for p in card.preserve_points for a in p.anchors) + "。"
+    llm = StubLLM([*pieces, summary])
+    r = build_compress_sample(llm, card, sampling="off")
+    assert r.sample is not None, r.dropped_reason
+    assert len(llm.calls) == 5, f"应为 4 块续写 + 1 次摘要，实际 {len(llm.calls)}"
+    turns = [m[1]["content"] for m in llm.messages[:4]]      # 标签校验在演绎之后，不占前 4 条
+    assert "续写" not in turns[0], "第一块不该带续写指令"
+    assert "续写第 2/4 段" in turns[1] and "续写第 4/4 段" in turns[3]
+    assert r.sample["realized_chars"] == len("\n".join(pieces))
 
 
 # --- Task 7：质量门 + card_hook 出厂门禁 ------------------------------------
@@ -1267,11 +1333,11 @@ def test_factory_usage_purposes_carry_the_module():
     assert [c["purpose"] for c in jllm.calls] == ["verbalize_judge"]
 
     ccard = _compress_card()
-    history, summary = _history_and_summary(ccard)
-    cllm = StubLLM([history, summary])
+    history, summary, pieces = _history_and_summary(ccard)
+    cllm = StubLLM([*pieces, summary])
     build_compress_sample(cllm, ccard, sampling="off")
-    # 演绎用模块标签；摘要生成本就是生产侧信道，标签保持 "compress"
-    assert [c["purpose"] for c in cllm.calls] == ["verbalize_compress", "compress"]
+    # 演绎用模块标签（长卡 4 块各一次）；摘要生成本就是生产侧信道，标签保持 "compress"
+    assert [c["purpose"] for c in cllm.calls] == ["verbalize_compress"] * 4 + ["compress"]
 
     # 评委侧三种用途可区分：打分 / 选优 / 质检
     pts = [PreservePoint(text="玩家的剑名为「听雨」", anchors=["听雨"])]

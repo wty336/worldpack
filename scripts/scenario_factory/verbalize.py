@@ -15,12 +15,13 @@
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
 from game_agent.budgets import complete_checked
 
-from .cards import ScenarioCard
+from .cards import CHUNK_TOKENS, ScenarioCard
 
 VERBALIZE_SYSTEM = (
     "你是文本演绎器。把给定的场景卡（JSON）演绎成一段自然中文叙事。"
@@ -125,6 +126,73 @@ def _judge_hint(card: ScenarioCard) -> str:
     return stage + f"\n矛盾自然化：{hint.format(who=who)}\n（category={c.category}；detail：{c.detail}）"
 
 
+def _chunk_plan(target: int) -> list[int]:
+    """把长卡的总目标拆成每块目标（块数 = ceil(target / CHUNK_TOKENS)，余数摊到前几块）。"""
+    n = max(1, math.ceil(target / CHUNK_TOKENS))
+    base, rem = divmod(target, n)
+    return [base + (1 if i < rem else 0) for i in range(n)]
+
+
+def _continuation_hint(k: int, n: int, tail: str, missing: list[str] | None = None) -> str:
+    """续写指令：回喂上一块的**结尾原文**并要求"紧接、不重复、不总结"（防接缝）。"""
+    hint = (f"\n\n**续写第 {k + 1}/{n} 段**：紧接下面这段的结尾继续写（同一场景、同一语体、同一批人物），"
+            f"不要重复、不要总结、不要另起开头：\n…{tail}")
+    if missing:
+        hint += ("\n本段请**自然地**再提到这些内容（专名/数字**原样写出**，不要列清单）："
+                 + "、".join(missing))
+    return hint
+
+
+def _chunked_user(card: ScenarioCard, per: int, k: int, n: int) -> str:
+    """分块续写的首/次块用户指令：**把长度目标按块说清**。
+
+    实测（2026-09-13 探针）：只给"全篇约 12000"时每块只写 1.3~2.6K 字（全篇 5.3~10.5K，达标 3/4）；
+    根因是**没告诉模型本段的长度**——补上"本段约 {per} 字"。
+    """
+    user = (f"语体：{card.axes.style}；**本段**长度约 {per} 字"
+            f"（全篇共 {n} 段、合计约 {card.history_spec.target_tokens} 字）；"
+            f"可掺入的闲笔：{card.history_spec.noise}\n场景卡 JSON：\n"
+            + card.model_dump_json())
+    if card.module == "judge":
+        user += _judge_hint(card)
+    return user
+
+
+def _verbalize_chunked(llm, card: ScenarioCard, *, purpose: str) -> str:
+    """长卡**分块续写**（2026-09-13 实测重定档位后新增）。
+
+    为什么必须分块：单次调用写不出一万二千字——实测 20K 档最长只产出 4.3K token / 12K 档实测最长 6.9K 字，
+    而生产端被压缩的历史段实测达 **12,179 / 15,557 字**（真实存档），压缩质量又**只在这个长端才重要**。
+
+    做法：每块目标 ≤ `CHUNK_TOKENS`（给单次输出上限留余量）；块间把上一块**结尾原文**回喂要求续写；
+    拼完对**整段**做 anchors 校验，缺漏时**只补最后一块**（把缺的 anchors 明写进指令）——
+    而不是整卡重演（对长卡那要 ×4~5 倍调用）。任一块写不出来（空/截断）→ 整卡失败。
+    """
+    chunks = _chunk_plan(card.history_spec.target_tokens)
+    n = len(chunks)
+    parts: list[str] = []
+    for k, per in enumerate(chunks):
+        base = _chunked_user(card, per, k, n)
+        turn = base if k == 0 else base + _continuation_hint(k, n, parts[-1][-200:])
+        text, finish = complete_checked(
+            llm, [{"role": "system", "content": VERBALIZE_SYSTEM}, {"role": "user", "content": turn}],
+            purpose=purpose, max_tokens=int(per * 1.2), temperature=VERBALIZE_TEMPERATURE)
+        if not text.strip() or finish == "length":
+            return ""
+        parts.append(text.strip())
+    joined = "\n".join(parts)
+    missing = _missing_anchors(card, joined) + _originals_present(card, joined)
+    if missing:  # 收尾补漏：只补一块，代价是 1 次调用而不是整卡重演
+        text, finish = complete_checked(
+            llm, [{"role": "system", "content": VERBALIZE_SYSTEM},
+                  {"role": "user", "content": _chunked_user(card, chunks[-1], n, n)
+                   + _continuation_hint(n, n, joined[-200:], missing)}],
+            purpose=purpose, max_tokens=int(chunks[-1] * 1.2), temperature=VERBALIZE_TEMPERATURE)
+        if text.strip() and finish != "length":
+            joined = joined + "\n" + text.strip()
+    return joined
+
+
 def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> VerbalizeResult:
     """卡 → 自然文本。缺要素重演一次，仍缺则 dropped=True（调用方计数）。
 
@@ -141,6 +209,13 @@ def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> Verbaliz
     )
     if card.module == "judge":
         user += _judge_hint(card)
+    if card.history_spec.target_tokens > CHUNK_TOKENS:
+        # 长卡走分块续写（见 `_verbalize_chunked`）：**不整卡重演**（一次重演 = 再烧 4~5 次调用），
+        # 块内已有"收尾补漏"，故这里只给一次机会，仍缺 anchors 就丢卡。
+        text = _verbalize_chunked(llm, card, purpose=purpose)
+        if text and not _missing_anchors(card, text) and not _originals_present(card, text):
+            return VerbalizeResult(text=text, attempts=1)
+        return VerbalizeResult(text="", attempts=1, dropped=True)
     msgs = [{"role": "system", "content": VERBALIZE_SYSTEM},
             {"role": "user", "content": user}]
     max_tokens = int(card.history_spec.target_tokens * 1.2)  # spec §4 的 ×1.2 上限
