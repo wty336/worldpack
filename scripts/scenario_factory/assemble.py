@@ -751,7 +751,7 @@ def print_status(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: st
                 print(f"  {mod:<9} 未开始（目标 {targets[mod]}）")
             continue
         want = _journal_header(layer, mod, seed_base, sampling)
-        note = worklog.header_mismatch(j.header, want)
+        note = worklog.header_mismatch(j.header, _header_check(want, mod, producing=False))
         target = targets.get(mod, 0)
         pend = len(j.pending(target)) if target else "-"
         print(f"  {mod:<9} 已产 {len(j.done):>5}（保留 {len(j.kept()):>5} / 丢弃 "
@@ -857,12 +857,24 @@ def update_targets(out_dir: pathlib.Path, layer: str, targets: dict[str, int],
     return cur
 
 
+def _header_check(want: dict, module: str, producing: bool) -> dict:
+    """校验用的期望头（**只比对该模块真正在乎的字段**）。
+
+    `sampling` 只对 compress 有意义（`_sampling_on` 只被 `build_compress_sample` 用：
+    长档跑 n=4 拒绝采样）。若对 extract/judge 也比它，就会出现两种坏结果：
+    ① 不带 `--sampling` 查进度时误报"换代"；② **忘了带标志的续跑被误拒**
+    （而 extract 的产出与 sampling 毫无关系）。
+    """
+    drop = {"sampling"} if (module != "compress" or not producing) else set()
+    return {k: v for k, v in want.items() if k not in drop}
+
+
 def _load_journals(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: str,
                    targets: dict[str, int], fresh: bool) -> tuple[dict, str | None]:
     """装载本层三个模块的日志（**三个都装**：发布要出整层，不只出本次请求的模块）。
 
-    - 请求产出的模块：校验**完整头**（含 sampling）
-    - 其余模块：只校验 `sampling` 以外的头 —— 采样档是"这一批怎么产的"记录、不影响可比性；
+    - 请求产出的模块：校验完整头（compress 含 sampling，见 `_header_check`）
+    - 其余模块：只校验 `factory_version`/模型/种子段 —— 采样档不影响可比性；
       而 `factory_version`/模型/种子段不一致必须拒绝（否则会把两代产线一起发布出去）。
     """
     journals: dict[str, worklog.Journal] = {}
@@ -876,8 +888,8 @@ def _load_journals(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: 
                   "**已花的调用费不可回收**）")
         j = worklog.read_journal(jp)
         want = _journal_header(layer, mod, seed_base, sampling)
-        check = want if producing else {k: v for k, v in want.items() if k != "sampling"}
-        if (j.header or j.entries) and (why := worklog.header_mismatch(j.header, check)):
+        if (j.header or j.entries) and (
+                why := worklog.header_mismatch(j.header, _header_check(want, mod, producing))):
             return {}, (f"{layer}/{mod} 的进度与当前产线不一致：{why}\n"
                         "    —— 续跑会把**两代产线**的样本混进同一份数据集（出库时看不出来）。\n"
                         "    要么把代码改回去，要么 --fresh 重做（已产样本作废，账要认）。")

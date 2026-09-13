@@ -259,6 +259,36 @@ def test_no_publish_defers_gates(env):
     assert len(fake.quality_calls) == 1 and len(_rows(out)) == 2
 
 
+def test_sampling_guards_compress_only(env):
+    """`sampling` 只对 compress 有意义（长档 n=4 拒绝采样）→ 只对 compress 设防。
+
+    对 extract/judge 也比它，会出现两种坏结果：不带 `--sampling` 查进度时**误报换代**，
+    以及**忘了带标志的续跑被误拒**（extract 的产出与 sampling 毫无关系）。
+    """
+    out, fake = env
+    assert _run(out, "--extract", "2", "--sampling", "long") == 0
+    fake.index_calls.clear()
+    assert _run(out, "--extract", "2") == 0, "extract 不该因为 sampling 不同被拒"
+    assert fake.index_calls == [] and _run(out, "--extract", "2", "--status") == 0
+
+
+def test_sampling_mismatch_refuses_on_compress(env):
+    out, fake = env
+    assert _run(out, "--compress", "2", "--sampling", "long") == 0
+    fake.index_calls.clear()
+    assert _run(out, "--compress", "2", "--sampling", "off") == 1, \
+        "compress 换了采样档 = 换了产出分布，必须拒绝续跑"
+    assert fake.index_calls == []
+
+
+def test_status_does_not_cry_wolf_about_sampling(env, capsys):
+    out, _ = env
+    assert _run(out, "--extract", "2", "--sampling", "long") == 0
+    capsys.readouterr()
+    assert _run(out, "--extract", "2", "--status") == 0
+    assert "头不一致" not in capsys.readouterr().out
+
+
 # --- worklog 单元（日志语义本身） --------------------------------------------
 
 
