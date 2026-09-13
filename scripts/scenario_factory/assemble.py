@@ -435,6 +435,17 @@ def quota_gaps(samples: list[dict]) -> list[str]:
     return gaps
 
 
+def write_side_file(path: pathlib.Path, payload: dict) -> None:
+    """写"侧证据文件"（标签自检清单等）：**自动建父目录**。
+
+    为什么需要：标签自检写在 `write_layer` **之前**，而首次用全新的 `--out` 时层目录还不存在
+    → `FileNotFoundError` **把整批跑完的成果全丢掉**（2026-09-13 规模预演实测踩到：
+    26.8 分钟的调用、无任何产出）。此前每次跑 `data/route-a/{layer}/` 都已存在，故一直没露头。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def drop_flagged(samples: list[dict], bad_ids: list[str]) -> tuple[list[dict], int]:
     """按 id 剔除质检不合格样本 → `(保留, 实际剔除条数)`。
 
@@ -590,7 +601,7 @@ def main(argv: list[str] | None = None) -> int:
             for cid in sorted(bad):
                 stats.drop("标签不一致", cid)
         side = out_dir / args.layer / f"label-check-{args.layer}.json"
-        side.write_text(json.dumps(lc, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_side_file(side, lc)
         print(f"[标签自检] 抽检 {lc['checked']} 条 → 不一致 {len(lc['violations'])} 条（已剔除，证据 {side.name}）"
               f"；未判定 {len(lc['unknown'])} 条（**未知 ≠ 通过**，保留但计未判定）"
               f"；跳过 {lc['skipped']} 条（judge 标签由 anchors 程序保证）")

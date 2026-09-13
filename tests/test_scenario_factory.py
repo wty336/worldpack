@@ -850,6 +850,18 @@ def test_quota_gaps_names_the_nominal_long_tier():
     assert "1500" in gap                          # 点出实测最大值
 
 
+def test_side_file_writer_creates_missing_parent_dirs(tmp_path):
+    """`write_side_file` 必须能自己建目录：标签自检的侧文件写在 `write_layer` **之前**，
+    而首次用全新的 `--out` 时层目录还不存在 —— 2026-09-13 规模预演实测因此 `FileNotFoundError`
+    把整批（26.8 分钟、¥1.2）的成果全丢掉（此前每跑一次 `data/route-a/{layer}/` 都已存在，故一直没露头）。"""
+    from scripts.scenario_factory.assemble import write_side_file
+
+    target = tmp_path / "fresh" / "deep" / "label-check.json"
+    assert not target.parent.exists()
+    write_side_file(target, {"checked": 1, "violations": []})
+    assert target.exists() and json.loads(target.read_text(encoding="utf-8"))["checked"] == 1
+
+
 def test_compress_short_input_tier_stays_single_under_long():
     card = _compress_card(tokens=600)
     history, summary, pieces = _history_and_summary(card, chunks=1)   # 短卡：单次演绎
