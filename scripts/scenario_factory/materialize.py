@@ -15,11 +15,17 @@
 """
 from __future__ import annotations
 
+import sys
+
 from game_agent.context import ContextBuilder
 from game_agent.state import GameState, MemoryEntry
 from game_agent.worldpack import WorldPack, load_worldpack
 
 from .cards import REPO_ROOT, ScenarioCard
+
+# card_hook_check 不是包成员（脚本层）：注入 scripts/ 后 import（同 assemble.py 的先例）
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from card_hook_check import CARD_FIELDS  # noqa: E402
 
 
 class MaterializeError(ValueError):
@@ -34,6 +40,19 @@ def load_pack(pack_path: str) -> WorldPack:
     if pack_path not in _PACK_CACHE:
         _PACK_CACHE[pack_path] = load_worldpack(REPO_ROOT / pack_path)
     return _PACK_CACHE[pack_path]
+
+
+def speaker_card_text(pack: WorldPack, speaker: str) -> str:
+    """说话人角色卡的四个字段拼成一段（与 `hook_gate` 的比对口径同源：`card_hook_check.CARD_FIELDS`）。
+
+    **放在这里**（而不是演绎器或出库器里）的原因：它是"说话人是谁、该怎么说话"的**单一真源**，
+    两头都要用 —— 演绎器拿它**指导生成**（结构性修复：让矛盾真的落在被声明的说话人身上），
+    出库器把它**随样本交付**（供 §7.5 标签校验与人工审计）。
+    """
+    spec = pack.npcs.get(speaker)
+    if spec is None:
+        return ""
+    return "\n".join(f"{f}：{getattr(spec, f, '')}" for f in CARD_FIELDS)
 
 
 def build_material(card: ScenarioCard) -> str:

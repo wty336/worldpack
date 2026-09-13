@@ -56,7 +56,7 @@ from scripts.scenario_factory.materialize import (
     _precheck,
     build_material,
 )
-from scripts.scenario_factory.verbalize import verbalize_card
+from scripts.scenario_factory.verbalize import _judge_hint, verbalize_card
 
 
 def _judge_card(**over):
@@ -1150,6 +1150,29 @@ def test_extract_negative_card_skips_the_label_gate():
     r = build_extract_sample(llm, card)
     assert r.sample is not None and r.sample["labels"] == []
     assert llm.label_calls == [], "无标签就不该调校验器"
+
+
+# --- 发现⑨ 结构性修复：把「说话人舞台」写进演绎提示 ---------------------------
+
+
+def test_judge_hint_stages_the_declared_speaker():
+    """判定"问题类型是否真的成立"必须落在**被声明的说话人**身上，而原提示**根本没告诉演绎器说话人是谁**
+    （更没给角色卡）→ 实测 narration 常由别人说话、或说话人沉默寡言 ⇒ 重演再多次也判不出 OOC，
+    门禁只能丢卡（judge 批 −32%、类别失衡）。本守卫钉住提示里的三样东西：
+    **说话人姓名 + 其角色卡全文 + "直接引语/矛盾发生在他话里"两条硬要求**。
+    """
+    card = ScenarioCard(**_judge_card())            # setting 卡：听雨 → 听风
+    pack = load_worldpack(REPO_ROOT / card.pack)
+    spec = pack.npcs[card.material.present[0]]
+    hint = _judge_hint(card)
+    assert spec.name in hint, "提示里没有说话人姓名"
+    assert str(spec.speech_style) in hint and str(spec.boundaries[0]) in hint, "提示里没有角色卡"
+    assert "直接引语" in hint and "旁人转述" in hint
+    # ooc 类必须给"说了与人设相冲突的话"这条判据（否则会把"沉默寡言"误当 OOC——实测正是如此）
+    ooc = next(generate_card(10231, i, "judge") for i in range(30)
+               if generate_card(10231, i, "judge").corruptions[0].category == "ooc")
+    ooc_hint = _judge_hint(ooc)
+    assert "相冲突的话" in ooc_hint and "没展现其风格" in ooc_hint
 
 
 def test_make_probe_delete_point_leaves_no_trace():

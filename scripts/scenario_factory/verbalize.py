@@ -73,22 +73,56 @@ def _originals_present(card: ScenarioCard, text: str) -> list[str]:
     return [a for a in absent if a in text]
 
 
+def _speaker_staging(card: ScenarioCard) -> tuple[str, str]:
+    """judge 卡：说话人的**展示名**与其**角色卡全文**（取不到就退化为 id / 空串）。
+
+    结构性修复（发现⑨，2026-09-13）：判定"问题类型是否真的成立"必须落在**被声明的说话人**身上，
+    而原先的提示**根本没告诉演绎器说话人是谁**（更没给角色卡）→ 实测 narration 常常是别人在说话、
+    或说话人沉默寡言 ⇒ 无论重演几次都判不出 OOC（标签门禁只能丢卡：judge 批 −32%、类别失衡）。
+    """
+    npc = (card.material.present[0] if card.material and card.material.present else "")
+    if not (npc and card.pack):
+        return npc, ""
+    from .materialize import load_pack, speaker_card_text
+
+    pack = load_pack(card.pack)
+    spec = pack.npcs.get(npc)
+    return (spec.name if spec is not None else npc), speaker_card_text(pack, npc)
+
+
 def _judge_hint(card: ScenarioCard) -> str:
     """矛盾自然化指令——**按 category 分派**（一句话指令无法同时适配三类）。
 
     原稿只有一句"「」内的值必须出现、被改写事实的原词不得出现"，对 confab 是**反的**
     （confab 的 anchor 恰恰必须出现），会把 confab 演绎引到错方向。
+
+    **2026-09-13 补舞台与硬要求**（发现⑨）：把说话人姓名 + 角色卡喂进去，并明确要求
+    ① 出现其**直接引语**、② 矛盾**发生在他自己的话里**（不得只由旁人转述、不得用模糊指代省掉专名）。
+    这三条正是 §7.5 标签校验的判据 —— **生成指令与验收判据对齐**，否则门禁只能一路丢卡。
     """
     c = card.corruptions[0]
+    npc, voice = _speaker_staging(card)
+    who = f"「{npc}」" if npc else "该说话人"
+    stage = (
+        f"\n\n**说话人与舞台（硬要求）**：矛盾的说话人是 {who}，其角色卡如下：\n{voice or '（未取到角色卡）'}\n"
+        f"叙事里**必须**：① 出现 {who} 的**直接引语**（至少一句，标明是他说的话）；"
+        f"② 该矛盾**发生在他/她自己的话里**（或叙述者对其处境的直接陈述里），"
+        "**不得**只由旁人转述，也不得用「那个东西」这类模糊指代把关键专名省掉。"
+        # 下面两条是"舞台文本反过来伤到别的门禁"的补丁（2026-09-13 探针实测）：
+        # ① 把角色卡喂给模型后，它会**逐字照抄**卡里的句子 → 触发 `hook_gate`（≥4 字连续重合 = 多开一条通路）✗
+        # ② 约束一多，模型会顾着演说话人而**漏掉卡面 anchors** → 演绎丢弃回升 ✗
+        "③ 角色卡只用来**把握语气**，**不得逐字照抄**卡里的句子（照抄会让该卡失去它要考的那条通路）；"
+        "④ 无论怎么改，卡面 facts 的 anchors（专名/数字）**必须原样出现**。")
     if c.category == "setting":
-        hint = ("把被命中事实换个说法写进叙事：detail 中「」内的**新值必须出现**，"
+        hint = ("把被命中事实换个说法，**由 {who} 说出或认下**：detail 中「」内的**新值必须出现**，"
                 "**原值不得出现**（这是要考的设定矛盾）。")
     elif c.category == "confab":
-        hint = ("把 detail 提到的那件事**当作既成事实直接断言**（材料里从未有过它，"
-                "这正是要考的点）；不得写成「听说 / 可能 / 似乎」。")
+        hint = ("把 detail 提到的那件事**当作既成事实直接断言**——**由 {who} 亲口说出**最好"
+                "（材料里从未有过它，这正是要考的点）；不得写成「听说 / 可能 / 似乎」，也不得只由旁人转述。")
     else:
-        hint = "改写说话人的语气或底线，使其贴合 detail 的描述（不涉及具体专名）。"
-    return f"\n矛盾自然化：{hint}\n（category={c.category}；detail：{c.detail}）"
+        hint = ("让 {who} 的**台词明显违背其角色卡**（语气 / 底线 / 禁忌任选其一，且违背要一眼看得出）——"
+                "判据是「说了与其人设相冲突的话」，而**不是**「没展现其风格」（沉默寡言/风格平淡不算 OOC）。")
+    return stage + f"\n矛盾自然化：{hint.format(who=who)}\n（category={c.category}；detail：{c.detail}）"
 
 
 def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> VerbalizeResult:
