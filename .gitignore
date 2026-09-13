@@ -17,6 +17,11 @@ build/
 # 产线工作日志（断点续跑用；体积≈数据集两倍，且可由它重生成）
 data/**/.work/
 
+# 人读清单的**全文附录**：等于把数据集复制一份（1000 条 ≈ 4.6 MB），
+# 一条命令即可现场重生成（`python -m scripts.scenario_factory.factory_review`）；
+# 清单主体（索引 + 标签总表 + 风险项）入库，那才是人读面。
+reports/*-review-*-full.md
+
 # IDE
 .idea/
 .vscode/

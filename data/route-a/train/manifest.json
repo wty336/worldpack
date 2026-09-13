@@ -5,16 +5,16 @@
   "frozen": false,
   "modules": {
     "extract": {
-      "count": 200,
+      "count": 998,
       "file": "train\\extract.jsonl",
-      "sha256": "8dcafbe25ee7280be60557b60eaecf3dc4f07bde5f115958d16eee840ce8721d"
+      "sha256": "fcb7f438d56d5e98e83d76ef84b69143f2fbd3708739fc84a9ac1ec47e9a74dd"
     }
   },
   "progress": {
     "extract": {
-      "target": 200,
-      "kept": 200,
-      "dropped": 0,
+      "target": 1000,
+      "kept": 998,
+      "dropped": 2,
       "rejected": 0,
       "pending": 0
     }

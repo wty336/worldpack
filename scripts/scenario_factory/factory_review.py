@@ -77,6 +77,48 @@ def _body(row: dict) -> str:
     return row.get("input", "").split("<回合内容>")[-1].replace("</回合内容>", "").strip()
 
 
+def money_crossovers(rows: list[dict]) -> list[tuple[str, str, list[str]]]:
+    """货币穿帮（发现⑩-C）：文本里出现**别的题材**的金额词（标签 + 叙事都查）。
+
+    按**词**去重而不是按题材：仙侠与古代武侠共用「五十两」，按题材去重会把它们互相判成穿帮
+    （核对脚本的第一版就是这样，33 条全是假阳性）。
+    """
+    from .cards import _MONEY_TERM_BY_GENRE
+
+    out = []
+    for r in rows:
+        own = _MONEY_TERM_BY_GENRE.get(r.get("genre"))
+        if not own:
+            continue
+        text = " ".join(x["text"] for x in r.get("labels", [])) + "\n" + _body(r)
+        hit = sorted({t for g, terms in _MONEY_TERM_BY_GENRE.items() if g != r.get("genre")
+                      for t in (terms[0],) if t != own[0] and t in text})
+        if hit:
+            out.append((r["id"], r.get("genre", "?"), hit))
+    return out
+
+
+def qa_stats(rows: list[dict]) -> dict:
+    """数据集级 QA 统计（**零成本、确定性**）——放进出库清单，省得每次另写一次性脚本核对。
+
+    这几项都曾是"验收时临时写脚本才发现"的（货币穿帮 20% / 元词命中 / 长度未兑现），
+    写进清单后每批自动带出来。
+    """
+    n_soft = sum(1 for r in rows if r.get("meta_soft"))
+    n_conf = sum(1 for r in rows if r.get("name_confusables"))
+    short = [r for r in rows if r.get("target_tokens")
+             and r.get("realized_chars", 0) < r["target_tokens"] * 0.5]
+    from collections import Counter
+
+    return {
+        "meta_soft": n_soft,
+        "name_confusables": n_conf,
+        "money_crossovers": money_crossovers(rows),
+        "length_tiers": Counter(r.get("target_tokens") for r in rows),
+        "short_of_target": [r["id"] for r in short],
+    }
+
+
 def flags(row: dict, viol: dict[str, list[str]]) -> list[str]:
     """一条样本的**风险观察项**（只报告不判——判定是人读的事）。
 
@@ -148,6 +190,7 @@ def render(out_dir: pathlib.Path, layer: str, module: str,
     flagged = [r for r in rows if flags(r, viol)]
     n_neg = sum(1 for r in rows if r.get("expect_empty"))
     labels = [(r["id"], x) for r in rows for x in r.get("labels", [])]
+    qa = qa_stats(rows)
 
     src = (f"`{_rel(f)}`（sha256 `{file_digest(f)[:16]}`）" if f.exists()
            else "（行由调用方直接传入）")
@@ -162,6 +205,9 @@ def render(out_dir: pathlib.Path, layer: str, module: str,
           f"（负例 = 该回合**不得**引入新事实，看它有没有偷偷加；负例是正常设计，不算风险项）",
           f"- 风险项命中：**{len(flagged)}** 条（见 §2）；标签自检点名："
           f"{len([r for r in rows if r['id'] in viol])} 条；fact 标签共 {len(labels)} 条（见 §5）",
+          f"- QA 统计（零成本确定性核对）：温和元词 {qa['meta_soft']} 条；近误人名 "
+          f"{qa['name_confusables']} 条；**货币穿帮 {len(qa['money_crossovers'])} 条**；"
+          f"长度档位 {dict(qa['length_tiers'])}，实测不足目标一半 {len(qa['short_of_target'])} 条",
           f"- 丢弃：{('本层 0 丢弃（无 dropped 留档）' if not drop else _drop_line(drop))}\n",
           "## 2. 先看这些（风险优先级）\n"]
     if not flagged:

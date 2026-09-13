@@ -150,6 +150,30 @@ def test_judge_and_compress_shapes(tmp_path):
     assert "出库人读清单" in render(tmp_path / "nowhere", "train", "judge", [j])
 
 
+def test_money_crossover_uses_terms_not_genres(tmp_path):
+    """货币穿帮按**词**判，不按题材 —— 仙侠与古代武侠共用「五十两」，
+    按题材去重会把它们互相判成穿帮（核对脚本第一版实测 33 条**全是假阳性**）。"""
+    from scripts.scenario_factory.factory_review import money_crossovers
+
+    xianxia = _row(0, genre="仙侠")
+    xianxia["labels"] = [{"type": "债务与人情", "text": "玩家欠顾长风五十两，约定中秋前归还",
+                          "importance": 6}]
+    wrong = _row(1, genre="现代都市")
+    wrong["labels"] = [{"type": "债务与人情", "text": "玩家欠顾长风五十两，约定中秋前归还",
+                        "importance": 6}]
+    assert money_crossovers([xianxia]) == [], "共用词被误判成穿帮"
+    hit = money_crossovers([wrong])
+    assert len(hit) == 1 and hit[0][0] == wrong["id"] and "五十两" in hit[0][2]
+
+
+def test_qa_stats_land_in_the_overview(tmp_path):
+    rows = [_row(0, soft=["接口"], conf=["沈青秋"], realized=100), _row(1)]
+    md = render(_layer(tmp_path, rows), "train", "extract")
+    head = md.split("## 2.")[0]
+    assert "温和元词 1 条" in head and "近误人名 1 条" in head
+    assert "货币穿帮 0 条" in head and "实测不足目标一半 1 条" in head
+
+
 def test_load_rows_reads_what_jsonl_holds(tmp_path):
     rows = [_row(0), _row(1)]
     assert len(load_rows(_layer(tmp_path, rows), "train", "extract")) == 2
