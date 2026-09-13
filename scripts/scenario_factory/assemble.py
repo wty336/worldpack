@@ -214,6 +214,7 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
 
 GATE_MAX_DROP_RATE = 0.30   # 丢弃率超阈 → 批作废（先停产线，不硬凑量）
 QUALITY_SAMPLE_RATE = 0.20  # §7.4 质检员抽检比例（常驻关卡）
+LABEL_CHECK_RATE = 0.20     # §7.5 标签自检抽检比例（发现①⑦ 的防复发层）
 
 
 @dataclass
@@ -478,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     from game_agent.config import load_settings
     from game_agent.llm import LLMClient
     from game_agent.usage import UsageTracker
-    from scripts.rubric_judge import quality_sample
+    from scripts.rubric_judge import label_check, quality_sample
 
     # usage 记账：**必须显式建 tracker 并传进 LLMClient** —— 落盘只发生在
     # `LLMClient._record_usage`，`complete_checked` 本身**不接触** UsageTracker。
@@ -510,6 +511,20 @@ def main(argv: list[str] | None = None) -> int:
         extra = removed - len(bad_ids)
         print(f"[质检] 自然度 <1 剔除 {removed} 条（须重造，点名 {len(bad_ids)} 个 id"
               + (f"，**按 id 连坐多剔 {extra} 条**" if extra else "") + f"）：{bad_ids[:10]}")
+    # §7.5 标签自检（发现①⑦ 的防复发层）：程序只查得出"anchor 在不在"，
+    # 查不出"这条事实是否**被当成本身所述的那种东西**成立"——演绎器悄悄改写标签正是坏标签的来源。
+    lc = label_check(llm, samples, rate=LABEL_CHECK_RATE)
+    if lc["violations"] or lc["unknown"]:
+        bad = {v["id"] for v in lc["violations"]}
+        if bad:
+            samples, _ = drop_flagged(samples, sorted(bad))
+            for cid in sorted(bad):
+                stats.drop("标签不一致", cid)
+        side = out_dir / args.layer / f"label-check-{args.layer}.json"
+        side.write_text(json.dumps(lc, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[标签自检] 抽检 {lc['checked']} 条 → 不一致 {len(lc['violations'])} 条（已剔除，证据 {side.name}）"
+              f"；未判定 {len(lc['unknown'])} 条（**未知 ≠ 通过**，保留但计未判定）"
+              f"；跳过 {lc['skipped']} 条（judge 标签由 anchors 程序保证）")
     for g in quota_gaps(samples):
         print(f"[配额缺口] {g}")
     manifest = write_layer(args.layer, samples, out_dir)

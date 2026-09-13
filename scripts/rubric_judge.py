@@ -243,6 +243,86 @@ def quality_sample(llm, samples: list[dict], *, rate: float = 0.20,
     return bad
 
 
+# ---- §7.5 标签自检（第四处评委用法）：卡面标签 × 文本的**语义一致性** ----
+# 为什么需要（2026-09-13，发现①⑦ 的防复发层）：① 与 ⑦ 是同一形态——**不报错、但产出坏标签**
+# （① id 撞车让质检剔除连坐；⑦ 名字池不分语义槽 → `preserve_points` 声称的内容在材料里根本不成立），
+# 一天内让决策 14 的 eval 例外条款触发了两次。程序侧只查得出"anchor 在不在"（字面），
+# 查不出"这条事实在文本里是否**被当成本身所述的那种东西**成立"——那正是演绎器会悄悄改掉的地方
+# （把「旧书店」写成一家书店、把「密码本」写成债主）。故补这一道**语义抽检**。
+LABEL_CHECK_SYSTEM = (
+    "你是标签校验员。给定【事实标签】若干条与【文本】，逐条判断该事实在文本中**是否成立**。\n"
+    "成立 = 文本把该事实当作**其字面所述的那种东西**呈现"
+    "（如「玩家的装备名为「黄铜齿轮」」就要文本里真有一件叫黄铜齿轮的装备）；\n"
+    "不成立 = 文本里找不到该事实的依据，**或把它重新解释成了别的东西**"
+    "（如把「旧书店」写成一家书店、把「密码本」写成债主）。\n"
+    '只输出一行 JSON：{"成立": true, "不成立项": []}；不成立时把不成立的事实原文放进「不成立项」。'
+)
+
+
+def check_labels(llm, *, labels: list[str], text: str) -> dict:
+    """一次调用校验「一组标签 ↔ 一段文本」。返回 `{"checked": bool, "violations": [...]}`。
+
+    `checked=False` = **未判定**（空响应 / JSON 解析失败 / 截断）——按"空 = 未知 ≠ 通过"，
+    调用方**不得**当成通过；`label_check()` 会把它单独计数上报。
+    """
+    if not labels:
+        return {"checked": True, "violations": []}
+    user = ("【事实标签】\n" + "\n".join(f"{i + 1}. {t}" for i, t in enumerate(labels))
+            + f"\n\n【文本】\n{text}")
+    try:
+        d = _extract_json(_complete(llm, LABEL_CHECK_SYSTEM, user, purpose="label_check"))
+    except (ValueError, KeyError, TypeError):
+        return {"checked": False, "violations": []}
+    bad = [str(x) for x in (d.get("不成立项") or [])]
+    if not bool(d.get("成立", True)) and not bad:
+        bad = ["（标签校验员判「不成立」但未列出条目）"]
+    return {"checked": True, "violations": bad}
+
+
+LABEL_CHECK_RATE = 0.20
+LABEL_CHECK_SEED = 20260913
+
+
+def _checkable_labels(sample: dict) -> list[str]:
+    """哪些模块有可校验的标签（其余模块**跳过**，跳过 ≠ 通过）：
+
+    · extract：`labels`（该回合应当提炼出的事实）必须在 input 叙事里成立；
+    · compress：`preserve_points`（必保全要点）必须在 input 的历史里成立；
+    · judge：其标签是"问题类型"，依据由 `verbalize` 的 anchors 反向校验**程序**保证 → 不重复校验。
+    """
+    if sample.get("module") == "extract":
+        return [f"{x['type']}：{x['text']}" for x in sample.get("labels", [])]
+    if sample.get("module") == "compress":
+        return [p["text"] for p in sample.get("preserve_points", [])]
+    return []
+
+
+def label_check(llm, samples: list[dict], *, rate: float = LABEL_CHECK_RATE,
+                seed: int = LABEL_CHECK_SEED) -> dict:
+    """抽检「标签 ↔ 文本」语义一致性 → `{"checked", "skipped", "violations", "unknown"}`。
+
+    抽样口径与 `quality_sample` 一致（同一 seed 约定、升序消费 → 结果与顺序无关）。
+    """
+    checkable = [s for s in samples if _checkable_labels(s)]
+    out = {"checked": 0, "skipped": len(samples) - len(checkable),
+           "violations": [], "unknown": [], "prompt_version": label_check_version()}
+    if not checkable:
+        return out
+    rng = random.Random(seed)
+    k = min(max(1, math.ceil(len(checkable) * rate)), len(checkable))
+    for i in sorted(rng.sample(range(len(checkable)), k=k)):
+        s = checkable[i]
+        r = check_labels(llm, labels=_checkable_labels(s), text=s.get("input", ""))
+        if not r["checked"]:
+            out["unknown"].append(s["id"])
+            continue
+        out["checked"] += 1
+        if r["violations"]:
+            out["violations"].append({"id": s["id"], "module": s["module"],
+                                      "items": r["violations"]})
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 轨道 2 批跑（spec §7.2/§7.3：掺探针 → 打分 → 检出率门）
 # ---------------------------------------------------------------------------
@@ -253,10 +333,19 @@ PROBE_SEED = 20260912
 
 
 def prompt_version() -> str:
-    """rubric 提示词指纹（spec §6.4/§9.2：报告必须自证口径）。评委提示词一改即换新值。"""
+    """rubric 提示词指纹（spec §6.4/§9.2：报告必须自证口径）。评委提示词一改即换新值。
+
+    **不含** `LABEL_CHECK_SYSTEM`（标签自检是另一条侧信道，指纹见 `label_check_version()`）——
+    否则新增校验器会把已记录的 X 校准指纹（`37330a304299a075`）牵连作废。
+    """
     return hashlib.sha256(
         (RUBRIC_SYSTEM + PAIRWISE_SYSTEM + NATURALNESS_SYSTEM).encode("utf-8")
     ).hexdigest()[:16]
+
+
+def label_check_version() -> str:
+    """标签自检提示词的指纹（与 `prompt_version` 分开记，互不牵连）。"""
+    return hashlib.sha256(LABEL_CHECK_SYSTEM.encode("utf-8")).hexdigest()[:16]
 
 
 def budget_policy() -> str:

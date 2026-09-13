@@ -15,6 +15,7 @@ from game_agent.worldpack import load_worldpack
 from scripts.rubric_judge import (
     RUBRIC_SYSTEM,
     budget_policy,
+    label_check,
     make_probe,
     naturalness,
     pairwise,
@@ -422,9 +423,11 @@ class StubLLM:
         self.texts = list(texts)
         self.finish = finish
         self.calls = []
+        self.messages = []   # 也记 messages：有的守卫要断言"送进模型的到底是什么"
 
     def complete_with_meta(self, messages, **kw):
         self.calls.append(kw)
+        self.messages.append(messages)
         text = self.texts.pop(0) if len(self.texts) > 1 else self.texts[0]
         return SimpleNamespace(text=text, finish_reason=self.finish)
 
@@ -969,6 +972,50 @@ def test_run_eval_excludes_invalid_probes_from_detection_rate(monkeypatch):
     assert rep["probes"] == [] and len(rep["probes_invalid"]) == 2
     assert rep["probe_detection"] is None, "无显性探针时检出率是**未知**，不是 1.0"
     assert rep["batch_valid"] is False and "无显性探针" in rep["validity_note"]
+
+
+def test_label_check_flags_reinterpreted_label():
+    """§7.5 标签自检（发现①⑦ 的防复发层）：程序只查得出"anchor 在不在"（字面），
+    查不出"这条事实是否**被当成本身所述的那种东西**成立"——⑦ 里演绎器把「旧书店」写成一家书店、
+    把「密码本」写成债主，anchor 全在、程序放行，标签却已经不成立。"""
+    rows = [
+        {"id": "e1", "module": "extract", "input": "叙事：玩家的装备名为旧书店。",
+         "labels": [{"type": "物品与装备", "text": "玩家的装备名为「旧书店」"}]},
+        {"id": "e2", "module": "extract", "input": "叙事：玩家的装备名为黄铜齿轮。",
+         "labels": [{"type": "物品与装备", "text": "玩家的装备名为「黄铜齿轮」"}]},
+        {"id": "j1", "module": "judge", "input": "x", "narration": "y"},   # 无标签 → 跳过
+    ]
+    llm = StubLLM(['{"成立": false, "不成立项": ["物品与装备：玩家的装备名为「旧书店」"]}',
+                   '{"成立": true, "不成立项": []}'])
+    rep = label_check(llm, rows, rate=1.0)
+    assert rep["checked"] == 2 and rep["skipped"] == 1        # judge 跳过（其标签由 anchors 程序保证）
+    assert [v["id"] for v in rep["violations"]] == ["e1"]
+    assert rep["violations"][0]["module"] == "extract"
+    assert rep["unknown"] == [] and rep["prompt_version"]
+
+
+def test_label_check_unknown_is_not_a_pass():
+    """空/解析失败 = **未判定**，既不算违规也不算通过（"空 = 未知 ≠ 通过"）——
+    否则校验器一坏，整批标签就"全绿"了。"""
+    rows = [{"id": "e1", "module": "extract", "input": "叙事",
+             "labels": [{"type": "物品与装备", "text": "t"}]}]
+    rep = label_check(StubLLM(["这不是 JSON"]), rows, rate=1.0)
+    assert rep["checked"] == 0 and rep["unknown"] == ["e1"] and rep["violations"] == []
+
+
+def test_label_check_sends_the_module_labels():
+    """extract 送 `labels`、compress 送 `preserve_points` —— 送错标签等于没校验。"""
+    rows = [
+        {"id": "e1", "module": "extract", "input": "回合叙事在此",
+         "labels": [{"type": "目标与线索", "text": "玩家在打听「青瓷」的下落"}]},
+        {"id": "c1", "module": "compress", "input": "历史在此",
+         "preserve_points": [{"text": "玩家欠老樵夫五十两", "anchors": ["五十两"]}]},
+    ]
+    llm = StubLLM(['{"成立": true, "不成立项": []}'] * 2)
+    label_check(llm, rows, rate=1.0)
+    sent = " ".join(m[1]["content"] for m in llm.messages)
+    assert "玩家在打听「青瓷」的下落" in sent and "玩家欠老樵夫五十两" in sent
+    assert "回合叙事在此" in sent and "历史在此" in sent
 
 
 def test_probe_gate_only_counts_explicit_grade():
