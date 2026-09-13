@@ -1,0 +1,15 @@
+{
+  "checked": 14,
+  "skipped": 5,
+  "violations": [
+    {
+      "id": "sc-11017-0017",
+      "module": "judge",
+      "items": [
+        "问题类型：OOC：叙事中说话人语气为市井口语、直白催促，并非沈清秋的文雅书面语风格，但该说话人并非沈清秋，而是替人传话的第三方，因此不构成沈清秋的OOC。"
+      ]
+    }
+  ],
+  "unknown": [],
+  "prompt_version": "9216cfea561c4032"
+}
