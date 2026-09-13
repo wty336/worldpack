@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dc_field
 
 from game_agent.budgets import complete_checked
 
@@ -27,8 +27,69 @@ VERBALIZE_SYSTEM = (
     "你是文本演绎器。把给定的场景卡（JSON）演绎成一段自然中文叙事。"
     "纪律：①卡面 facts 的 anchors 专名/数字必须原样出现；②只写叙事正文——"
     "不得输出标签、不得列事实清单、不得在末尾总结；③不得新增卡面没有的事实性专名"
-    "与数字；④语体/长度/脏度按用户指令（允许口语碎句与闲笔）。"
+    "与数字；④语体/长度/脏度按用户指令（允许口语碎句与闲笔）；"
+    # ⑤ 是发现⑩（2026-09-13）补的：judge 批 10% 的演绎在**念卡面 JSON**，两条直接念出标签 ✗✗
+    "⑤**你写的是故事文本，不是任务说明、参数报告或卡面播报**——"
+    "不得出现字段名/键名/数值标签/角色卡结构/任务术语"
+    "（例如 in_material、expect、corruption、权重、节点数、卡面、场景卡、facts 数组）。"
 )
+
+# 元叙述硬杀词（发现⑩，2026-09-13 人读初审 + 全批检测取证）：命中即判"这不是叙事"。
+# 取证：judge 批 59 条里 **6 条（10%）** 命中 ≥2 个元词，其中两条**直接念出标签**
+# （`expect 栏标的是：问题类型，虚构事实`；`target_fact 指向 facts 数组的第 0 项`）✗✗ ——
+# 而四道既有门全放行：anchors 在位 ✓ / 原词不在 ✓ / hook_gate 不撞 ✓ / 标签校验还判"要点成立" ✓
+# ⇒ **没有一道问"这到底是不是一段叙事"**；漏掉的这一维正是决策 16 人读通路抓到的。
+META_HARD = (
+    "in_material", "target_fact", "old_summary", "new_summary", "corruption",
+    "expect 栏", "问题类型", "虚构事实", "设定矛盾", "facts 数组", "场景卡",
+    "枚举集合", "category 是", "scale 上", "nodes 记", "npcs 记",
+)
+# 温和词：技术/科幻题材里**叙事内**使用可能合法（如黑客黑话"权限节点"、"他把节点数了一遍"）
+# → **只记不杀**，进样本字段供批次级观察（人读初审提的"元概念高频 → 判官学到捷径"的伪相关风险靠它盯）。
+# 为什么把它们从硬杀里挪出来：误杀合法叙事要付吞吐代价（每张卡 1~4 次调用），
+# 而"卡面/节点数/好感度"这类词在技术题材的**合法**叙事里确实会出现（2026-09-13 收紧口径）。
+META_SOFT = ("卡面", "节点数", "好感度", "参数", "权重", "锚点", "实体列表",
+             "缓冲区", "接口", "字段", "样本流")
+
+
+def _meta_narration(text: str) -> list[str]:
+    """**硬**元叙述词命中（空 = 通过）。"""
+    return [t for t in META_HARD if t in text]
+
+
+def _meta_soft(text: str) -> list[str]:
+    """温和元词命中（只记录，不判定）。"""
+    return [t for t in META_SOFT if t in text]
+
+
+def _name_confusables(card: ScenarioCard, text: str) -> list[str]:
+    """**近误人名报告**（发现⑩-D）：包内 NPC 名与文本中同长窗口的"一字之差"比对。
+
+    人读初审实测：包内 NPC「沈清秋」被写成了「沈青秋」（另 3 条性别/人设漂移）。
+    **只报不杀**——一字之差也可能是另一个真实人名；计数进样本，供批次级观察。
+    """
+    if not (card.pack and card.material):
+        return []
+    from .materialize import load_pack
+
+    pack = load_pack(card.pack)
+    out: list[str] = []
+    for spec in pack.npcs.values():
+        name = spec.name
+        if len(name) < 3 or name in text:
+            continue
+        for i in range(max(0, len(text) - len(name) + 1)):
+            win = text[i:i + len(name)]
+            if sum(a != b for a, b in zip(win, name)) == 1:
+                out.append(f"{name}→{win}")
+                break
+    return out
+
+
+def _violations(card: ScenarioCard, text: str) -> list[str]:
+    """演绎文本的**程序校验**（缺一即不合格）：anchors 在位 / 原词不出现 / **不是元叙述**。"""
+    return (_missing_anchors(card, text) + _originals_present(card, text)
+            + [f"元叙述:{t}" for t in _meta_narration(text)])
 VERBALIZE_TEMPERATURE = 0.9  # 演绎要多样性（0.8~1.0 档）；标注/评判类仍 temp=0
 MAX_ATTEMPTS = 2             # 缺要素 → 重演 1 次 → 仍缺则丢弃并计数
 
@@ -38,6 +99,7 @@ class VerbalizeResult:
     text: str
     attempts: int
     dropped: bool = False
+    violations: list[str] = dc_field(default_factory=list)   # 丢弃原因明细（元叙述/缺 anchor…）
 
 
 def _corruption_swap(card: ScenarioCard) -> tuple[int | None, list[str], list[str]]:
@@ -143,6 +205,15 @@ def _continuation_hint(k: int, n: int, tail: str, missing: list[str] | None = No
     return hint
 
 
+def _style_rule(card: ScenarioCard) -> str:
+    """语体补充约束（发现⑩-A）：`技术术语` 体实测是**元叙述重灾区**（judge 批占 34%，元词命中集中于此）
+    → 明确要求术语**只在叙事内**用。人读初审原话：「语体轴只写'技术术语'，没说术语只作叙事内比喻」。"""
+    if card.axes.style == "技术术语":
+        return ("\n**语体细则**：「技术术语」指**叙事之内**的术语（人物 / 机构 / 设备 / 流程的对话与描写），"
+                "**不得**拿它来谈论这张卡、这套场景、你的任务，或任何字段 / 参数 / 数据结构本身。")
+    return ""
+
+
 def _chunked_user(card: ScenarioCard, per: int, k: int, n: int) -> str:
     """分块续写的首/次块用户指令：**把长度目标按块说清**。
 
@@ -153,6 +224,7 @@ def _chunked_user(card: ScenarioCard, per: int, k: int, n: int) -> str:
             f"（全篇共 {n} 段、合计约 {card.history_spec.target_tokens} 字）；"
             f"可掺入的闲笔：{card.history_spec.noise}\n场景卡 JSON：\n"
             + card.model_dump_json())
+    user += _style_rule(card)
     if card.module == "judge":
         user += _judge_hint(card)
     return user
@@ -207,24 +279,27 @@ def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> Verbaliz
         f"可掺入的闲笔：{card.history_spec.noise}\n场景卡 JSON：\n"
         + card.model_dump_json()
     )
+    user += _style_rule(card)
     if card.module == "judge":
         user += _judge_hint(card)
     if card.history_spec.target_tokens > CHUNK_TOKENS:
         # 长卡走分块续写（见 `_verbalize_chunked`）：**不整卡重演**（一次重演 = 再烧 4~5 次调用），
         # 块内已有"收尾补漏"，故这里只给一次机会，仍缺 anchors 就丢卡。
         text = _verbalize_chunked(llm, card, purpose=purpose)
-        if text and not _missing_anchors(card, text) and not _originals_present(card, text):
+        if text and not (v := _violations(card, text)):
             return VerbalizeResult(text=text, attempts=1)
-        return VerbalizeResult(text="", attempts=1, dropped=True)
+        return VerbalizeResult(text="", attempts=1, dropped=True, violations=v if text else ["空文本"])
     msgs = [{"role": "system", "content": VERBALIZE_SYSTEM},
             {"role": "user", "content": user}]
     max_tokens = int(card.history_spec.target_tokens * 1.2)  # spec §4 的 ×1.2 上限
+    last_v: list[str] = []
     for attempt in range(1, MAX_ATTEMPTS + 1):
         text, finish = complete_checked(llm, msgs, purpose=purpose,
                                         max_tokens=max_tokens,
                                         temperature=VERBALIZE_TEMPERATURE)
         if finish == "length":  # 截断丢弃（complete_checked 已升预算重试过一次）
+            last_v = ["截断"]
             continue
-        if not _missing_anchors(card, text) and not _originals_present(card, text):
+        if not (last_v := _violations(card, text)):
             return VerbalizeResult(text=text, attempts=attempt)
-    return VerbalizeResult(text="", attempts=MAX_ATTEMPTS, dropped=True)
+    return VerbalizeResult(text="", attempts=MAX_ATTEMPTS, dropped=True, violations=last_v)

@@ -838,7 +838,8 @@ def test_batch_stats_records_which_cards_were_dropped():
     assert stats.reasons["演绎丢弃"] == 3
     assert stats.dropped_ids["演绎丢弃"] == ["sc-10000-0000", "sc-10001-0001", "sc-10002-0002"]
     # 明细也要留：聚合键会把 `confab 撞卡: 甲/乙` 截成 `confab 撞卡`，下一轮就看不到撞词了
-    assert stats.dropped_detail["演绎丢弃"]["sc-10000-0000"] == "演绎丢弃"
+    # （演绎丢弃同理：明细里带着**缺了哪些 anchor**，2026-09-13 补）
+    assert stats.dropped_detail["演绎丢弃"]["sc-10000-0000"].startswith("演绎丢弃: ")
 
 
 def test_quota_gaps_names_the_nominal_long_tier():
@@ -862,6 +863,89 @@ def test_side_file_writer_creates_missing_parent_dirs(tmp_path):
     assert not target.parent.exists()
     write_side_file(target, {"checked": 1, "violations": []})
     assert target.exists() and json.loads(target.read_text(encoding="utf-8"))["checked"] == 1
+
+
+# --- 发现⑩（人读初审抓到的）：元叙述 / 题材穿帮 / 近误人名 ---------------------
+
+
+def test_meta_narration_is_rejected_like_a_missing_anchor():
+    """**元叙述 = 不是叙事**（发现⑩）：judge 批 10% 的演绎在念卡面 JSON，两条直接念出标签
+    （`expect 栏标的是：问题类型，虚构事实`）✗✗ —— 四道既有门全放行，因为它们都在问
+    "专名在不在 / 要点成不成立"，**没有一道问"这到底是不是一段叙事"**。
+
+    本守卫钉住：元叙述词命中 ⇒ 与"缺 anchor"同等对待（重演 → 仍犯则丢卡）。
+    """
+    from scripts.scenario_factory.verbalize import _meta_narration, _meta_soft
+
+    card = _extract_card()
+    anchors = "，".join(_all_anchors(card))
+    clean = f"渡口茶棚里，{anchors}，闲谈收尾。"
+    assert _meta_narration(clean) == []
+    leaked = clean + "这条的 category 是 confab，expect 栏标的是：问题类型，虚构事实。"
+    assert _meta_narration(leaked), "念卡面字段/标签必须判为元叙述"
+    # 温和词只记不杀（技术题材的叙事内使用可能合法，如黑客黑话"权限节点"）
+    soft_only = clean + "他把权限节点过了一遍，参数还在调。"
+    assert _meta_narration(soft_only) == [] and _meta_soft(soft_only)
+
+
+def test_meta_narration_sample_is_dropped_with_reason():
+    """元叙述样本要被丢掉，且**丢弃明细里能看到原因**（不然下一轮又只能靠人读发现）。"""
+    card = _extract_card()
+    anchors = "，".join(_all_anchors(card))
+    bad = f"渡口茶棚里，{anchors}。目标数据结构的 target_fact 指向 facts 数组的第 0 项。"
+    llm = StubLLM([bad])                      # 两次都返回元叙述 → 丢卡
+    r = build_extract_sample(llm, card)
+    assert r.sample is None
+    assert "元叙述" in r.dropped_reason and r.dropped_reason.startswith("演绎丢弃")
+
+
+def test_fact_money_follows_the_genre():
+    """**金额与节令随题材**（发现⑩-C）：原模板硬写「五十两 / 中秋」，实测 12/59 的 judge 样本
+    在 `urban_neon`（信用点世界）里写"五十两" ✗。现在按 `_MONEY_TERM_BY_GENRE` 取。"""
+    from scripts.scenario_factory.cards import _MONEY_TERM_BY_GENRE
+
+    for seed, genre, want in ((20000, "现代都市", ("三万元", "月底")),
+                              (20000, "古代武侠", ("五十两", "中秋")),
+                              (20000, "仙侠", ("五十两", "中秋"))):
+        card = next(c for i in range(60)
+                    if (c := generate_card(card_seed(seed, i, "judge"), i, "judge")
+                       ).axes.genre == genre)
+        debt = next(f for f in card.facts if f.type == "债务与人情")
+        assert tuple(debt.anchors) == want, f"{genre} 的金额/节令错了：{debt.anchors}"
+    assert set(_MONEY_TERM_BY_GENRE) >= {"现代都市", "太空科幻", "校园", "年代", "蒸汽朋克"}
+    # **必须覆盖所有题材**（含 eval 留出轴与 dev 孪生）：漏一个 → 生成时报 KeyError，整批崩 ✗
+    from scripts.scenario_factory.cards import (GENRE_DEV_TWIN, GENRE_EVAL_ONLY,
+                                                GENRES_BASE)
+    need = set(GENRES_BASE) | {GENRE_EVAL_ONLY, GENRE_DEV_TWIN}
+    assert need <= set(_MONEY_TERM_BY_GENRE), f"缺题材的金额/节令：{need - set(_MONEY_TERM_BY_GENRE)}"
+
+
+def test_name_confusables_are_reported():
+    """**近误人名上报**（发现⑩-D）：包内 NPC「沈清秋」被写成「沈青秋」（人读初审实测）。
+    只报不杀（一字之差也可能是另一个真实人名），所以落在样本字段里而不是丢弃理由里。"""
+    from scripts.scenario_factory.verbalize import _name_confusables
+
+    card = ScenarioCard(**_judge_card())
+    pack = load_worldpack(REPO_ROOT / card.pack)
+    name = next(s.name for s in pack.npcs.values() if len(s.name) >= 3)
+    typo = name[0] + "错" + name[2:]                       # 造一个一字之差
+    assert _name_confusables(card, f"他喊了一声{typo}，没人应。"), "一字之差应被报出"
+    assert _name_confusables(card, f"他喊了一声{name}，有人应。") == [], "写对了不该报"
+
+
+def test_tech_style_gets_the_in_narrative_only_rule():
+    """**语体轴约束**（发现⑩-A）：`技术术语` 体是元叙述重灾区（judge 批占 34%），
+    根因是语体轴只写"技术术语"、没说"术语只在叙事内用"。"""
+    from scripts.scenario_factory.verbalize import _style_rule
+
+    tech = next(c for i in range(60)
+                if (c := generate_card(card_seed(20000, i, "judge"), i, "judge")
+                   ).axes.style == "技术术语")
+    other = next(c for i in range(60)
+                 if (c := generate_card(card_seed(20000, i, "judge"), i, "judge")
+                    ).axes.style != "技术术语")
+    assert "不得" in _style_rule(tech) and "字段" in _style_rule(tech)
+    assert _style_rule(other) == ""
 
 
 def test_compress_short_input_tier_stays_single_under_long():

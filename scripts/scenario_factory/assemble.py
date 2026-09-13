@@ -37,7 +37,7 @@ from scripts.rubric_judge import select
 from .cards import (REPO_ROOT, LONG_INPUT_TOKENS, ScenarioCard, card_seed,
                     generate_card, layer_of)
 from .materialize import MaterializeError, build_material, load_pack
-from .verbalize import verbalize_card
+from .verbalize import _meta_soft, _name_confusables, verbalize_card
 
 # card_hook_check 不是包成员（脚本层）：注入 scripts/ 后 import
 # （脚本层先例见 scripts/diag_turn.py:17；tests 层不用此法）
@@ -119,7 +119,10 @@ def _verbalize_until_label_ok(llm, card: ScenarioCard, *, module: str, purpose: 
     for _ in range(LABEL_GATE_ATTEMPTS):
         r = verbalize_card(llm, card, purpose=purpose)
         if r.dropped:
-            return r, drop_label
+            # 把**为什么**带上（元叙述/缺 anchor/截断）——聚合键仍取 ":" 前的部分，
+            # 而 `dropped-{layer}.json` 的 detail 会留全（2026-09-13 预演后加的诊断口子）
+            detail = "/".join(r.violations[:2])
+            return r, (f"{drop_label}: {detail}" if detail else drop_label)
         why = _label_gate(llm, module=module, card=card, text=r.text,
                           material=material, speaker_card=speaker_card)
         if why is None:
@@ -141,6 +144,9 @@ def build_extract_sample(llm, card: ScenarioCard) -> BuildResult:
         "expect_empty": not card.facts,   # facts 空 = 该回合无新事实 = 标签「无」（负例）
         "labels": [{"type": f.type, "text": f.text, "importance": f.importance}
                    for f in card.facts],
+        # 发现⑩ 的批次级观察项（只记不杀）：温和元词命中、近误人名
+        "meta_soft": _meta_soft(r.text),
+        "name_confusables": _name_confusables(card, r.text),
         **_length_fields(card, r.text),
     })
 
@@ -169,6 +175,8 @@ def build_judge_sample(llm, card: ScenarioCard) -> BuildResult:
         # `ooc` 类在工厂路径上没有任何程序校验（锚点校验与 OOC 无关），故随样本交付这两项，
         # 交给 §7.5 标签自检（同时也是审计材料：人眼能一眼看出该样本在考什么）。
         "detail": c.detail, "speaker_card": speaker_card,
+        "meta_soft": _meta_soft(r.text),                  # 发现⑩：温和元词（只记不杀）
+        "name_confusables": _name_confusables(card, r.text),   # 发现⑩-D：近误人名
         **_length_fields(card, r.text),
     }
     # **出厂门禁接在产线上**（原稿定义了 hook_gate 却从未调用 = 门禁不存在）：
@@ -271,6 +279,7 @@ def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
         # 超了提示词目标但生产端会接受 → 出库但**留痕**（训练数据审计/回填成本都靠这个字段）
         "over_target": over_target,
         "sampling": sampling, "candidates": len(cands) + len(over), "killed": killed,
+        "meta_soft": _meta_soft(hist.text),               # 发现⑩：温和元词（只记不杀）
         **_length_fields(card, hist.text),
         "preserve_points": [{"text": p.text, "anchors": p.anchors}
                             for p in card.preserve_points],

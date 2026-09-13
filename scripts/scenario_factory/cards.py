@@ -179,12 +179,27 @@ NAME_POOLS = {
     "code": ["白鸮", "夜枭", "灰隼", "寒鸦", "影狸", "青鳞"],
 }
 # 池间**不得有子串包含**（如 `断刃` ⊂ `断刃崖`），否则"命中哪个池"的判定会失真（守卫钉住）。
+# 金额与节令按**题材**适配（发现⑩-C，2026-09-13 实测）：原模板硬写「五十两 / 中秋」，
+# 于是 **20% 的 judge 样本在 `urban_neon`（信用点世界）里写"五十两"**（12/59；人读初审先抓到 3 条）✗。
+# 顺带治另一类副作用：节令写死"中秋"时，材料里"第 15 日"与"中秋眼看就剩几天"会自相矛盾（人读初审 21013）。
+_MONEY_TERM_BY_GENRE = {
+    "古代武侠": ("五十两", "中秋"),
+    "仙侠": ("五十两", "中秋"),
+    "民国谍战": ("三十块大洋", "月底"),
+    "抗战谍战": ("三十块大洋", "月底"),
+    "现代都市": ("三万元", "月底"),
+    "校园": ("二百块", "期末"),
+    "年代": ("二十斤粮票", "月底"),
+    "太空科幻": ("一千二百信用点", "下个航期"),
+    "蒸汽朋克": ("三十枚银币", "月底"),
+}
 _FACT_TPL = [  # (type, importance, text 模板, anchors 模板, **槽位池**)
     # {g1} = 流派词；{n0}/{n1} = **本事实独占**的专名槽（不可跨模板共用！
     # 共用会让两张事实带同一 anchor，则 setting 卡的「原词不得出现」反向校验永远不成立，
     # 该类卡将永久产出不了样本 —— 静默良率损失）
+    # {amt}/{term} = 按题材取的金额与期限（`_MONEY_TERM_BY_GENRE`，见上）
     ("物品与装备", 8, "玩家的{g1}名为「{n0}」", ["{n0}"], ("item",)),
-    ("债务与人情", 6, "玩家欠{n0}五十两，约定中秋前归还", ["五十两", "中秋"], ("person",)),
+    ("债务与人情", 6, "玩家欠{n0}{amt}，约定{term}前归还", ["{amt}", "{term}"], ("person",)),
     ("身份身世", 9, "玩家的代号是「{n0}」", ["{n0}"], ("code",)),
     ("目标与线索", 5, "玩家在打听「{n0}」的下落", ["{n0}"], ("place",)),
     ("承诺与约定", 7, "玩家答应把{n0}转交给{n1}", ["{n0}", "{n1}"], ("item", "person")),
@@ -267,7 +282,18 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
     layer = layer_of(seed)
     rng = random.Random(f"{seed}:{seq}:{module}")
     axes = _axes_for(layer, rng)
+    if module == "judge":
+        # **题材必须在造事实之前定下来**（2026-09-13）：judge 卡会按"有包可物化"重挑题材，
+        # 而原先重挑发生在造事实**之后** → 事实里的题材相关部分（流派词 g1、金额/节令）
+        # 会与最终 pack 脱节（实测：`urban_neon` 包里写"五十两"）。这里先定格。
+        cands = judge_genres_for(layer)
+        if not cands:
+            raise ValueError(
+                "没有任何可物化的世界包，无法出 judge 卡——先造 G1 或补 PACK_BY_GENRE")
+        genre = axes.genre if axes.genre in cands else rng.choice(cands)
+        axes = axes.model_copy(update={"genre": genre})
     g1 = {"古代武侠": "佩剑", "仙侠": "佩剑"}.get(axes.genre, "装备")
+    amt, term = _MONEY_TERM_BY_GENRE[axes.genre]
     used: set[str] = set()                                    # 全局已用名字（anchors 互不相交的保证）
     n2 = _take_name(rng, SKELETON_KINDS[0], used)             # 情节骨架：对话对象
     n3 = _take_name(rng, SKELETON_KINDS[1], used)             # 情节骨架：话题
@@ -275,7 +301,8 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
     for t, i, x, al, kinds in rng.sample(_FACT_TPL, k=4):
         # 按**槽位角色**取名字（发现⑦）：事实类型决定该从哪个池取，杜绝"装备名给地点名"这类荒谬组合
         names = [_take_name(rng, kind, used) for kind in kinds]
-        slots = {"g1": g1, "n0": names[0], "n1": names[1] if len(names) > 1 else ""}
+        slots = {"g1": g1, "amt": amt, "term": term,
+                 "n0": names[0], "n1": names[1] if len(names) > 1 else ""}
         facts.append(FactSpec(type=t, importance=i,
                               text=x.format(**slots),
                               anchors=[a.format(**slots) for a in al]))
@@ -300,13 +327,6 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
         return ScenarioCard(events=[f"玩家与{n2}提起{n3}", f"玩家按{g1}起誓"],
                             facts=facts, **base)
     if module == "judge":
-        # 候选题材 = 有包可物化 + 留出轴只对 eval 开放（决策 19；见 judge_genres_for）
-        cands = judge_genres_for(layer)
-        if not cands:
-            raise ValueError(
-                "没有任何可物化的世界包，无法出 judge 卡——先造 G1 或补 PACK_BY_GENRE")
-        genre = axes.genre if axes.genre in cands else rng.choice(cands)
-        base["axes"] = axes = axes.model_copy(update={"genre": genre})
         category = rng.choice(["setting", "confab", "ooc"])
         if category == "setting":
             # 反向校验需要「原值 → 新值」两个「」引用（Task 4 的 _corruption_swap 依赖此格式）
