@@ -85,6 +85,69 @@ def test_multithreaded_writes_are_line_atomic(tmp_path):
         assert entry["model"] == "m" and "prompt_tokens" in entry
 
 
+def test_concurrent_processes_do_not_tear_lines(tmp_path):
+    """**跨进程**并发写也不许撕裂（B-5 的线程锁护不住两个进程）。
+
+    实测背景（2026-09-13）：judge 与 compress 两个进程并行跑时，
+    `reports/usage-route-a.jsonl` 出现了一行只剩 `}` 的撕裂行 —— 账本是成本证据，
+    故补 `_append_lock` 文件锁；本守卫真的**起两个进程**去撞同一个文件。
+    """
+    import subprocess
+    import sys as _sys
+
+    path = tmp_path / "shared.jsonl"
+    code = (
+        "import sys; sys.path.insert(0, r'{root}');"
+        "from game_agent.usage import UsageTracker;"
+        "t = UsageTracker(r'{path}');"
+        "[t.record('m', 'turn', {{'prompt_tokens': i}}, ts='t') for i in range(60)]"
+    ).format(root=str(Path(__file__).resolve().parent.parent), path=str(path))
+    procs = [subprocess.Popen([_sys.executable, "-c", code],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             for _ in range(2)]
+    assert [p.wait() for p in procs] == [0, 0]
+    lines = [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert len(lines) == 120, f"少了行：{len(lines)}/120（写丢了账）"
+    for line in lines:
+        assert json.loads(line)["model"] == "m"     # 解析不了 = 撕裂
+    assert not list(tmp_path.glob("*.lock")), "锁文件没清掉"
+
+
+def test_append_lock_steals_a_stale_lock(tmp_path):
+    """持有者被 kill（宿主重启就是这样）会留下锁文件 —— 不能因此永久写不进账。"""
+    import os
+    import time as _time
+
+    from game_agent.usage import APPEND_LOCK_STALE, _append_lock
+
+    path = tmp_path / "usage.jsonl"
+    lock = path.with_name(path.name + ".lock")
+    lock.write_text("", encoding="utf-8")
+    old = _time.time() - APPEND_LOCK_STALE - 5
+    os.utime(lock, (old, old))
+    with _append_lock(path):
+        # 抢过陈旧锁 → 立刻建一把**自己的**新锁（所以此刻它存在于盘上是对的）
+        assert lock.exists() and _time.time() - lock.stat().st_mtime < APPEND_LOCK_STALE, \
+            "陈旧锁没被换成新锁"
+    assert not lock.exists(), "退出临界区应释放锁"
+
+
+def test_torn_line_is_skipped_and_counted(tmp_path, capsys):
+    """账本读侧：撕裂行**跳过并报数**（而旧口径是整份读不出来 —— 一个字节拖垮整条成本链）。"""
+    from scripts.route_a_cost import load_usage
+
+    path = tmp_path / "usage.jsonl"
+    path.write_text('{"ts": "t", "model": "m", "purpose": "turn", "prompt_tokens": 1}\n'
+                    "}\n"                                    # ← 撕裂行（实测形态）
+                    '{"ts": "t", "model": "m", "purpose": "judge", "prompt_tokens": 2}\n',
+                    encoding="utf-8")
+    rows = load_usage(path)
+    assert [r["purpose"] for r in rows] == ["turn", "judge"]
+    err = capsys.readouterr().err
+    assert "1 行解析不出" in err and "成本口径偏低" in err, \
+        "少了账必须报出来（空 = 未知 ≠ 通过），不能悄悄少算钱"
+
+
 # ---------------------------------------------------------------------------
 # C2/C1：LLMClient 采集与路由
 # ---------------------------------------------------------------------------

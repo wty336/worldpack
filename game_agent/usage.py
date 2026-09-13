@@ -9,14 +9,61 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 _WRITE_LOCK = threading.Lock()  # B-5（m5）：多实例/多线程写 JSONL 的行级互斥
+APPEND_LOCK_TIMEOUT = 5.0    # 抢锁最久等多久（正常竞争是微秒级）
+APPEND_LOCK_STALE = 30.0     # 超过这么久还挂着的锁视为"持有者已死"（宿主重启会留下这种锁）
+
+
+@contextmanager
+def _append_lock(path: Path):
+    """**跨进程**追加锁 —— `_WRITE_LOCK` 只护得住**同进程的线程**。
+
+    2026-09-13 实测教训：judge 与 compress 两个进程并行跑时，
+    `reports/usage-route-a.jsonl` 出现了**撕裂行**（第 7543 行只剩一个 `}`）——
+    两个进程各持一把自己的 `threading.Lock`，互不相让，于是并发写落在了同一段字节上。
+    账本是成本证据（单价核算、预算复盘都读它），故补一道**文件锁**。
+
+    口径：**永远不抛、永远让调用方写下去** ——
+    - 拿到锁 → 写完释放；
+    - 锁是**陈旧**的（持有者被 kill，宿主重启时就是这样）→ 抢过来；
+    - 等超时 → 照写（宁可多一行撕裂行让读侧计数，也不能**静默丢一条账**）。
+    """
+    lock = path.with_name(path.name + ".lock")
+    deadline = time.monotonic() + APPEND_LOCK_TIMEOUT
+    while True:
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            try:
+                if time.time() - lock.stat().st_mtime > APPEND_LOCK_STALE:
+                    lock.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+            if time.monotonic() > deadline:
+                lock = None            # 超时：不抢别人的锁，也不释放它
+                break
+            time.sleep(0.01)
+        except OSError:                # 锁文件都建不出来（目录只读等）→ 退化为无锁写
+            lock = None
+            break
+    try:
+        yield
+    finally:
+        if lock is not None:
+            with contextlib.suppress(OSError):
+                lock.unlink()
 
 # 价格快照（元/百万 tokens，空闲时段）。高峰 = PEAK_FACTOR ×。
 # 来源：DeepSeek 官方定价页 2026-09（缓存命中/未命中/输出三价）。
@@ -78,9 +125,11 @@ class UsageTracker:
     def _append(self, entry: dict) -> None:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with _WRITE_LOCK:  # B-5：并发写不交错（行交错即 JSONL 损坏）
+            line = json.dumps(entry, ensure_ascii=False) + "\n"
+            # 同进程线程用 `_WRITE_LOCK`，**跨进程**用文件锁（见 `_append_lock` 的实测教训）
+            with _WRITE_LOCK, _append_lock(self.path):
                 with open(self.path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                    f.write(line)
         except OSError:  # noqa: BLE001
             pass
 

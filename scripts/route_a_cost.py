@@ -43,15 +43,26 @@ COMPONENT_OF = {
 
 
 def load_usage(path: Path) -> list[dict]:
-    """读 JSONL。空行跳过；**坏行直接报错**（宁可停下，也不静默少算钱）。"""
+    """读 JSONL。空行跳过；**坏行跳过并在 stderr 报数**（口径同 `worklog.read_journal`）。
+
+    为什么不再是"坏行直接报错"（2026-09-13 实测改）：两个进程并行跑时账本出现过**撕裂行**
+    （第 7543 行只剩一个 `}`，见 `game_agent.usage._append_lock` 的实测教训），
+    而旧口径让**整份账都读不出来** —— 成本回填、单价核算、预算复盘全挂在一个字节上。
+    "空 = 未知 ≠ 通过"在这里的用法：**报出少了几行**（账本自证不完整），
+    而不是让下游以为账本是全的、也不是让一次读账失败连带整条成本链失效。
+    """
     rows: list[dict] = []
+    torn: list[int] = []
     for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
         try:
             rows.append(json.loads(line))
-        except json.JSONDecodeError as e:  # pragma: no cover - 防御性
-            raise ValueError(f"{path}:{i} 不是合法 JSON 行：{e}") from e
+        except json.JSONDecodeError:
+            torn.append(i)
+    if torn:
+        print(f"[!] {path}: {len(torn)} 行解析不出（前 5 行号 {torn[:5]}）——"
+              f"已跳过；**这些调用没进账**，成本口径偏低", file=sys.stderr)
     return rows
 
 
