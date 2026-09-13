@@ -1,0 +1,911 @@
+[
+  {
+    "pack": "xianxia_wendao",
+    "id": "ooc_net_slang",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "ooc_fourth_wall",
+    "category": "ooc",
+    "checked": false,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "ooc_foul_language",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "ooc_public_weakness",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "ooc_modern_science",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "ooc_poison_threat",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "setting_gun",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "setting_time_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "setting_phone",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "setting_identity_contradiction",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "setting_stat_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：材料为空，未提供任何状态栏或修为数值，无法据以判定叙事与设定冲突。"
+    ]
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "setting_memory_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "confab_daolv_promise",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "confab_pill_gift",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "confab_pill_promise",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "confab_rescue",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "confab_tryst",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "confab_contest_winner",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_forbidden_01",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_forbidden_02",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_forbidden_03",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_identity_04",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_identity_05",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_06",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_07",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_08",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_09",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_10",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_11",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_12",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_13",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_fact_14",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_setting_affection_15",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_01",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_02",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_03",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：材料为空，但叙事中白芷的承诺（拓剑印给对方看）是叙事内新发生的事件，并非把材料中从未有过的事当作既成事实断言；且该承诺与角色卡的语气、底线、禁忌均无冲突。"
+    ]
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_04",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_05",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_06",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_07",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中白芷只是说『替你问问师父』，属于主动提出帮忙询问，并未断言对方许下承诺或约定，不构成虚构事实。"
+    ]
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_08",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_09",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：材料 facts 为空，但叙事中白芷的台词是直接引语，属于角色在场景中的言行，并非把材料里从未有过的事当作既成事实直接断言；且该台词未涉及任何承诺/约定，与矛盾依据所述不符。"
+    ]
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_10",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_11",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_12",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_13",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_14",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_15",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事仅陈述丹炉熄火这一场景描述，未断言任何承诺/约定，也未将材料中不存在的事当作既成事实直接断言，不符合虚构事实的判据。"
+    ]
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_16",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_17",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事仅陈述石阶塌陷这一场景事实，未断言任何承诺/约定，也未把材料中不存在的事当作既成事实直接断言，不符合虚构事实的判据。"
+    ]
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_confab_promise_18",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_01",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_02",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_03",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_04",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_05",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_06",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_07",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_08",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_09",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_10",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_11",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_12",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_13",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "xianxia_wendao",
+    "id": "gen_ooc_card_14",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "ooc_foul_language",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "ooc_net_slang",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "ooc_fourth_wall",
+    "category": "ooc",
+    "checked": false,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "ooc_public_affair",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "ooc_vulgar_brother",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "ooc_modern_science",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "setting_phone",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "setting_time_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "setting_identity_contradiction",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "setting_first_meeting_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "setting_stat_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "setting_memory_conflict",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：材料为空，未包含『玩家曾在东市帮其解围』这一记忆，因此无法认定叙事把解围归于他人构成设定矛盾。"
+    ]
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "confab_proposal",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "confab_gold",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "confab_rescue",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "confab_tryst",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "confab_master_will",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "confab_poetry_winner",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_forbidden_01",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_forbidden_02",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_forbidden_03",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_identity_04",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_identity_05",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_06",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_07",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_08",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_09",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_10",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_11",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_12",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_13",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_14",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_fact_15",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_setting_affection_16",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_01",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：材料 facts 为空，但叙事中沈清秋的承诺/约定是叙事自身呈现的对话内容，并非把材料里从未有过的事当作既成事实直接断言；且该承诺与角色卡无冲突，不构成虚构事实。"
+    ]
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_02",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_03",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_04",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_05",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_06",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_07",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_08",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_09",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中沈清秋只是表示只对一人讲述顾长歌的事，并未断言任何承诺或约定，材料为空也不构成虚构既成事实。"
+    ]
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_10",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_11",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中沈清秋只是赠砚并免除归还，并未断言任何对方许下的承诺或约定；材料为空不等于叙事虚构了承诺，且赠砚行为本身未与角色卡冲突。"
+    ]
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_12",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_13",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_confab_promise_14",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_01",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_02",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_03",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_04",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_05",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_06",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_07",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_08",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_09",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_10",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_11",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_12",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_13",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "pack": "ancient_jianghu",
+    "id": "gen_ooc_card_14",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  }
+]

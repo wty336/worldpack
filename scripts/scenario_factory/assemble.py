@@ -105,18 +105,32 @@ def build_judge_sample(llm, card: ScenarioCard) -> BuildResult:
     if r.dropped:
         return BuildResult(None, "演绎丢弃")
     c = card.corruptions[0]
+    pack = load_pack(card.pack)
+    speaker_card = _speaker_card_text(pack, card.material.present[0])
     sample = {
         "id": card.card_id, "module": "judge", "version": SAMPLE_VERSION,
         "genre": card.axes.genre, "pack": card.pack, "material": material,
         "narration": r.text, "expect": c.expect, "category": c.category,
         "speaker": card.material.present[0],
+        # 发现⑧：judge 的标签校验需要「矛盾依据 + 说话人角色卡」——
+        # `ooc` 类在工厂路径上没有任何程序校验（锚点校验与 OOC 无关），故随样本交付这两项，
+        # 交给 §7.5 标签自检（同时也是审计材料：人眼能一眼看出该样本在考什么）。
+        "detail": c.detail, "speaker_card": speaker_card,
         **_length_fields(card, r.text),
     }
     # **出厂门禁接在产线上**（原稿定义了 hook_gate 却从未调用 = 门禁不存在）：
     # confab 撞说话人角色卡会多开一条「设定矛盾」通路，拦截率虚高、跨包不可比。
-    if hooked := hook_gate(sample, load_pack(card.pack)):
+    if hooked := hook_gate(sample, pack):
         return BuildResult(None, f"confab 撞卡: {'/'.join(hooked)}")
     return BuildResult(sample)
+
+
+def _speaker_card_text(pack: WorldPack, speaker: str) -> str:
+    """说话人角色卡的四个字段拼成一段（与 `hook_gate` 的比对口径同源：`CARD_FIELDS`）。"""
+    spec = pack.npcs.get(speaker)
+    if spec is None:
+        return ""
+    return "\n".join(f"{f}：{spec.model_dump().get(f)}" for f in CARD_FIELDS)
 
 
 def _fabrication_hit(summary: str, history: str) -> str | None:

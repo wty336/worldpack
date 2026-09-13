@@ -983,7 +983,7 @@ def test_label_check_flags_reinterpreted_label():
          "labels": [{"type": "物品与装备", "text": "玩家的装备名为「旧书店」"}]},
         {"id": "e2", "module": "extract", "input": "叙事：玩家的装备名为黄铜齿轮。",
          "labels": [{"type": "物品与装备", "text": "玩家的装备名为「黄铜齿轮」"}]},
-        {"id": "j1", "module": "judge", "input": "x", "narration": "y"},   # 无标签 → 跳过
+        {"id": "j1", "module": "judge", "input": "x", "narration": "y"},   # 缺 speaker_card → 跳过
     ]
     llm = StubLLM(['{"成立": false, "不成立项": ["物品与装备：玩家的装备名为「旧书店」"]}',
                    '{"成立": true, "不成立项": []}'])
@@ -1052,6 +1052,38 @@ def test_run_eval_reports_dim_saturation():
     rep2 = run_eval(mixed, rows, probe_rate=0.25, seed=1)
     assert rep2["dim_stats"]["保真"]["saturated"] is False
     assert rep2["dim_stats"]["保真"]["1"] == 1 and rep2["dim_stats"]["保真"]["2"] == 2
+
+
+# --- 发现⑧：judge 的 ooc 类在工厂路径上没有任何校验 ---------------------------
+
+
+def test_judge_sample_ships_speaker_card_and_detail():
+    """⑧ 的样本侧：judge 样本必须自带「矛盾依据 + 说话人角色卡」——否则标签自检没法判
+    "这段叙事是否真的与角色卡冲突"（而 `ooc` 类在工厂路径上**没有**任何程序校验：
+    `_corruption_swap` 对 ooc 返回 hit_idx=None、无引用值，锚点校验与 OOC 无关）。"""
+    card = ScenarioCard(**_judge_card())
+    llm = StubLLM(["沈青秋收剑笑道：这柄听风倒是趁手。"])
+    s = build_judge_sample(llm, card).sample
+    pack = load_worldpack(REPO_ROOT / card.pack)
+    speaker = card.material.present[0]
+    assert s["detail"] == card.corruptions[0].detail
+    assert s["speaker_card"], "缺说话人角色卡"
+    assert str(pack.npcs[speaker].speech_style) in s["speaker_card"]
+    assert str(pack.npcs[speaker].boundaries) in s["speaker_card"]
+
+
+def test_label_check_covers_judge_samples():
+    """⑧：judge 样本（带 speaker_card）现在**进入**标签自检，判据是"叙事是否真呈现该问题类型"。"""
+    rows = [{"id": "j-ooc", "module": "judge", "expect": "问题类型：OOC",
+             "detail": "说话人语气撞其角色卡 speech_style",
+             "speaker_card": "speech_style：寡言冷硬", "material": "材料在此",
+             "narration": "叙事在此"}]
+    llm = StubLLM(['{"成立": false, "理由": "叙事语气与寡言冷硬并不冲突"}'])
+    rep = label_check(llm, rows, rate=1.0)
+    assert rep["checked"] == 1 and rep["skipped"] == 0
+    assert rep["violations"] and rep["violations"][0]["id"] == "j-ooc"
+    sent = " ".join(m[1]["content"] for m in llm.messages)
+    assert "寡言冷硬" in sent and "叙事在此" in sent and "问题类型：OOC" in sent
 
 
 def test_make_probe_delete_point_leaves_no_trace():

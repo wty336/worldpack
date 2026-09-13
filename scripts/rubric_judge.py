@@ -282,13 +282,41 @@ def check_labels(llm, *, labels: list[str], text: str) -> dict:
 LABEL_CHECK_RATE = 0.20
 LABEL_CHECK_SEED = 20260913
 
+# judge 样本的标签校验（发现⑧，2026-09-13）：`ooc` 类在工厂路径上**没有任何校验** ——
+# `_corruption_swap` 对 ooc 返回 hit_idx=None、无引用值 → 锚点校验退化成"事实 anchors 在位"（与 OOC 无关），
+# `hook_gate` 也只查 confab。旁证：项目另一条路径（`build_judge_corpus.py`）的 ooc 是**手工卡面锚定**的
+# （逐条引用 boundaries/forbidden 原文 + 依据），说明"ooc 需要锚定"本是已知结论，是工厂这条路径少了它。
+# setting/confab 的程序校验只覆盖**值**（新值在位／原值不得出现／材料里没有），"这算不算矛盾 / 有没有真的断言"
+# 是语义判断 → 一并交给这条校验。
+JUDGE_LABEL_SYSTEM = (
+    "你是标注校验员。给定【问题类型】【矛盾依据】【说话人角色卡】【材料】【叙事】，"
+    "判断该叙事是否**真的**呈现出该问题类型。逐类判据：\n"
+    "OOC = 叙事里说话人的语气、底线或禁忌与角色卡冲突；\n"
+    "设定矛盾 = 叙事把某个设定写成了与角色卡/材料不同的值；\n"
+    "虚构事实 = 叙事把材料里从未有过的事**当作既成事实直接断言**（写成「听说/可能/似乎」不算）。\n"
+    '只输出一行 JSON：{"成立": true, "理由": "..."}'
+)
+
+
+def check_judge_label(llm, *, expect: str, detail: str, speaker_card: str,
+                      material: str, narration: str) -> dict:
+    """一条调用校验 judge 样本的「问题类型」是否真的成立。同 `check_labels` 的返回口径。"""
+    user = (f"【问题类型】{expect}\n【矛盾依据】{detail}\n"
+            f"【说话人角色卡】\n{speaker_card}\n\n【材料】\n{material}\n\n【叙事】\n{narration}")
+    try:
+        d = _extract_json(_complete(llm, JUDGE_LABEL_SYSTEM, user, purpose="label_check"))
+    except (ValueError, KeyError, TypeError):
+        return {"checked": False, "violations": []}
+    if bool(d.get("成立", True)):
+        return {"checked": True, "violations": []}
+    return {"checked": True, "violations": [f"{expect}：{d.get('理由') or '（未给理由）'}"]}
+
 
 def _checkable_labels(sample: dict) -> list[str]:
-    """哪些模块有可校验的标签（其余模块**跳过**，跳过 ≠ 通过）：
+    """extract / compress 的可校验标签（judge 走 `_judge_payload`，见 `label_check`）。
 
     · extract：`labels`（该回合应当提炼出的事实）必须在 input 叙事里成立；
-    · compress：`preserve_points`（必保全要点）必须在 input 的历史里成立；
-    · judge：其标签是"问题类型"，依据由 `verbalize` 的 anchors 反向校验**程序**保证 → 不重复校验。
+    · compress：`preserve_points`（必保全要点）必须在 input 的历史里成立。
     """
     if sample.get("module") == "extract":
         return [f"{x['type']}：{x['text']}" for x in sample.get("labels", [])]
@@ -297,13 +325,30 @@ def _checkable_labels(sample: dict) -> list[str]:
     return []
 
 
+def _judge_payload(sample: dict) -> dict | None:
+    """judge 样本的校验载荷——需要 `narration` + `speaker_card`（`build_judge_sample` 随样本交付）。
+
+    老样本（⑧ 之前产出的）没有 `speaker_card`/`detail` 字段 → 返回 None（**跳过 ≠ 通过**，
+    由调用方计数上报；诊断老批时可在外部补齐载荷）。
+    """
+    if sample.get("module") != "judge":
+        return None
+    if not sample.get("narration") or not sample.get("speaker_card"):
+        return None
+    return {"expect": sample.get("expect", ""), "detail": sample.get("detail", ""),
+            "speaker_card": sample["speaker_card"], "material": sample.get("material", ""),
+            "narration": sample["narration"]}
+
+
 def label_check(llm, samples: list[dict], *, rate: float = LABEL_CHECK_RATE,
                 seed: int = LABEL_CHECK_SEED) -> dict:
     """抽检「标签 ↔ 文本」语义一致性 → `{"checked", "skipped", "violations", "unknown"}`。
 
+    三类样本各有判据（见 `LABEL_CHECK_SYSTEM` / `JUDGE_LABEL_SYSTEM` card 注释）；
     抽样口径与 `quality_sample` 一致（同一 seed 约定、升序消费 → 结果与顺序无关）。
     """
-    checkable = [s for s in samples if _checkable_labels(s)]
+    checkable = [(s, _judge_payload(s)) for s in samples]
+    checkable = [(s, p) for s, p in checkable if p or _checkable_labels(s)]
     out = {"checked": 0, "skipped": len(samples) - len(checkable),
            "violations": [], "unknown": [], "prompt_version": label_check_version()}
     if not checkable:
@@ -311,8 +356,9 @@ def label_check(llm, samples: list[dict], *, rate: float = LABEL_CHECK_RATE,
     rng = random.Random(seed)
     k = min(max(1, math.ceil(len(checkable) * rate)), len(checkable))
     for i in sorted(rng.sample(range(len(checkable)), k=k)):
-        s = checkable[i]
-        r = check_labels(llm, labels=_checkable_labels(s), text=s.get("input", ""))
+        s, payload = checkable[i]
+        r = (check_judge_label(llm, **payload) if payload
+             else check_labels(llm, labels=_checkable_labels(s), text=s.get("input", "")))
         if not r["checked"]:
             out["unknown"].append(s["id"])
             continue
@@ -344,8 +390,9 @@ def prompt_version() -> str:
 
 
 def label_check_version() -> str:
-    """标签自检提示词的指纹（与 `prompt_version` 分开记，互不牵连）。"""
-    return hashlib.sha256(LABEL_CHECK_SYSTEM.encode("utf-8")).hexdigest()[:16]
+    """标签自检提示词的指纹（两条提示词合并算；与 `prompt_version` 分开记，互不牵连）。"""
+    return hashlib.sha256(
+        (LABEL_CHECK_SYSTEM + JUDGE_LABEL_SYSTEM).encode("utf-8")).hexdigest()[:16]
 
 
 def budget_policy() -> str:

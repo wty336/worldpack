@@ -1,0 +1,683 @@
+[
+  {
+    "layer": "train",
+    "id": "sc-11000-0000",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中明确写道「那个代号，不是『铜罗盘』」，即否认了代号是铜罗盘，并未将「白鸮」写成「铜罗盘」，因此不构成设定矛盾。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11001-0001",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11002-0002",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷的台词极少且平淡（如“嗯”“在”“好”），没有出现与角色卡speech_style（语速轻快、爱起外号、高兴时手舞足蹈）相冲突的说话方式，整体只是沉默寡言，未构成OOC。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11003-0003",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11004-0004",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11005-0005",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷的语气为工程师式白话、技术术语，虽与角色卡「语速轻快，爱给人起外号，高兴时手舞足蹈」不符，但该叙事并未实际呈现白芷的对话或互动，仅以旁白式叙述展开，未出现说话人语气与角色卡冲突的具体表现，因此不构成OOC。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11006-0006",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「听雨」是说话人直接对玩家说的物件（'你身上那件「听雨」'），属于对话中的指称，并非把材料中从未有过的「听雨」事件当作既成事实断言；且材料未涉及该物件，不构成虚构事实。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11007-0007",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11008-0008",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11009-0009",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷的语气平实、简短、内敛，没有出现角色卡speech_style要求的语速轻快、爱给人起外号、高兴时手舞足蹈等特征，但这是风格特征的缺失而非与角色卡直接冲突；OOC判据要求语气、底线或禁忌与角色卡冲突，此处未出现相反或违背性的语气表现，因此不构成OOC。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11012-0012",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11013-0013",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11014-0014",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11015-0015",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11016-0016",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11017-0017",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11018-0018",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11019-0019",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷的语气轻快、爱唠嗑、给人起外号（闷葫芦）、手舞足蹈式表达，与角色卡speech_style一致；未触及入门缘由、丹药害人等底线，也未提及现代事物或说破角色/AI身份，无OOC。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11020-0020",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11021-0021",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中说话人语气为口语化、随意闲聊（如“哎”“你说这日子过得”“来来来”），但该说话人并非角色卡中的沈清秋，而是玩家/游侠的第一人称叙述；沈清秋在叙事中并未发言，因此不存在沈清秋语气与角色卡冲突的OOC。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11022-0022",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11023-0023",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「五十两，中秋前还清」是主角自己账本上的记录与内心确认，并非把材料中从未有过的事当作既成事实断言；材料未提及此事不等于叙事虚构事实，且该表述属于角色自身认知而非外部事实断言。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11024-0024",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11025-0025",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中说话人（顾长风）的语气低沉、简短、克制，与白芷角色卡的活泼跳脱、语速轻快、爱起外号等风格完全不符；但该说话人并非白芷，叙事也未将白芷的台词或行为写成与其角色卡冲突，因此不构成OOC。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11026-0026",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11027-0027",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中「黄铜齿轮」是他人对江州某送货人的称呼，沈青秋本人否认听过，并未将「夜枭」演绎为「黄铜齿轮」，不存在设定值被改写。"
+    ]
+  },
+  {
+    "layer": "train",
+    "id": "sc-11028-0028",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "train",
+    "id": "sc-11029-0029",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「五十两」是瘦高男人对白芷说的话（'五十两。他说，中秋前。'），属于对话内容，并非把材料中从未有过的事当作既成事实直接断言；且材料中灵石50与五十两无关，叙事未将其断言为既成事实。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21000-0000",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷仅有一句台词“沈先生。”，语气平淡简短，未出现与角色卡speech_style（语速轻快、爱起外号、手舞足蹈）明显冲突的说话方式；其余为沈砚的言行与旁白，不构成白芷的OOC。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21001-0001",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21002-0002",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21003-0003",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中林澈仅通过短信出现，内容为'最近还好吧？'和'中秋快到了。'，语气平稳克制、无语气词，与角色卡speech_style一致，未出现OOC。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21004-0004",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中说话人始终使用「听雨」这一名称，并未将「醉仙楼」演绎为「听雨」，不存在把设定写成不同值的情况；矛盾依据与叙事内容不符。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21005-0005",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「五十两」是说话人自述的欠沈砚的债务，属于叙事者自身陈述，并非把材料中从未有过的事当作既成事实断言；且材料中未涉及该债务，无法据此判定为虚构事实。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21006-0006",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21007-0007",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21008-0008",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21009-0009",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中并未将「白鸮」当作既成事实断言，材料中也没有出现「白鸮」这一事件或人物，因此不存在把材料里从未有过的事当作既成事实直接断言的情况。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21010-0010",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「寒鸦」是自称该名的来客，白芷将其记入账本，属于场景内发生的事件，并非把材料中从未有过的事当作既成事实断言；材料未提及寒鸦不等于叙事虚构事实。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21011-0011",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中沈清秋的言行符合角色卡：语气文雅克制、无脏话、未谈论私情或政事、未提及现代事物，也未说破自己是角色或AI，未出现与speech_style冲突的表达。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21012-0012",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21013-0013",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21014-0014",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21015-0015",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21016-0016",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21017-0017",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中「听雨」是林澈（林彻）自己的名字/代号，并非将玩家代号「青鳞」演绎为「听雨」，不存在设定值被改写的情况。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21018-0018",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21019-0019",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷的语气沉静克制、寡言少语，与角色卡中'语速轻快、爱给人起外号、高兴时手舞足蹈'的活泼跳脱风格明显不符，但OOC判据要求语气与角色卡冲突，此处虽风格偏离，却未出现与角色卡直接矛盾的言行（如禁忌或底线冲突），且材料未提供白芷具体台词风格样本，无法确证其语气撞角色卡，故不成立。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21020-0020",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中出现的物品是「密码本」，而材料关键事实中玩家答应转交的是「青瓷」，二者并非同一物品，叙事并未将「青瓷」写成「密码本」，不存在把设定值写成不同值的设定矛盾。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21021-0021",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中「密码本」是叙述者（玩家/寒鸦）自己的私人物品，用于记录只有自己能看懂的记号，并未将「寒鸦」这一代号演绎为「密码本」；角色卡中「寒鸦」是玩家代号，叙事未出现把代号写成密码本或反之的设定值冲突。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21022-0022",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21023-0023",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21024-0024",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21025-0025",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中「青瓷色的本子」是林澈自己抄录的私人物品，与玩家装备「密码本」无关，并未将「密码本」演绎为「青瓷」，不存在设定值被改写的情况。"
+    ]
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21026-0026",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21027-0027",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "dev",
+    "id": "sc-21028-0028",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31000-0000",
+    "category": "ooc",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31001-0001",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中林澈的语气平稳克制、用词朴素，没有出现语气词泛滥或情绪外露，与角色卡speech_style一致；内容也未触及离开澜生生物的原因或医者底线，未违反boundaries与forbidden，因此不构成OOC。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31002-0002",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31003-0003",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31004-0004",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31005-0005",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31006-0006",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31007-0007",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31008-0008",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「灰隼」是作为在场人物直接出场并参与对话的，并非把材料中从未有过的事当作既成事实断言；材料未提及灰隼不等于叙事虚构事实，且叙事未以「听说/可能/似乎」等方式引入该人物，而是直接呈现其行动，但问题类型要求的是把材料里从未有过的事当作既成事实直接断言，此处灰隼作为叙事内人物出场属于场景构建，不构成虚构事实。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31009-0009",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中「断刃崖」并未被演绎为「青瓷」；角色只是内心闪过「断刃」念头后自我纠正为「青瓷」，且材料中关键事实本就写明玩家在打听「断刃崖」的下落，不存在将设定值写成不同值的矛盾。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31010-0010",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷仅有两句台词（“起了没？”“灶上温着粥。”），语气平淡简短，并未出现与角色卡speech_style（语速轻快、爱起外号、手舞足蹈）相冲突的描写；叙事反而明确交代“她那人话少”，属于对角色当前状态的叙述，而非说话人语气撞角色卡。因此不构成OOC。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31011-0011",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中寒鸦是作为在场角色直接出场并对话，并非把材料中从未有过的事当作既成事实断言；材料未提及寒鸦不等于虚构事实。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31012-0012",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31013-0013",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31014-0014",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中白芷的语气沉稳、克制、语速不快，与角色卡中'语速轻快，爱给人起外号，高兴时手舞足蹈'的说话风格不符，但该叙事并未将白芷写成与角色卡冲突的活泼跳脱语气，而是整体呈现为一位年长、世故的掌柜形象，这属于角色塑造与角色卡设定不一致，但问题类型要求的是'说话人语气撞其角色卡 speech_style'，即叙事中说话人的语气与角色卡冲突。然而，叙事中白芷的语气并未表现出与角色卡相反的极端特征（如严肃刻板到与活泼跳脱完全对立），而是中性偏沉稳，且角色卡中的'活泼跳脱'可能因情境（雨夜、严肃话题）而有所收敛，因此不构成明显的OOC。此外，叙事中白芷未提及现代事物，未说破自己是角色或AI，未谈论自己为何入门，未拿丹药害人，均符合底线和禁忌。综上，该叙事未真正呈现出OOC问题。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31015-0015",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中「银铃」被称作「听雨」，但材料关键事实只写玩家装备名为「银铃」，并未规定其别名或禁止别名，因此不构成与角色卡/材料设定值冲突的设定矛盾。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31016-0016",
+    "category": "confab",
+    "checked": true,
+    "violations": [
+      "问题类型：虚构事实：叙事中「断刃崖」是作为『你说要去打听』的转述内容出现，并非把该事件当作既成事实直接断言，且材料中亦无相关既成事实的断言。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31017-0017",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31018-0018",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31019-0019",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31020-0020",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31021-0021",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31022-0022",
+    "category": "setting",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31023-0023",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事中说话人语气平缓、絮叨、略带感伤，与角色卡要求的“语速轻快、爱给人起外号、高兴时手舞足蹈”的活泼跳脱风格不符，但该叙事并未将说话人明确标注为白芷，且整体更像一个普通凡人角色，无法确认其就是白芷，因此不构成对白芷角色卡的OOC。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31024-0024",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事为玩家「寒鸦」写给友人的书信，沈清秋并未出场说话，不存在沈清秋的台词，因此无法构成其语气与角色卡speech_style的冲突。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31025-0025",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31026-0026",
+    "category": "setting",
+    "checked": true,
+    "violations": [
+      "问题类型：设定矛盾：叙事中并未将「五十两」演绎为「黄铜齿轮」；材料中的关键事实是玩家欠周砚秋五十两，而叙事中周砚秋提及的债务是「你欠我的那笔账」，并未出现五十两被替换为黄铜齿轮的设定矛盾。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31027-0027",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事是一封书信体独白，语气平稳克制、无语气词，与林澈的speech_style一致；内容涉及提醒还债、照看装备、叮嘱添衣吃饭，符合其冷面心热、偶有关切的当前语气，未触碰其底线与禁忌，因此不构成OOC。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31028-0028",
+    "category": "ooc",
+    "checked": true,
+    "violations": [
+      "问题类型：OOC：叙事为第一人称拾荒者自述，林澈仅作为角色卡在场但未实际出场说话，不存在林澈语气与角色卡冲突的OOC表现。"
+    ]
+  },
+  {
+    "layer": "eval",
+    "id": "sc-31029-0029",
+    "category": "confab",
+    "checked": true,
+    "violations": []
+  }
+]
