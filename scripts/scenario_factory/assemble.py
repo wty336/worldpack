@@ -294,12 +294,17 @@ class BatchStats:
     # 丢弃留档（2026-09-13 验收后补）：原先只记"丢了几张"，事后无法回答"丢的是谁"——
     # 发现④⑥ 的诊断都卡在这里（要么重跑花钱，要么只能猜）。现在按原因记 id，随批落盘。
     dropped_ids: dict[str, list[str]] = dc_field(default_factory=dict)
+    # 完整原因（含撞词/缺项细节）：聚合键会把 `confab 撞卡: 甲乙/丙丁` 截成 `confab 撞卡` ✗，
+    # 于是下一轮想修"撞的是哪些词"就无从下手（2026-09-13 规模预演：judge 丢弃率 30%，
+    # 最大单项是 confab 撞卡 12.5%，却看不到撞词）→ 明细随批落盘。
+    dropped_detail: dict[str, dict[str, str]] = dc_field(default_factory=dict)
 
     def drop(self, reason: str, card_id: str) -> None:
         key = reason.split(":")[0]
         self.dropped += 1
         self.reasons[key] += 1
         self.dropped_ids.setdefault(key, []).append(card_id)
+        self.dropped_detail.setdefault(key, {})[card_id] = reason
 
 
 def hook_gate(sample: dict, pack: WorldPack) -> list[str]:
@@ -593,25 +598,26 @@ def main(argv: list[str] | None = None) -> int:
               + (f"，**按 id 连坐多剔 {extra} 条**" if extra else "") + f"）：{bad_ids[:10]}")
     # §7.5 标签自检（发现①⑦ 的防复发层）：程序只查得出"anchor 在不在"，
     # 查不出"这条事实是否**被当成本身所述的那种东西**成立"——演绎器悄悄改写标签正是坏标签的来源。
+    # **报告-only（2026-09-13 规模预演取证）**：执行者是**生成时门禁**（它还能重演把样本救回来），
+    # 而这里按**单条 LLM 判定**丢样本 = 双重惩罚 + 误杀：预演里它点名 3 条，独立全量复检判 **0/27 不成立**
+    # （其中 2 条是校验器对*同一样本*自我矛盾）⇒ 改为只写证据、不剔除。
     lc = label_check(llm, samples, rate=LABEL_CHECK_RATE)
     if lc["violations"] or lc["unknown"]:
-        bad = {v["id"] for v in lc["violations"]}
-        if bad:
-            samples, _ = drop_flagged(samples, sorted(bad))
-            for cid in sorted(bad):
-                stats.drop("标签不一致", cid)
         side = out_dir / args.layer / f"label-check-{args.layer}.json"
         write_side_file(side, lc)
-        print(f"[标签自检] 抽检 {lc['checked']} 条 → 不一致 {len(lc['violations'])} 条（已剔除，证据 {side.name}）"
-              f"；未判定 {len(lc['unknown'])} 条（**未知 ≠ 通过**，保留但计未判定）"
-              f"；跳过 {lc['skipped']} 条（judge 标签由 anchors 程序保证）")
+        print(f"[标签自检] 抽检 {lc['checked']} 条 → 报告不一致 {len(lc['violations'])} 条"
+              f"（**仅报告不剔除**，证据 {side.name}；执行者是生成时门禁）；"
+              f"未判定 {len(lc['unknown'])} 条（**未知 ≠ 通过**）；跳过 {lc['skipped']} 条（无标签可校）")
     for g in quota_gaps(samples):
         print(f"[配额缺口] {g}")
     manifest = write_layer(args.layer, samples, out_dir)
     if stats.dropped_ids:  # 丢弃留档：事后要能回答"丢的是哪张卡"（发现④⑥ 的诊断口子）
         drop_file = out_dir / args.layer / f"dropped-{args.layer}.json"
-        drop_file.write_text(json.dumps(stats.dropped_ids, ensure_ascii=False, indent=2),
-                             encoding="utf-8")
+        drop_file.write_text(json.dumps(
+            {"counts": {k: len(v) for k, v in stats.dropped_ids.items()},
+             "ids": stats.dropped_ids,
+             "detail": stats.dropped_detail},          # 完整原因（含撞词/缺项）——修下一轮靠它
+            ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"[丢弃留档] {drop_file.relative_to(out_dir)}（{stats.dropped} 张，按原因分列）")
     seen_file.write_text(json.dumps(sorted(seen)), encoding="utf-8")
     confab = [s for s in samples if s.get("category") == "confab"]

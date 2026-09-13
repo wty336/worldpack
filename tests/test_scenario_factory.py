@@ -837,6 +837,8 @@ def test_batch_stats_records_which_cards_were_dropped():
     assert rows == [] and stats.dropped == 3
     assert stats.reasons["演绎丢弃"] == 3
     assert stats.dropped_ids["演绎丢弃"] == ["sc-10000-0000", "sc-10001-0001", "sc-10002-0002"]
+    # 明细也要留：聚合键会把 `confab 撞卡: 甲/乙` 截成 `confab 撞卡`，下一轮就看不到撞词了
+    assert stats.dropped_detail["演绎丢弃"]["sc-10000-0000"] == "演绎丢弃"
 
 
 def test_quota_gaps_names_the_nominal_long_tier():
