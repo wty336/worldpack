@@ -79,10 +79,58 @@ class BuildResult:
     dropped_reason: str | None = None
 
 
+LABEL_GATE_ATTEMPTS = 2   # 标签门禁：首演 + 重演一次（发现⑧ 的根治）
+
+
+def _label_gate(llm, *, module: str, card: ScenarioCard, text: str,
+                material: str = "", speaker_card: str = "") -> str | None:
+    """**生成时**标签门禁：叙事/历史是否**真的**承载了标签所述的内容。返回 None = 通过。
+
+    为什么要在生成时判，而不是只靠事后抽检：发现⑧ 实测 judge 批 **36/87 = 41%** 的「问题类型」
+    在语义上并不成立（ooc 17/31、setting 10/26、confab 9/30），而项目**精编语料**的 ooc 判不成立
+    **0/40** ⇒ 不是尺子偏严。根因是程序侧只做**字面**检查（anchor 在位／新值在原值去），
+    标签却是**语义**的（"问题类型：OOC"）。事后抽检只能"发现问题 + 丢样本"，
+    生成时门禁能**当场重演**把样本救回来。
+
+    未判定（空响应 / JSON 解析失败）**不算通过**（"空 = 未知 ≠ 通过"）→ 返回"标签未判定"。
+    """
+    from scripts.rubric_judge import check_judge_label, check_labels
+
+    if module == "judge":
+        c = card.corruptions[0]
+        r = check_judge_label(llm, expect=c.expect, detail=c.detail, speaker_card=speaker_card,
+                              material=material, narration=text)
+    else:
+        labels = ([f"{f.type}：{f.text}" for f in card.facts] if module == "extract"
+                  else [p.text for p in card.preserve_points])
+        if not labels:            # extract 负例卡（该回合无新事实）→ 没有标签可校
+            return None
+        r = check_labels(llm, labels=labels, text=text)
+    if not r["checked"]:
+        return "标签未判定"
+    return f"标签不成立: {r['violations'][0][:40]}" if r["violations"] else None
+
+
+def _verbalize_until_label_ok(llm, card: ScenarioCard, *, module: str, purpose: str,
+                              drop_label: str, material: str = "", speaker_card: str = ""):
+    """演绎 → 标签门禁 →（不通过则）重演一次。返回 `(VerbalizeResult, 丢弃原因|None)`。"""
+    r, why = None, None
+    for _ in range(LABEL_GATE_ATTEMPTS):
+        r = verbalize_card(llm, card, purpose=purpose)
+        if r.dropped:
+            return r, drop_label
+        why = _label_gate(llm, module=module, card=card, text=r.text,
+                          material=material, speaker_card=speaker_card)
+        if why is None:
+            return r, None
+    return r, why
+
+
 def build_extract_sample(llm, card: ScenarioCard) -> BuildResult:
-    r = verbalize_card(llm, card, purpose="verbalize_extract")
-    if r.dropped:
-        return BuildResult(None, "演绎丢弃")
+    r, why = _verbalize_until_label_ok(llm, card, module="extract",
+                                       purpose="verbalize_extract", drop_label="演绎丢弃")
+    if why:
+        return BuildResult(None, why)
     return BuildResult({
         "id": card.card_id, "module": "extract", "version": SAMPLE_VERSION,
         "genre": card.axes.genre,
@@ -101,12 +149,16 @@ def build_judge_sample(llm, card: ScenarioCard) -> BuildResult:
         material = build_material(card)
     except MaterializeError as e:
         return BuildResult(None, f"材料装配失败: {e}")
-    r = verbalize_card(llm, card, purpose="verbalize_judge")
-    if r.dropped:
-        return BuildResult(None, "演绎丢弃")
-    c = card.corruptions[0]
     pack = load_pack(card.pack)
     speaker_card = _speaker_card_text(pack, card.material.present[0])
+    # 标签门禁对 judge 尤其关键：`ooc` 类在程序侧**没有任何校验**（发现⑧），
+    # 「问题类型」是否真的成立只能靠语义判定 ⇒ 生成时判 + 不通过就重演。
+    r, why = _verbalize_until_label_ok(llm, card, module="judge", purpose="verbalize_judge",
+                                       drop_label="演绎丢弃", material=material,
+                                       speaker_card=speaker_card)
+    if why:
+        return BuildResult(None, why)
+    c = card.corruptions[0]
     sample = {
         "id": card.card_id, "module": "judge", "version": SAMPLE_VERSION,
         "genre": card.axes.genre, "pack": card.pack, "material": material,
@@ -178,9 +230,11 @@ def _sampling_on(card: ScenarioCard, sampling: str) -> bool:
 
 def build_compress_sample(llm, card: ScenarioCard, *, sampling: str = "off"
                           ) -> BuildResult:
-    hist = verbalize_card(llm, card, purpose="verbalize_compress")
-    if hist.dropped:
-        return BuildResult(None, "历史演绎丢弃")
+    hist, why = _verbalize_until_label_ok(llm, card, module="compress",
+                                          purpose="verbalize_compress",
+                                          drop_label="历史演绎丢弃")
+    if why:
+        return BuildResult(None, why)
     # **单一素材真源**：模型看到的就是这一段（含 <旧摘要>/<新增历史> 包裹），
     # 故样本 input、程序先杀的虚构素材、评委的【材料】三处都用它 —— 早先版本只有
     # hist.text（裸历史），造成三处后果：① 样本 input 与生产模板不一致（spec §4.2 硬纪律）；

@@ -1,6 +1,7 @@
 """场景卡工厂守卫测试（离线；StubLLM 见 Task 4）。"""
 from __future__ import annotations
 
+import json
 import random
 import re
 from pathlib import Path
@@ -419,17 +420,41 @@ class StubLLM:
     调用次数仍由 `self.calls` 精确可数，故断言不受影响。
     """
 
-    def __init__(self, texts, finish="stop"):
+    def __init__(self, texts, finish="stop", label_verdicts=None):
         self.texts = list(texts)
         self.finish = finish
         self.calls = []
         self.messages = []   # 也记 messages：有的守卫要断言"送进模型的到底是什么"
+        # 标签门禁（发现⑧）走**专线**：不消耗主队列、也不计入 `calls`——
+        # 否则每条现存守卫的"调用次数/队列顺序"断言都会被这一次额外调用打乱。
+        # `label_verdicts` 不给 = 一律判「通过」（现实默认）；给了就按序发判定（末条粘滞）。
+        self.label_verdicts = list(label_verdicts) if label_verdicts else None
+        self.label_calls = []
 
     def complete_with_meta(self, messages, **kw):
+        if kw.get("purpose") == "label_check":
+            self.label_calls.append(messages)
+            self.messages.append(messages)
+            return SimpleNamespace(text=self._label_text(), finish_reason="stop")
         self.calls.append(kw)
         self.messages.append(messages)
         text = self.texts.pop(0) if len(self.texts) > 1 else self.texts[0]
         return SimpleNamespace(text=text, finish_reason=self.finish)
+
+    def _label_text(self) -> str:
+        """标签门禁的应答：`通过` / `未判定` / 其它（当作"不成立"的理由）。"""
+        if not self.label_verdicts:
+            verdict = "通过"
+        elif len(self.label_verdicts) > 1:
+            verdict = self.label_verdicts.pop(0)
+        else:
+            verdict = self.label_verdicts[0]
+        if verdict == "通过":
+            return '{"成立": true, "不成立项": []}'
+        if verdict == "未判定":
+            return "这不是 JSON"
+        return json.dumps({"成立": False, "不成立项": [verdict],
+                           "理由": verdict}, ensure_ascii=False)
 
 
 def _extract_card():
@@ -985,8 +1010,7 @@ def test_label_check_flags_reinterpreted_label():
          "labels": [{"type": "物品与装备", "text": "玩家的装备名为「黄铜齿轮」"}]},
         {"id": "j1", "module": "judge", "input": "x", "narration": "y"},   # 缺 speaker_card → 跳过
     ]
-    llm = StubLLM(['{"成立": false, "不成立项": ["物品与装备：玩家的装备名为「旧书店」"]}',
-                   '{"成立": true, "不成立项": []}'])
+    llm = StubLLM([], label_verdicts=["物品与装备：玩家的装备名为「旧书店」", "通过"])
     rep = label_check(llm, rows, rate=1.0)
     assert rep["checked"] == 2 and rep["skipped"] == 1        # judge 跳过（其标签由 anchors 程序保证）
     assert [v["id"] for v in rep["violations"]] == ["e1"]
@@ -999,7 +1023,7 @@ def test_label_check_unknown_is_not_a_pass():
     否则校验器一坏，整批标签就"全绿"了。"""
     rows = [{"id": "e1", "module": "extract", "input": "叙事",
              "labels": [{"type": "物品与装备", "text": "t"}]}]
-    rep = label_check(StubLLM(["这不是 JSON"]), rows, rate=1.0)
+    rep = label_check(StubLLM([], label_verdicts=["未判定"]), rows, rate=1.0)
     assert rep["checked"] == 0 and rep["unknown"] == ["e1"] and rep["violations"] == []
 
 
@@ -1078,12 +1102,54 @@ def test_label_check_covers_judge_samples():
              "detail": "说话人语气撞其角色卡 speech_style",
              "speaker_card": "speech_style：寡言冷硬", "material": "材料在此",
              "narration": "叙事在此"}]
-    llm = StubLLM(['{"成立": false, "理由": "叙事语气与寡言冷硬并不冲突"}'])
+    llm = StubLLM([], label_verdicts=["叙事语气与寡言冷硬并不冲突"])
     rep = label_check(llm, rows, rate=1.0)
     assert rep["checked"] == 1 and rep["skipped"] == 0
     assert rep["violations"] and rep["violations"][0]["id"] == "j-ooc"
     sent = " ".join(m[1]["content"] for m in llm.messages)
     assert "寡言冷硬" in sent and "叙事在此" in sent and "问题类型：OOC" in sent
+
+
+# --- 发现⑧ 的根治：标签门禁前置到**生成时**（不通过就重演一次） ----------------
+
+
+def test_generation_label_gate_retries_once_then_accepts():
+    """生成时门禁：首演标签不成立 → **重演一次**（事后抽检只能丢样本，生成时能救回来）。"""
+    card = _extract_card()
+    llm = StubLLM(["叙事：" + "，".join(_all_anchors(card)) + "。"],
+                  label_verdicts=["首演没把事实写清", "通过"])
+    r = build_extract_sample(llm, card)
+    assert r.sample is not None, "重演后应通过，不该丢卡"
+    assert len(llm.calls) == 2, "应发生两次演绎（首演 + 重演）"
+    assert len(llm.label_calls) == 2, "两次演绎后各校验一次"
+
+
+def test_generation_label_gate_drops_when_label_never_holds():
+    """两次都不成立 → 丢卡，且**原因要写清**（进丢弃留档，便于事后看是谁、为什么）。"""
+    card = _extract_card()
+    llm = StubLLM(["叙事：" + "，".join(_all_anchors(card)) + "。"],
+                  label_verdicts=["这条事实在叙事里根本不成立"])
+    r = build_extract_sample(llm, card)
+    assert r.sample is None and "标签不成立" in r.dropped_reason
+    assert len(llm.calls) == 2
+
+
+def test_generation_label_gate_treats_undetermined_as_not_pass():
+    """校验器给不出结论（空/非 JSON）= **未判定 ≠ 通过**：丢卡并单独命名原因，
+    否则校验器一坏，整批标签就"全绿"了。"""
+    card = _extract_card()
+    llm = StubLLM(["叙事：" + "，".join(_all_anchors(card)) + "。"], label_verdicts=["未判定"])
+    r = build_extract_sample(llm, card)
+    assert r.sample is None and r.dropped_reason == "标签未判定"
+
+
+def test_extract_negative_card_skips_the_label_gate():
+    """extract 负例卡（该回合无新事实）没有标签可校 → 不调用校验器（省一次调用，且不算通过）。"""
+    card = generate_card(10231, 7, "extract")      # seq%10==7 → 近义改写型负例（无 facts）
+    llm = StubLLM(["玩家又把旧事重提了一遍。"])
+    r = build_extract_sample(llm, card)
+    assert r.sample is not None and r.sample["labels"] == []
+    assert llm.label_calls == [], "无标签就不该调校验器"
 
 
 def test_make_probe_delete_point_leaves_no_trace():
