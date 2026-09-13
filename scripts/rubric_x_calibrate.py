@@ -29,6 +29,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FIDELITY_DIM = "保真"       # 轨道 2 的保真维（DIMS 之一，0/1/2）
 HISTORY_RE = re.compile(r"<新增历史>\n(.*)\n</新增历史>", re.S)
 
+# X 的定义（决策 13，2026-09-13 **修定**）：**一档容差 = 50pp**。
+# 含义：评委保真维是三档（0/1/2），折到 0~1 后**一档正好 50pp** —— 两条轨道允许差**一档**
+# （不同尺子的正常噪声），差**两档**（即"一个说全好、一个说全烂"）才算真冲突。
+# **为什么要改**（实测反例）：协议原文定义 X = diff 的 P95 向上取整到 5pp，
+# 而实测 diff 呈**双峰**（P50 = 0、少数样本 100pp，中间几乎没人）——P95 在双峰上会落到满格，
+# 于是 X = 100pp = "标记永不触发"，与立 X 的目的（冲突进人读）正好相反。
+# 旧口径保留为**诊断项**（`x_p95`），只为留痕与对比，不再参与判定。
+GRADE_TOLERANCE = 0.50
+CONFLICT_RULE = "diff > X（差一档以上）→ 判为冲突，进人读"
+
 
 def p95(values: list[float]) -> float:
     """P95（**最近秩法**：idx = ceil(0.95·n) − 1）。口径写死在此，避免各人各算。"""
@@ -98,6 +108,7 @@ def calibrate(samples: list[dict], report: dict, *, metric: str = "points") -> d
                      "long_input": bool(s.get("long_input")),
                      "diff": abs(t1_rate - t2)})
     diffs = [r["diff"] for r in rows]
+    flagged = [r["id"] for r in rows if r["diff"] > GRADE_TOLERANCE]
     return {
         "metric": metric,
         "n": len(rows),
@@ -105,7 +116,9 @@ def calibrate(samples: list[dict], report: dict, *, metric: str = "points") -> d
         "p50": p95_sorted(diffs, 0.50) if diffs else None,
         "p95": p95(diffs) if diffs else None,
         "max": max(diffs) if diffs else None,
-        "x": round_up_to_5pp(p95(diffs)) if diffs else None,
+        "x": GRADE_TOLERANCE,                                   # 判定口径：一档容差
+        "x_p95": round_up_to_5pp(p95(diffs)) if diffs else None,  # 旧口径（诊断，双峰时退化）
+        "flagged": flagged,
         "skipped_no_entities": skipped_no_entities,
         "probes_excluded": probes_excluded,
     }
@@ -126,9 +139,14 @@ def format_md(cal: dict, *, samples_path: str, report_path: str, report_meta: di
         f"**① X 是什么量**：轨道 1（规则保全率）与轨道 2（rubric **{FIDELITY_DIM}**维 ÷ 2 折算）"
         "在**同一样本**上的绝对差 `diff_i = |保全率_i − 保真_i/2|`，单位 **pp**。",
         "",
-        f"**② 定在多少**：**X = {x * 100:.0f}pp**"
-        f"（diff 的 P95 = {cal['p95'] * 100:.1f}pp，按决策 13 向上取整到 5pp；"
-        f"P50 = {cal['p50'] * 100:.1f}pp，max = {cal['max'] * 100:.1f}pp）。",
+        f"**② 定在多少**：**X = {x * 100:.0f}pp**（**一档容差**：评委保真维三档折半后一档正好 50pp ——"
+        "两条轨道允许差一档，差**两档**才算真冲突。**2026-09-13 修定**：旧口径「diff 的 P95 向上取整到 5pp」"
+        f"在**双峰**分布上会退化到满格（本轮按旧口径应为 {cal['x_p95'] * 100:.0f}pp ⇒ 标记永不触发）"
+        "，故改为固定一档容差、不依赖分布形状；旧口径保留为下方诊断项）。",
+        "",
+        f"（诊断）diff 分布：P50 = {cal['p50'] * 100:.1f}pp、P95 = {cal['p95'] * 100:.1f}pp、"
+        f"max = {cal['max'] * 100:.1f}pp；按 **X = {x * 100:.0f}pp** 判定 → **冲突 {len(cal['flagged'])} 条**"
+        f"（{'、'.join('`' + i + '`' for i in cal['flagged']) if cal['flagged'] else '无'}）。",
         "",
         f"**③ 依据哪批数据**：`{samples_path}`（对齐 {cal['n']} 条；"
         f"探针位排除 {len(cal['probes_excluded'])} 条；无关键串跳过 {len(cal['skipped_no_entities'])} 条）"

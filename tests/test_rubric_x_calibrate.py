@@ -62,7 +62,10 @@ def test_calibrate_aligns_tracks_and_skips_unknown():
     assert cal["rows"][0]["diff"] == pytest.approx(0.0)
     assert cal["rows"][2]["diff"] == pytest.approx(1.0)
     assert cal["skipped_no_entities"] == ["c4"]
-    assert cal["n"] == 3 and cal["x"] == 1.0          # P95 = 1.0 → 取整仍 1.0
+    # X 的定义（2026-09-13 修定）= **一档容差** 50pp，不再取 P95 分位（双峰分布上会退化到满格）
+    assert cal["n"] == 3 and cal["x"] == 0.50
+    assert cal["x_p95"] == 1.0          # 旧口径仍作为**诊断项**留痕（此处分布 = [0,0,1]）
+    assert cal["flagged"] == ["c3"], "diff > 一档容差的样本要进冲突清单"
     # 探针位样本（不在 scores 里）要单独列出来，不能当成"对齐失败"混在一起
     cal2 = calibrate(samples[:1] + [_sample("c9", "他提着「听雨」。", "摘要：「听雨」。")],
                      report, metric="entities")
@@ -101,12 +104,14 @@ def test_report_carries_the_three_elements():
     cal = {"n": 2, "metric": "points",
            "rows": [{"id": "c1", "track1": 1.0, "track2": 1.0,
                      "long_input": False, "diff": 0.0}],
-           "p50": 0.0, "p95": 0.0, "max": 0.0, "x": 0.0,
-           "skipped_no_entities": [], "probes_excluded": ["c2"]}
+           "p50": 0.0, "p95": 0.0, "max": 0.0, "x": 0.50, "x_p95": 0.0,
+           "flagged": [], "skipped_no_entities": [], "probes_excluded": ["c2"]}
     md = format_md(cal, samples_path="data/route-a/dev/compress.jsonl",
                    report_path="reports/rubric-eval.json",
                    report_meta={"probe_detection": 1.0, "batch_valid": True,
                                 "prompt_version": "pv", "budget_policy": "bp",
                                 "judge_model": "m", "endpoint": {"model": "m"}})
     assert "① X 是什么量" in md and "② 定在多少" in md and "③ 依据哪批数据" in md
-    assert "X = 0pp" in md and "c2" in md and "prompt_version" in md
+    assert "X = 50pp" in md and "一档容差" in md      # 新定义（2026-09-13 修定）
+    assert "c2" in md and "prompt_version" in md
+    assert "冲突" in md                                    # 判定结论要落进报告
