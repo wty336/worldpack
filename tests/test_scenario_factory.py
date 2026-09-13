@@ -933,6 +933,30 @@ def test_name_confusables_are_reported():
     assert _name_confusables(card, f"他喊了一声{name}，有人应。") == [], "写对了不该报"
 
 
+def test_missing_anchor_is_repaired_with_one_extra_call():
+    """**定点补漏**（发现⑩ 遗留）：只缺 anchors 时追加一次"把这些内容自然补进去"的调用，
+    而不是整卡重演——预演② 的 4 张 judge 卡都是**只漏一个 anchor 名**，重演常常再漏同一个 ✗。"""
+    card = _extract_card()
+    anchors = _all_anchors(card)
+    bad = "渡口茶棚里，闲谈收尾。" + "流水账。" * 3          # 一个 anchor 都没有
+    good_tail = "他忽然提起：" + "，".join(anchors) + "。"
+    llm = StubLLM([bad, good_tail])
+    r = build_extract_sample(llm, card)
+    assert r.sample is not None, r.dropped_reason
+    assert len(llm.calls) == 2, "应为 1 次演绎 + 1 次定点补漏"
+    repair_turn = llm.messages[1][1]["content"]
+    assert anchors[0] in repair_turn and "接着写一小段" in repair_turn
+
+
+def test_repair_is_not_attempted_for_meta_narration():
+    """元叙述**不补**（那是"整段不是叙事"，追加一段补不回来）→ 走重演/丢弃路径，不浪费补漏调用。"""
+    from scripts.scenario_factory.verbalize import _repair_missing
+
+    card = _extract_card()
+    assert _repair_missing(StubLLM(["x"]), card, "文本", ["元叙述:场景卡"],
+                           purpose="aux", max_tokens=500) == ""
+
+
 def test_tech_style_gets_the_in_narrative_only_rule():
     """**语体轴约束**（发现⑩-A）：`技术术语` 体是元叙述重灾区（judge 批占 34%），
     根因是语体轴只写"技术术语"、没说"术语只在叙事内用"。"""
@@ -1332,11 +1356,14 @@ def test_judge_hint_stages_the_declared_speaker():
     assert spec.name in hint, "提示里没有说话人姓名"
     assert str(spec.speech_style) in hint and str(spec.boundaries[0]) in hint, "提示里没有角色卡"
     assert "直接引语" in hint and "旁人转述" in hint
-    # ooc 类必须给"说了与人设相冲突的话"这条判据（否则会把"沉默寡言"误当 OOC——实测正是如此）
+    # ooc 类必须给**可执行的违背写法**（否则模型会把"违背人设"演成"沉默寡言"——预演② 实测 5 条栽在这）
     ooc = next(generate_card(10231, i, "judge") for i in range(30)
                if generate_card(10231, i, "judge").corruptions[0].category == "ooc")
     ooc_hint = _judge_hint(ooc)
-    assert "相冲突的话" in ooc_hint and "没展现其风格" in ooc_hint
+    assert "语气反着来" in ooc_hint and "踩底线" in ooc_hint and "破禁忌" in ooc_hint
+    assert "没演出来" in ooc_hint and "亲口说的话" in ooc_hint
+    # 舞台块必须警告"逐字照抄角色卡会作废"（预演② 的撞词正是角色卡原文）
+    assert "逐字照抄" in hint and "作废" in hint
 
 
 def test_make_probe_delete_point_leaves_no_trace():

@@ -173,8 +173,10 @@ def _judge_hint(card: ScenarioCard) -> str:
         "**不得**只由旁人转述，也不得用「那个东西」这类模糊指代把关键专名省掉。"
         # 下面两条是"舞台文本反过来伤到别的门禁"的补丁（2026-09-13 探针实测）：
         # ① 把角色卡喂给模型后，它会**逐字照抄**卡里的句子 → 触发 `hook_gate`（≥4 字连续重合 = 多开一条通路）✗
-        # ② 约束一多，模型会顾着演说话人而**漏掉卡面 anchors** → 演绎丢弃回升 ✗
-        "③ 角色卡只用来**把握语气**，**不得逐字照抄**卡里的句子（照抄会让该卡失去它要考的那条通路）；"
+        #    预演② 实测撞词就是角色卡原文（`冷静克制`/`没心没肺`/`医者底线`/`澜生生物`）⇒ 加重措辞
+        # ② 约束一多，模型会顾着演说话人而**漏掉卡面 anchors** → 演绎丢弃回升 ✗（现由"定点补漏"兜）
+        "③ 角色卡只用来**把握语气**：**逐字照抄卡里任何 4 字以上的短语都会让这张卡作废**"
+        "（出厂有程序检查，撞上即丢）——必须换你自己的说法；"
         "④ 无论怎么改，卡面 facts 的 anchors（专名/数字）**必须原样出现**。")
     if c.category == "setting":
         hint = ("把被命中事实换个说法，**由 {who} 说出或认下**：detail 中「」内的**新值必须出现**，"
@@ -183,8 +185,15 @@ def _judge_hint(card: ScenarioCard) -> str:
         hint = ("把 detail 提到的那件事**当作既成事实直接断言**——**由 {who} 亲口说出**最好"
                 "（材料里从未有过它，这正是要考的点）；不得写成「听说 / 可能 / 似乎」，也不得只由旁人转述。")
     else:
-        hint = ("让 {who} 的**台词明显违背其角色卡**（语气 / 底线 / 禁忌任选其一，且违背要一眼看得出）——"
-                "判据是「说了与其人设相冲突的话」，而**不是**「没展现其风格」（沉默寡言/风格平淡不算 OOC）。")
+        hint = (f"让 {who} 的**台词明显违背其角色卡**——**必须发生在他/她亲口说的话里**，冲突要一眼看得出。"
+                "三种写法任选其一：\n"
+                "  · **语气反着来**：卡面写「冷静克制」就让他急躁咋呼、抢话、爆粗；"
+                "写「语速轻快、爱给人起外号」就让他阴沉寡言、一字一顿。\n"
+                "  · **踩底线**：说一句与 boundaries 直接冲突的话"
+                "（例如卡面写「不轻易谈自己为何入门」，他却主动大谈自己为何入门）。\n"
+                "  · **破禁忌**：说出 forbidden 里明令不说的东西（例如提及现代事物、说破自己是角色/AI）。\n"
+                "**不要**写成「他今天话少 / 语气平淡 / 没展现他那套风格」——那不是 OOC，是**没演出来**；"
+                "也不要在旁白里描述性格偏差，**要让他自己开口说出那句违背人设的话**。")
     return stage + f"\n矛盾自然化：{hint.format(who=who)}\n（category={c.category}；detail：{c.detail}）"
 
 
@@ -265,6 +274,29 @@ def _verbalize_chunked(llm, card: ScenarioCard, *, purpose: str) -> str:
     return joined
 
 
+def _repair_missing(llm, card: ScenarioCard, text: str, violations: list[str], *,
+                    purpose: str, max_tokens: int) -> str:
+    """**定点补漏**（发现⑩ 遗留，2026-09-13 预演②取证）：只缺 anchors 时，追加一次"补写"调用。
+
+    为什么不用整卡重演：预演② 的 4 张 judge 卡都是**只漏一个 anchor 名**（`铜罗盘`/`银铃`/…），
+    重演一次要重新抽整段（还常常再漏同一个 ✗），而定点补写把"缺什么"明写进指令 ⇒ 一次调用就够。
+    **元叙述不补**：那是"整段不是叙事"，追加一段补不回来（必须重演）。
+    """
+    if any(v.startswith("元叙述") for v in violations) or not violations:
+        return ""
+    turn = (f"上一段漏了这些**必须原样出现**的内容：{'、'.join(violations[:6])}。"
+            "请**接着写一小段**把它们自然地补进去（放进对话或描写里即可）——"
+            "不要列清单、不要复述已写过的内容、不要重头再写。")
+    msgs = [{"role": "system", "content": VERBALIZE_SYSTEM},
+            {"role": "user", "content": turn + f"\n\n上一段的结尾：\n…{text[-300:]}"}]
+    out, finish = complete_checked(llm, msgs, purpose=purpose,
+                                   max_tokens=min(max_tokens, 1200),
+                                   temperature=VERBALIZE_TEMPERATURE)
+    if not out.strip() or finish == "length":
+        return ""
+    return text + "\n" + out.strip()
+
+
 def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> VerbalizeResult:
     """卡 → 自然文本。缺要素重演一次，仍缺则 dropped=True（调用方计数）。
 
@@ -302,4 +334,9 @@ def verbalize_card(llm, card: ScenarioCard, *, purpose: str = "aux") -> Verbaliz
             continue
         if not (last_v := _violations(card, text)):
             return VerbalizeResult(text=text, attempts=attempt)
+        # 定点补漏：只缺 anchors/原词时先补一次（比整卡重演省钱且更准），补完仍不合格才进下一轮
+        if repaired := _repair_missing(llm, card, text, last_v, purpose=purpose,
+                                       max_tokens=max_tokens):
+            if not (last_v := _violations(card, repaired)):
+                return VerbalizeResult(text=repaired, attempts=attempt)
     return VerbalizeResult(text="", attempts=MAX_ATTEMPTS, dropped=True, violations=last_v)
