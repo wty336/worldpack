@@ -166,20 +166,31 @@ PACK_BY_GENRE = {
     "民国谍战": "world-packs/G1_republic_spy",  # G1 待造，见 §10.3 依赖说明
 }
 
-_FACT_TPL = [  # (type, importance, text 模板, anchors 模板)
+# 名字池按**槽位角色**分池（发现⑦，2026-09-13 验收+定 X 冲突分析）：
+# 原先只有一个混池、按**下标**发名字 → 产出「玩家的装备名为「**旧书店**」」（地点名当装备）、
+# 「玩家欠「**密码本**」五十两」（物品名当债主）。演绎器为把文本写通顺**必然重新解释**这些荒谬组合
+# （书店→当铺老板、密码本→抵押物），于是**标签（preserve_points）与产物（history/summary）语义分叉**：
+# 程序先杀只查 anchor 在位 → 放行；轨道 2 判官按"要点能否复原"如实给 `保真=0`
+# （实测 dev 2/26 = 8%、train 0/25，跨两批 2/51）→ 这类样本的**训练标签本身就是错的**。
+NAME_POOLS = {
+    "item": ["听雨", "青瓷", "黄铜齿轮", "密码本", "银铃", "铜罗盘"],
+    "person": ["沈砚", "罗九", "顾长风", "柳明夷", "周砚秋", "老樵夫"],
+    "place": ["旧书店", "断刃崖", "醉仙楼", "灰雀号", "望江渡", "城隍庙"],
+    "code": ["白鸮", "夜枭", "灰隼", "寒鸦", "影狸", "青鳞"],
+}
+# 池间**不得有子串包含**（如 `断刃` ⊂ `断刃崖`），否则"命中哪个池"的判定会失真（守卫钉住）。
+_FACT_TPL = [  # (type, importance, text 模板, anchors 模板, **槽位池**)
     # {g1} = 流派词；{n0}/{n1} = **本事实独占**的专名槽（不可跨模板共用！
     # 共用会让两张事实带同一 anchor，则 setting 卡的「原词不得出现」反向校验永远不成立，
     # 该类卡将永久产出不了样本 —— 静默良率损失）
-    ("物品与装备", 8, "玩家的{g1}名为「{n0}」", ["{n0}"]),
-    ("债务与人情", 6, "玩家欠{n0}五十两，约定中秋前归还", ["五十两", "中秋"]),
-    ("身份身世", 9, "玩家的代号是「{n0}」", ["{n0}"]),
-    ("目标与线索", 5, "玩家在打听「{n0}」的下落", ["{n0}"]),
-    ("承诺与约定", 7, "玩家答应把{n0}转交给{n1}", ["{n0}", "{n1}"]),
+    ("物品与装备", 8, "玩家的{g1}名为「{n0}」", ["{n0}"], ("item",)),
+    ("债务与人情", 6, "玩家欠{n0}五十两，约定中秋前归还", ["五十两", "中秋"], ("person",)),
+    ("身份身世", 9, "玩家的代号是「{n0}」", ["{n0}"], ("code",)),
+    ("目标与线索", 5, "玩家在打听「{n0}」的下落", ["{n0}"], ("place",)),
+    ("承诺与约定", 7, "玩家答应把{n0}转交给{n1}", ["{n0}", "{n1}"], ("item", "person")),
 ]
-# 10 个：前 8 给事实（4 事实 × 2 槽），后 2 给情节骨架/检索上下文 —— **两段不得重叠**
-_NAME_POOL = ["听雨", "白鸮", "断刃崖", "灰雀号", "密码本", "环宇", "旧书店", "青瓷",
-              "沈砚", "罗九"]
-FACT_SLOTS = 8          # 事实占用 pool[0:FACT_SLOTS]，其余留给情节骨架
+# 情节骨架的两个槽（`n2` = 对话对象 / `n3` = 话题）：同样按池取、且与事实名**全局不重名**
+SKELETON_KINDS = ("person", "item")
 RECENT_TEXT = "玩家近日独自打理杂物，未与旁人来往"   # 材料检索上下文：**去专名**
 # 去专名的原因：recent 虽不渲染进材料（只作 rank_facts/select_lore 的打分输入），
 # 但若带上本卡专名，就会污染检索命中、且语义上与"材料代表最近玩家发言"不符；
@@ -223,13 +234,18 @@ def _axes_for(layer: str, rng: random.Random) -> AxesSpec:
     )
 
 
-def _names(rng: random.Random) -> list[str]:
-    """整池打乱（10 个）：每张事实独占 2 个槽（4 事实 × 2 = 8），保证 anchors 互不相交；
-    余下 2 个槽专供情节骨架/检索上下文 —— 早先版让它们复用 pool[0]/pool[1]，
-    等于撞上 facts[0] 的槽（见 generate_card 注释）。"""
-    pool = list(_NAME_POOL)
-    rng.shuffle(pool)
-    return pool
+def _take_name(rng: random.Random, kind: str, used: set[str]) -> str:
+    """从指定池取一个**全局未用过**的名字。
+
+    全局不重名 = 「同卡不同事实的 anchors 互不相交」的前提（守卫 `test_fact_anchors_are_pairwise_disjoint`）：
+    一旦重名，两张事实会带同一 anchor，setting 卡的「原词不得出现」反向校验永远不成立、该类卡恒废。
+    """
+    pool = [n for n in NAME_POOLS[kind] if n not in used]
+    if not pool:
+        raise ValueError(f"名字池 {kind!r} 已取空——需要更多名字，或减少同卡事实数")
+    name = rng.choice(pool)
+    used.add(name)
+    return name
 
 
 def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
@@ -237,12 +253,15 @@ def generate_card(seed: int, seq: int, module: str) -> ScenarioCard:
     layer = layer_of(seed)
     rng = random.Random(f"{seed}:{seq}:{module}")
     axes = _axes_for(layer, rng)
-    pool = _names(rng)
-    n2, n3 = pool[FACT_SLOTS], pool[FACT_SLOTS + 1]   # 情节骨架专用槽：**不与任何事实槽重叠**
     g1 = {"古代武侠": "佩剑", "仙侠": "佩剑"}.get(axes.genre, "装备")
+    used: set[str] = set()                                    # 全局已用名字（anchors 互不相交的保证）
+    n2 = _take_name(rng, SKELETON_KINDS[0], used)             # 情节骨架：对话对象
+    n3 = _take_name(rng, SKELETON_KINDS[1], used)             # 情节骨架：话题
     facts = []
-    for k, (t, i, x, al) in enumerate(rng.sample(_FACT_TPL, k=4)):
-        slots = {"g1": g1, "n0": pool[2 * k], "n1": pool[2 * k + 1]}  # 本事实独占槽
+    for t, i, x, al, kinds in rng.sample(_FACT_TPL, k=4):
+        # 按**槽位角色**取名字（发现⑦）：事实类型决定该从哪个池取，杜绝"装备名给地点名"这类荒谬组合
+        names = [_take_name(rng, kind, used) for kind in kinds]
+        slots = {"g1": g1, "n0": names[0], "n1": names[1] if len(names) > 1 else ""}
         facts.append(FactSpec(type=t, importance=i,
                               text=x.format(**slots),
                               anchors=[a.format(**slots) for a in al]))

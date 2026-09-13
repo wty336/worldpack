@@ -40,6 +40,7 @@ from scripts.scenario_factory.assemble import (
 )
 from scripts.scenario_factory.cards import (
     GENRE_EVAL_ONLY,
+    NAME_POOLS,
     NPC_BY_PACK,
     PACK_BY_GENRE,
     PreservePoint,
@@ -199,6 +200,43 @@ def test_fact_anchors_are_pairwise_disjoint():
         for mod in ("extract", "judge", "compress"):
             anchors = [a for f in generate_card(10231, seq, mod).facts for a in f.anchors]
             assert len(anchors) == len(set(anchors)), f"{mod}#{seq} anchors 相交: {anchors}"
+
+
+# --- Task 11 修复⑦：名字池按语义槽分池 ---------------------------------------
+
+_EXPECT_POOLS = {           # 事实类型 → 该类型的槽位应当取自哪个池
+    "物品与装备": {"item"},
+    "债务与人情": {"person"},
+    "身份身世": {"code"},
+    "目标与线索": {"place"},
+    "承诺与约定": {"item", "person"},
+}
+
+
+def test_name_pools_are_pairwise_disjoint():
+    """分池的前提：池内不重名、**池间无子串包含**（`断刃` ⊂ `断刃崖` 这类会让"命中哪个池"的判定失真）。"""
+    names = [n for pool in NAME_POOLS.values() for n in pool]
+    assert len(names) == len(set(names)), "名字在不同池里重复"
+    bad = [(a, b) for a in names for b in names if a != b and a in b]
+    assert not bad, f"存在子串包含（判定会失真）：{bad}"
+
+
+def test_fact_names_match_their_slot_semantics():
+    """发现⑦：名字池原先**只有一个混池**、按**下标**发名字 → 实测产出
+    「玩家的装备名为「**旧书店**」」（地点名当装备）、「玩家欠「**密码本**」五十两」（物品名当债主）；
+    演绎器为把文本写通顺**必然重新解释**（书店→当铺老板、密码本→抵押物）→
+    **标签（`preserve_points`）与产物（history/summary）语义分叉**：程序先杀只查 anchor 在位故放行，
+    轨道 2 判官如实给 `保真=0`（实测 dev 2/26 = 8%）。
+
+    修法：按**槽位角色**分池，模板声明所需池；本守卫钉住"每条事实只用规定池里的名字"。
+    """
+    for seed, mod in ((10231, "extract"), (20000, "compress"), (30000, "judge")):
+        for i in range(30):
+            card = generate_card(card_seed(seed, i, mod), i, mod)
+            for f in card.facts:
+                hit = {kind for kind, pool in NAME_POOLS.items() if any(n in f.text for n in pool)}
+                want = _EXPECT_POOLS[f.type]
+                assert hit == want, f"{card.card_id} 的 {f.type} 用了 {hit}（应为 {want}）：{f.text}"
 
 
 def test_corruption_detail_quotes_are_parseable():
