@@ -48,6 +48,10 @@ WORK_DIR = ".work"          # 藏在层目录里（不进 manifest、不进数�
 KEPT = "kept"
 DROPPED = "dropped"
 REJECTED = "rejected"
+# 定向跳过的索引（`--only-category` 补产时"本次不要"的那些）：
+# **算已完成**（否则 pending 永远归不了零、`complete` 永远 False），
+# 但**绝不算丢弃** —— 丢弃率是质量指标、还要过 30% 的质量门，把"主动跳过"混进去会同时污染两个口径。
+SKIPPED = "skipped"
 
 
 def journal_path(out_dir: pathlib.Path | str, layer: str, module: str) -> pathlib.Path:
@@ -65,13 +69,19 @@ class Journal:
 
     @property
     def done(self) -> set[int]:
-        """已处理（含被丢的）→ 重跑不重做。`rejected` **不算**（它要重造）。"""
-        return {i for i, e in self.entries.items() if e["status"] in (KEPT, DROPPED)}
+        """已处理（含被丢的、含定向跳过的）→ 重跑不重做。`rejected` **不算**（它要重造）。"""
+        return {i for i, e in self.entries.items() if e["status"] in (KEPT, DROPPED, SKIPPED)}
 
     @property
     def rejected(self) -> dict[int, str]:
         return {i: e.get("reason", "") for i, e in self.entries.items()
                 if e["status"] == REJECTED}
+
+    @property
+    def skipped(self) -> dict[int, str]:
+        """定向跳过的索引（**不是丢弃**：丢弃率与质量门都不得计入）。"""
+        return {i: e.get("reason", "") for i, e in self.entries.items()
+                if e["status"] == SKIPPED}
 
     def pending(self, target: int) -> list[int]:
         """目标前 `target` 张卡里**还没产出**的索引（升序）。"""

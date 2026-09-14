@@ -18,14 +18,25 @@ import json
 import pytest
 
 from scripts.scenario_factory import assemble, worklog
+from scripts.scenario_factory.assemble import quota_gaps
 
 # --- 替身：构建器与两条 LLM 侧信道（编排逻辑才是本文件的被测对象） --------------
 
 
 def _sample(card, *, text: str | None = None) -> dict:
     body = text if text is not None else f"素材 {card.card_id}"
-    return {"id": card.card_id, "module": card.module, "genre": card.axes.genre,
-            "input": f"已有事实：无\n\n<回合内容>\n{body}\n</回合内容>", "output": body}
+    s = {"id": card.card_id, "module": card.module, "genre": card.axes.genre,
+         "input": f"已有事实：无\n\n<回合内容>\n{body}\n</回合内容>", "output": body,
+         "target_tokens": 600, "realized_chars": len(body), "long_input": False,
+         "meta_soft": [], "name_confusables": []}
+    if card.module == "judge" and card.corruptions:
+        # 与真实 builder 同源的字段（`category` 来自卡面；material/narration/expect 是
+        # 决策 16 的 confab 人读清单需要的键 —— 缺了就会被夹具掩盖住那条代码路径）
+        c = card.corruptions[0]
+        s.update({"category": c.category, "expect": c.expect, "detail": c.detail,
+                  "material": f"材料 {card.card_id}", "narration": body,
+                  "speaker": "某 NPC", "speaker_card": "角色卡正文"})
+    return s
 
 
 class Fake:
@@ -287,6 +298,96 @@ def test_status_does_not_cry_wolf_about_sampling(env, capsys):
     capsys.readouterr()
     assert _run(out, "--extract", "2", "--status") == 0
     assert "头不一致" not in capsys.readouterr().out
+
+
+# --- 定向补产（类别家族配额，2026-09-14）-------------------------------------
+#
+# 动因：`plan-phase1-data.md` §4.2.2 要求 judge 训练集 **confab ≥40% / setting ≥25% / ooc ≥20%**，
+# 而生产批 train judge 实测 confab 仅 **29.6%** 且**无任何代码在检查它**（`quota_gaps` 只查题材与
+# compress 长档）—— 规格里写了配额就必须有代码在查。修法：`--only-category` 定向补产 +
+# 类别配额门；补产的"跳过"必须与"丢弃"分开记（前者不是质量损失，混记会污染丢弃率与 30% 质量门）。
+
+
+def test_skipped_is_done_but_never_a_drop(tmp_path):
+    from scripts.scenario_factory.assemble import _progress, _stats_from_journals
+
+    j = worklog.Journal.open(tmp_path, "train", "judge", {"journal": 1})
+    j.append({"i": 0, "status": worklog.KEPT, "card_id": "c0", "sample": {"id": "c0"}})
+    j.append({"i": 1, "status": worklog.DROPPED, "card_id": "c1", "reason": "演绎丢弃: x"})
+    j.append({"i": 2, "status": worklog.SKIPPED, "card_id": "c2", "reason": "定向补产：本次只要 confab"})
+    j.append({"i": 3, "status": worklog.REJECTED, "card_id": "c3", "reason": "质检自然度<1"})
+    assert j.done == {0, 1, 2}, "skipped 要算已完成（否则 pending 永远归不了零）"
+    assert 3 not in j.done, "rejected 仍不算完成 —— 它要重造（既定语义）"
+    assert j.pending(4) == [3] and set(j.skipped) == {2}
+    stats = _stats_from_journals({"judge": j})
+    assert stats.built == 2 and stats.dropped == 1, "skipped 混进了丢弃账"
+    assert stats.reasons["演绎丢弃"] == 1 and "定向补产" not in " ".join(stats.reasons)
+    prog = _progress({"judge": j}, {"judge": 4})["judge"]
+    assert prog["skipped"] == 1 and prog["dropped"] == 1
+    assert prog["pending"] == 1, "只剩那张被质检剔除的要重造（skipped 不该留在待产里）"
+
+
+def test_only_category_produces_only_that_category(env):
+    """定向补产：只产指名类别的卡，其余索引记 skipped 且**不算丢弃**。"""
+    from scripts.scenario_factory.assemble import card_category
+
+    out, fake = env
+    assert _run(out, "--judge", "40", "--only-category", "confab") == 0
+    produced = [c for c in fake.index_calls]
+    assert produced, "一张都没产"
+    for i in produced:
+        assert card_category("judge", 10000, i) == "confab", f"i={i} 不是 confab 却被产了"
+    j = _journal(out, "judge")
+    assert set(j.skipped) and len(j.skipped) + len(produced) == 40, \
+        "跳过 + 实产 应恰好覆盖 0..39，不多不少"
+    assert j.pending(40) == [], "跳过的索引不该留在待产里（否则 complete 永远 False）"
+
+
+def test_only_category_then_publish_is_complete(env):
+    """定向补产之后发布：`complete=True`，且丢弃账里没有"定向补产"这一项。"""
+    out, fake = env
+    assert _run(out, "--judge", "40", "--only-category", "confab") == 0
+    fake.index_calls.clear()
+    assert _run(out, "--judge", "40") == 0            # 无待产 → 只发布
+    assert fake.index_calls == [], "跳过的索引被重新产了"
+    m = json.loads((out / "train" / "manifest.json").read_text(encoding="utf-8"))
+    assert m["complete"] is True
+    assert m["progress"]["judge"]["skipped"] > 0
+    drop = json.loads((out / "train" / "dropped-train.json").read_text(encoding="utf-8")) \
+        if (out / "train" / "dropped-train.json").exists() else {"counts": {}}
+    assert "定向补产" not in " ".join(drop["counts"]), "「跳过」被记进了丢弃留档"
+
+
+def test_only_category_rejects_bad_usage(tmp_path, capsys):
+    assert assemble.main(["--layer", "train", "--extract", "5", "--out", str(tmp_path),
+                          "--only-category", "confab"]) == 1, "extract 没有类别轴"
+    assert assemble.main(["--layer", "train", "--judge", "5", "--out", str(tmp_path),
+                          "--only-category", "confabb"]) == 1, "未知类别应报错"
+    assert "--only-category 只认" in capsys.readouterr().out
+
+
+def _judge_rows(cats, genre="仙侠"):
+    return [{"id": f"j{i}", "module": "judge", "genre": genre, "category": c,
+             "target_tokens": 600, "realized_chars": 500} for i, c in enumerate(cats)]
+
+
+def test_category_quota_floor_is_reported():
+    """家族配额必须**有代码在查**（原先没有 → confab 29.6% 无人报警）。"""
+    gaps = quota_gaps(_judge_rows(["confab"] * 3 + ["setting"] * 4 + ["ooc"] * 3))
+    assert any("judge 家族 confab" in g and "30.0%" in g for g in gaps), gaps
+
+
+def test_category_quota_passes_at_floor():
+    gaps = quota_gaps(_judge_rows(["confab"] * 4 + ["setting"] * 3 + ["ooc"] * 3))
+    assert not [g for g in gaps if "judge 家族" in g], gaps
+
+
+def test_per_genre_class_minimum_is_reported():
+    rows = _judge_rows(["confab"] * 4 + ["setting"] * 3 + ["ooc"] * 3, genre="仙侠")
+    rows += [{"id": "x1", "module": "judge", "genre": "现代都市", "category": "confab",
+              "target_tokens": 600, "realized_chars": 500}]
+    gaps = quota_gaps(rows)
+    assert any("现代都市/confab: 1 < 5" in g for g in gaps), gaps
 
 
 # --- worklog 单元（日志语义本身） --------------------------------------------

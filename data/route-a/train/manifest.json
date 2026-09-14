@@ -15,9 +15,9 @@
       "sha256": "fcb7f438d56d5e98e83d76ef84b69143f2fbd3708739fc84a9ac1ec47e9a74dd"
     },
     "judge": {
-      "count": 803,
+      "count": 1093,
       "file": "train\\judge.jsonl",
-      "sha256": "4e328c0eb79d7bd880386613a430e5e8b147b0da84b6b4c2f9a3a8558f7b3a20"
+      "sha256": "0bede28d1fe53e7121c80c815167bac5999cac9a203a682c8945cf3ec4394d26"
     }
   },
   "progress": {
@@ -25,6 +25,7 @@
       "target": 300,
       "kept": 290,
       "dropped": 10,
+      "skipped": 0,
       "rejected": 0,
       "pending": 0
     },
@@ -32,13 +33,15 @@
       "target": 1000,
       "kept": 998,
       "dropped": 2,
+      "skipped": 0,
       "rejected": 0,
       "pending": 0
     },
     "judge": {
-      "target": 1060,
-      "kept": 803,
-      "dropped": 257,
+      "target": 2380,
+      "kept": 1093,
+      "dropped": 375,
+      "skipped": 912,
       "rejected": 0,
       "pending": 0
     }

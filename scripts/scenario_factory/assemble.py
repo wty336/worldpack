@@ -380,6 +380,13 @@ PREFIX_N = 64                # 前缀指纹长度（字符）：防跨层泄漏�
 # （复用 scripts/near_dup_check.py 口径）。
 GENRE_MIN_SHARE = 0.10       # 层内每题材 ≥10%（plan-phase1-data.md §4.4 轴矩阵按层计数）
 LONG_MIN_SHARE = 0.20        # compress 长输入档 ≥20%（决策 18：合成/真实分列计数）
+# judge 的**家族配额**（plan-phase1-data.md §4.2.2 / §4.5，2026-09-12 按实测缺口定）：
+# confab 必须占 ≥40% —— 因为"judge 训练量的分配必须向该家族倾斜，否则平均分会被 ooc/setting 盖住"，
+# 而 confab 正是学生模型最弱的一课（同难口径实测漏 ~70%）。
+# ⚠️ 这道门**原先不存在**（`quota_gaps` 只查题材与 compress 长档）→ 生产批 train judge 实测
+# confab 仅 29.6% 而无人报警（2026-09-14 发现）。教训：**规格里写了配额，就必须有代码在检查它**。
+JUDGE_CATEGORY_FLOORS = {"confab": 0.40, "setting": 0.25, "ooc": 0.20}
+JUDGE_PER_GENRE_CLASS_MIN = 5    # §4.5：每题材每类 ≥5
 LENGTH_TOLERANCE = 0.5       # 实测长度至少兑现卡面目标的一半，才算"这一档真的产出来了"（发现⑤）
 LAYER_BASE = {"train": 10000, "dev": 20000, "eval": 30000}
 
@@ -448,6 +455,21 @@ def quota_gaps(samples: list[dict]) -> list[str]:
                           f"实测最长 {worst} 字；发现⑤）")
             gaps.append(f"compress 长输入档: {long_n}/{len(comp)} < {LONG_MIN_SHARE:.0%}"
                         f"（合成/真实须分列计数，决策 18）{detail}")
+    jud = by_mod.get("judge", [])
+    if jud:
+        cats = Counter(r.get("category", "?") for r in jud)
+        for c, floor in JUDGE_CATEGORY_FLOORS.items():
+            n = cats.get(c, 0)
+            if n / len(jud) < floor:
+                gaps.append(
+                    f"judge 家族 {c}: {n}/{len(jud)} = {n / len(jud):.1%} < {floor:.0%}"
+                    "（plan-phase1-data §4.2.2：confab≥40% setting≥25% ooc≥20% ——"
+                    f"confab 是学生最弱的一课，欠配会被 ooc/setting 盖住平均分；"
+                    f"当前 {dict(cats)}）")
+        for (g, c), n in sorted(Counter((r.get("genre", "?"), r.get("category", "?"))
+                                        for r in jud).items()):
+            if n < JUDGE_PER_GENRE_CLASS_MIN:
+                gaps.append(f"judge 覆盖 {g}/{c}: {n} < {JUDGE_PER_GENRE_CLASS_MIN}（§4.5 每题材每类 ≥5）")
     return gaps
 
 
@@ -538,6 +560,32 @@ def _journal_entry(card: ScenarioCard, i: int, r, seen: set[str]) -> dict:
     return {"i": i, "status": worklog.KEPT, "card_id": card.card_id, "sample": rows[0]}
 
 
+def card_category(module: str, seed_base: int, i: int) -> str:
+    """卡面类别（judge 独有）——**与 `build_judge_sample` 同源**（`card.corruptions[0].category`）。
+
+    类别是 `(seed, seq, module)` 的确定性函数，所以**零成本**就能知道某个索引是哪一类；
+    这正是"定向补产"能把配额补上而不浪费任何一次调用的前提。
+    """
+    card = generate_card(card_seed(seed_base, i, module), i, module)
+    return card.corruptions[0].category if card.corruptions else ""
+
+
+def _filter_by_category(indices: list[int], module: str, seed_base: int,
+                        only: set[str]) -> tuple[list[int], list[int]]:
+    """按卡面类别分流 → `(本次要产的, 本次跳过的)`。`only` 为空 = 全产（默认行为）。
+
+    为什么"跳过"要显式落日志（`skipped` 状态）而不是留着 pending：
+    ① 留着 pending → `complete` 永远 False，半成品标志失真；
+    ② 记成 dropped → 丢弃率（质量指标）与 30% 质量门被"主动跳过"污染。
+    """
+    if not only:
+        return list(indices), []
+    keep, skip = [], []
+    for i in indices:
+        (keep if card_category(module, seed_base, i) in only else skip).append(i)
+    return keep, skip
+
+
 def _produce(llm, module: str, indices: list[int], seed_base: int, sampling: str,
              journal: worklog.Journal, seen: set[str]) -> int:
     """按索引产卡并**每张卡立刻入日志**（中断只丢正在产的那一张）。返回本次新增条数。"""
@@ -565,6 +613,8 @@ def _stats_from_journals(journals: dict[str, worklog.Journal]) -> BatchStats:
         for e in j.entries_in_order():
             if e["status"] in (worklog.KEPT, worklog.REJECTED):
                 stats.built += 1
+            elif e["status"] == worklog.SKIPPED:
+                continue          # 定向跳过的索引：**不是丢弃**（丢弃率与质量门都不得计入）
             else:
                 stats.drop(e.get("reason") or "未记原因", e["card_id"])
     return stats
@@ -687,7 +737,8 @@ def _progress(journals: dict[str, worklog.Journal], targets: dict[str, int]) -> 
         if not target and not j.entries:
             continue
         out[mod] = {"target": target, "kept": len(j.kept()),
-                    "dropped": len(j.done) - len(j.kept()),
+                    "dropped": len(j.done) - len(j.kept()) - len(j.skipped),
+                    "skipped": len(j.skipped),
                     "rejected": len(j.rejected), "pending": len(j.pending(target)) if target else 0}
     return out
 
@@ -755,7 +806,8 @@ def print_status(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: st
         target = targets.get(mod, 0)
         pend = len(j.pending(target)) if target else "-"
         print(f"  {mod:<9} 已产 {len(j.done):>5}（保留 {len(j.kept()):>5} / 丢弃 "
-              f"{len(j.done) - len(j.kept()):>4} / 质检剔除 {len(j.rejected):>3}）"
+              f"{len(j.done) - len(j.kept()) - len(j.skipped):>4} / 质检剔除 {len(j.rejected):>3}"
+              + (f" / 定向跳过 {len(j.skipped)}" if j.skipped else "") + f"）"
               f" 待产 {pend}" + (f"  ⚠ 头不一致：{note}" if note else ""))
         if j.corrupt:
             print(f"            ⚠ 日志有 {j.corrupt} 行解析不出（**不算已完成**，会被重产）")
@@ -915,6 +967,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="重做：清掉本次请求模块的进度（已产样本作废）")
     p.add_argument("--no-publish", action="store_true",
                    help="只产卡入日志，不质检不出库（攒够了再跑一次发布）")
+    p.add_argument("--only-category", default="",
+                   help="定向补产：只产这些类别的卡（judge 专有，逗号分隔如 confab,setting）；"
+                        "其余索引记为 skipped（**不算丢弃**，丢弃率与质量门不受影响）")
     args = p.parse_args(argv)
 
     seed_base = args.seed_base if args.seed_base is not None else LAYER_BASE[args.layer]
@@ -923,9 +978,16 @@ def main(argv: list[str] | None = None) -> int:
               "三层空间隔离，spec §8")
         return 1
     out_dir = pathlib.Path(args.out)
+    only = {c.strip() for c in args.only_category.split(",") if c.strip()}
+    if bad := only - set(JUDGE_CATEGORY_FLOORS):
+        print(f"[✗] --only-category 只认 {'/'.join(sorted(JUDGE_CATEGORY_FLOORS))}，收到 {sorted(bad)}")
+        return 1
     # `requested` = **本次显式请求**（唯一驱动产出的东西：说好只跑一部分，就不能顺带把别的模块也跑了）
     requested = {mod: n for mod, n in (("extract", args.extract), ("judge", args.judge),
                                        ("compress", args.compress)) if n}
+    if only and "judge" not in requested:
+        print("[✗] --only-category 只对 judge 有意义（类别是 judge 卡独有的轴）")
+        return 1
     # `targets` = 层目标（粘性，取历史最大值）：只用于**账目**（manifest 的 complete / 待产数），
     # **不驱动产出** —— 说好只跑一部分，就不能因为盘上还有个更大的目标而顺带把别的模块也跑了
     targets = update_targets(out_dir, args.layer, requested, persist=False)
@@ -974,8 +1036,18 @@ def main(argv: list[str] | None = None) -> int:
         for mod in ("extract", "judge", "compress"):
             if not pending.get(mod):
                 continue
-            _produce(llm, mod, pending[mod], seed_base, args.sampling, journals[mod], seen)
-            print(f"[{mod}] 本次产出 {len(pending[mod])} 张（**已逐张入日志**，随时可中断）")
+            keep, skipped = _filter_by_category(pending[mod], mod, seed_base, only)
+            for i in skipped:   # 先落 skipped：中断也不影响"这批索引已处理过"这个事实
+                journals[mod].append({"i": i, "status": worklog.SKIPPED,
+                                      "card_id": f"sc-{card_seed(seed_base, i, mod)}-{i:04d}",
+                                      "reason": f"定向补产：本次只要 {'/'.join(sorted(only))}"})
+            if skipped:
+                print(f"[{mod}] 定向跳过 {len(skipped)} 个索引（本次只要 "
+                      f"{'/'.join(sorted(only))}；**不算丢弃**，逐个已入日志）")
+            if not keep:
+                continue
+            _produce(llm, mod, keep, seed_base, args.sampling, journals[mod], seen)
+            print(f"[{mod}] 本次产出 {len(keep)} 张（**已逐张入日志**，随时可中断）")
     except KeyboardInterrupt:
         n_done = sum(len(j.done) for j in journals.values())
         print(f"\n[中断] 已落盘 {n_done} 张（{worklog.WORK_DIR}/ 下的工作日志）——"
