@@ -1,0 +1,24 @@
+{
+  "layer": "dev",
+  "version": "route-a-v1",
+  "written_at": "2026-09-14",
+  "frozen": false,
+  "modules": {
+    "extract": {
+      "count": 200,
+      "file": "dev\\extract.jsonl",
+      "sha256": "df0283b81d6251429e28f00a09f4551d653f6142046071d854323b5f64718f80"
+    }
+  },
+  "progress": {
+    "extract": {
+      "target": 200,
+      "kept": 200,
+      "dropped": 0,
+      "skipped": 0,
+      "rejected": 0,
+      "pending": 0
+    }
+  },
+  "complete": true
+}
