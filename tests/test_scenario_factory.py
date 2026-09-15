@@ -339,8 +339,64 @@ def _confab_card(**over):
     return ScenarioCard(**base)
 
 
-def test_setting_material_materializes_facts():
-    """校验②：in_material=true 的事实须物化进「关键事实」区（全部 anchors 在位）。"""
+def _two_fact_confab_card(**over):
+    """两条事实的 confab 卡：被断言 fact#0 不得入材料，非目标的 fact#1 允许入材料。
+
+    （单条事实的夹具不够用：去掉被断言那条后就没有"非目标事实"可测了。）
+    """
+    base = _judge_card()
+    base["facts"] = [
+        {"type": "物品与装备", "importance": 8, "text": "玩家的剑名为「听雨」",
+         "anchors": ["听雨"], "in_material": False},
+        {"type": "目标与线索", "importance": 5, "text": "玩家在打听「断刃崖」的下落",
+         "anchors": ["断刃崖"], "in_material": False},
+    ]
+    base["corruptions"][0].update(category="confab", target_fact=0,
+                                  detail="把「听雨」当作既成事实断言——材料里没有",
+                                  expect="问题类型：虚构事实")
+    base.update(over)
+    return ScenarioCard(**base)
+
+
+def test_confab_material_may_show_non_target_facts():
+    """**材料形状不得泄露类别**（2026-09-14 收窄校验③的口径）。
+
+    原口径要求 confab 卡一条事实都不写进材料 → 材料的「关键事实」段整体消失 →
+    实测 train 457/457、dev 491/491 命中"材料无事实段 ⇒ 虚构事实"（**零误报**）：
+    判官**不读叙事**就能判出 confab，而生产里材料永远有事实段 ⇒ 捷径在生产里失效。
+    新口径只守一条硬要求：**被断言的那条**事实不得入材料；其余事实允许写入。
+    """
+    from scripts.scenario_factory.materialize import build_material
+
+    card = _two_fact_confab_card()
+    card2 = card.model_copy(update={"material": card.material.model_copy(
+        update={"facts": [1]})})                       # 显式声明：只物化非目标的 fact#1
+    text = build_material(card2)
+    assert "关键事实" in text, "非目标事实应当物化出「关键事实」段（材料形状与生产一致）"
+    assert "断刃崖" in text, "声明入材料的事实的 anchor 应在位"
+    assert "听雨" not in text, "**被断言**的事实的 anchor 不得泄进材料"
+
+
+def test_confab_asserted_fact_still_never_leaks():
+    """硬要求不许被新口径放走：显式把**被断言**的事实写进材料 → 必须报错。"""
+    from scripts.scenario_factory.materialize import MaterializeError, build_material
+
+    card = _two_fact_confab_card()
+    bad = card.model_copy(update={"material": card.material.model_copy(
+        update={"facts": [0]})})
+    with pytest.raises(MaterializeError, match="被断言"):
+        build_material(bad)
+
+
+def test_confab_default_rendering_is_unchanged():
+    """旧卡（不显式声明 `material.facts`）照旧通过、材料里确实没有事实段（向后兼容）。"""
+    from scripts.scenario_factory.materialize import build_material
+
+    text = build_material(_two_fact_confab_card())
+    assert "关键事实" not in text, "缺省渲染须维持旧行为（否则会静默改变已产数据的口径）"
+
+
+
     text = build_material(_setting_card())
     assert "听雨" in text and "白芷" in text      # 事实 + 在场角色卡
 

@@ -110,15 +110,37 @@ def _precheck(card: ScenarioCard, pack: WorldPack) -> None:
 
 
 def _check_text(card: ScenarioCard, pack: WorldPack, text: str) -> None:
+    """材料三道校验（§4.1）：① 在场角色卡确落材料；② 声明入材料的事实 anchors 全在位；
+    ③ **被断言的那条**事实的 anchors 不得出现在材料中（否则等于给判官开出第二条通路）。
+
+    ⚠️ ③ 的口径 2026-09-14 **收窄**（原为"任一 `in_material=False` 的事实"）：
+    原口径下 confab 卡必须**一条事实都不写进材料**（`cards.py:340` + 其校验强制
+    "confab 卡的 facts 全部须 in_material: false"）→ 材料的「关键事实」段整体消失，后果三条：
+
+    1. **材料形状 100% 泄露类别**：实测 train 457/457、dev 491/491 命中"材料无事实段 ⇒ 虚构事实"，
+       **零误报** ⇒ 判官**不读叙事**就能判出 confab（而生产里材料永远有事实段 → 捷径在生产里失效）；
+    2. 与生产分布不一致（模型只见过"空材料版"的 confab）；
+    3. confab 的材料空间塌成 **42 种**（setting/ooc 分别 631/675 种）—— 最该补的一族上下文最单调。
+
+    真正的硬要求只有一条：**被断言（`corruptions[0].target_fact`）那条事实的 anchors 不得入材料**。
+    其余事实写不写是自由的（由 `material.facts` 显式指定；缺省仍按 `in_material` 标志，故
+    **旧卡照旧通过**、新渲染被允许）。
+    """
     m = card.material
     if not text.strip():
         raise MaterializeError("材料为空")
     for npc_id in m.present:  # 校验①：在场 NPC 角色卡确落材料
         if pack.npcs[npc_id].name not in text:
             raise MaterializeError(f"在场角色卡未落入材料: {npc_id}")
-    for f in card.facts:  # 校验②在位（全部 anchors）/ ③泄漏（任一 anchors 出现即泄漏）
+    shown = (set(m.facts) if m.facts is not None
+             else {i for i, f in enumerate(card.facts) if f.in_material})
+    asserted = (card.corruptions[0].target_fact
+                if card.corruptions and card.corruptions[0].category == "confab" else None)
+    for i, f in enumerate(card.facts):
         hit = [a for a in f.anchors if a in text]
-        if f.in_material and len(hit) != len(f.anchors):
-            raise MaterializeError(f"in_material 事实 anchors 未在材料中: {f.anchors}")
-        if not f.in_material and hit:
-            raise MaterializeError(f"材料泄漏：confab anchors 出现在材料中: {hit}")
+        if i in shown and len(hit) != len(f.anchors):      # 校验②：声明入材料 → anchors 须全在位
+            raise MaterializeError(f"声明入材料的事实 anchors 未在材料中: {f.anchors}")
+        if i not in shown and hit:                          # 校验③：未声明 → 不得出现
+            raise MaterializeError(f"材料泄漏：未声明入材料的事实 anchors 出现在材料中: {hit}")
+        if i == asserted and hit:                           # 硬要求：被断言的事实绝不得入材料
+            raise MaterializeError(f"材料泄漏：**被断言**的事实的 anchors 出现在材料中: {hit}")
