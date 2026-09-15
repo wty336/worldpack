@@ -1,21 +1,47 @@
 {
   "layer": "dev",
   "version": "route-a-v1",
-  "written_at": "2026-09-14",
+  "written_at": "2026-09-15",
   "frozen": false,
   "modules": {
+    "compress": {
+      "count": 282,
+      "file": "dev\\compress.jsonl",
+      "sha256": "11809a564ae9a1c0f678086d1276193b42e646c09f3b34cbd3ff4b8b6fc8ec9c"
+    },
     "extract": {
       "count": 994,
       "file": "dev\\extract.jsonl",
       "sha256": "d4f5732ed6102a8d5219c55e39515c9298b8d69a0e263ea9100da0371bcf6d56"
+    },
+    "judge": {
+      "count": 1177,
+      "file": "dev\\judge.jsonl",
+      "sha256": "6105e83777d35d3753351aad49061efbbce489b6b79dc101373ea51dd0fd37f4"
     }
   },
   "progress": {
+    "compress": {
+      "target": 300,
+      "kept": 282,
+      "dropped": 18,
+      "skipped": 0,
+      "rejected": 0,
+      "pending": 0
+    },
     "extract": {
       "target": 1000,
       "kept": 994,
       "dropped": 6,
       "skipped": 0,
+      "rejected": 0,
+      "pending": 0
+    },
+    "judge": {
+      "target": 2170,
+      "kept": 1177,
+      "dropped": 396,
+      "skipped": 597,
       "rejected": 0,
       "pending": 0
     }
