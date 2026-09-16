@@ -387,6 +387,9 @@ LONG_MIN_SHARE = 0.20        # compress 长输入档 ≥20%（决策 18：合成
 # confab 仅 29.6% 而无人报警（2026-09-14 发现）。教训：**规格里写了配额，就必须有代码在检查它**。
 JUDGE_CATEGORY_FLOORS = {"confab": 0.40, "setting": 0.25, "ooc": 0.20}
 JUDGE_PER_GENRE_CLASS_MIN = 5    # §4.5：每题材每类 ≥5
+# eval 冻结态要求"三模块齐"（决策 32：eval 层单独跑**整层**再冻结打 tag）——
+# 只声明/只产出部分模块的 eval 不算冻结层（见 `write_layer` 里 2026-09-14 两次实测的注记）。
+EVAL_FROZEN_MODULES = ("extract", "judge", "compress")
 LENGTH_TOLERANCE = 0.5       # 实测长度至少兑现卡面目标的一半，才算"这一档真的产出来了"（发现⑤）
 LAYER_BASE = {"train": 10000, "dev": 20000, "eval": 30000}
 
@@ -523,13 +526,17 @@ def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path,
     if progress:
         manifest["progress"] = progress
         manifest["complete"] = all(p["pending"] == 0 for p in progress.values())
-    # **eval 冻结纪律**：只有"已声明目标全部达成"的 eval 才配叫 `frozen`。
-    # 2026-09-14 实测踩到：分阶段构建 eval（先产 200 张看质量）时，中间态被写成
-    # `frozen=True` + `complete=True`，而它只有 198/1000 条 —— 读的人会把它当成那杆"尺子"，
-    # 而尺子的完整性是决策的前提（决策 14）。
+    # **eval 冻结纪律**：冻结态 = **三模块齐** 且 各自 declared target 全达成。
+    # 2026-09-14 实测连踩两次：① 分阶段构建时 198/1000 的中间态被写成 `frozen=True`；
+    # ② 只声明了 extract 的层（targets 里只有 extract）跑完也满足 `complete=True` → 又被写成冻结态。
+    # 尺子的完整性是决策 14 的前提，故冻结条件取**结构 + 进度**两条同时成立。
     # 无 `progress` 时（直接调用/测试）无从判断，沿用旧行为，不误伤。
-    manifest["frozen"] = bool(layer == "eval"
-                              and (progress is None or manifest.get("complete", False)))
+    if progress is None:
+        manifest["frozen"] = layer == "eval"
+    else:
+        manifest["frozen"] = bool(
+            layer == "eval" and manifest.get("complete", False)
+            and set(progress) >= set(EVAL_FROZEN_MODULES))
     for mod, rows in sorted(by_mod.items()):
         f = layer_dir / f"{mod}.jsonl"
         f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",

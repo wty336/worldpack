@@ -1123,6 +1123,7 @@ import json  # noqa: E402
 from game_agent.evalmeta import file_digest  # noqa: E402
 
 from scripts.scenario_factory.assemble import (  # noqa: E402
+    EVAL_FROZEN_MODULES,
     dedup,
     fingerprint,
     quota_gaps,
@@ -1166,24 +1167,29 @@ def test_quota_gaps_reports_genre_skew():
     assert any("仙侠" in g and "<" in g for g in quota_gaps(skewed))
 
 
-def test_eval_frozen_requires_the_declared_targets_to_be_met(tmp_path):
-    """**eval 只有"已声明目标全达成"才配叫冻结**（2026-09-14 实测踩到）。
+def test_eval_frozen_requires_all_three_modules_and_targets_met(tmp_path):
+    """**eval 冻结态 = 三模块齐 + 各自目标达成**（2026-09-14 实测连踩两次）。
 
-    分阶段构建 eval（先产 200 张看质量）时，中间态曾被写成 `frozen=True` + `complete=True`，
-    而它只有 198/1000 条 —— 读的人会把它当成那杆"尺子"，而尺子的完整性是决策的前提（决策 14）。
+    ① 分阶段构建时 198/1000 的中间态曾写成 `frozen=True`；
+    ② 只声明 extract 的层跑完也满足 `complete=True` → 又会被写成冻结态。
+    尺子的完整性是决策 14 的前提 ⇒ 冻结条件取**结构 + 进度**两条同时成立。
     """
     rows = _rows("extract", ["古代武侠", "仙侠"], n_input="样例")
-    partial = write_layer("eval", rows, tmp_path,
-                          progress={"extract": {"target": 1000, "kept": 2, "dropped": 0,
-                                                "rejected": 0, "skipped": 0, "pending": 998}})
+
+    def prog(mods, pending=0):
+        return {m: {"target": 2, "kept": 2, "dropped": 0, "rejected": 0,
+                    "skipped": 0, "pending": pending} for m in mods}
+
+    partial = write_layer("eval", rows, tmp_path, progress=prog(["extract"], pending=998))
     assert partial["frozen"] is False and partial["complete"] is False
     log = (tmp_path / "eval" / "OPEN_LOG.md")
     assert not log.exists() or "WRITE" not in log.read_text(encoding="utf-8"), \
         "半成品 eval 不该往冻结日志里写 WRITE 行"
-    done = write_layer("eval", rows, tmp_path,
-                       progress={"extract": {"target": 2, "kept": 2, "dropped": 0,
-                                             "rejected": 0, "skipped": 0, "pending": 0}})
-    assert done["frozen"] is True and done["complete"] is True
+    one_mod = write_layer("eval", rows, tmp_path, progress=prog(["extract"]))
+    assert one_mod["complete"] is True and one_mod["frozen"] is False, \
+        "只声明一个模块的 eval 不算冻结层（三模块齐才算）"
+    all_mods = write_layer("eval", rows, tmp_path, progress=prog(list(EVAL_FROZEN_MODULES)))
+    assert all_mods["frozen"] is True
     assert "WRITE" in log.read_text(encoding="utf-8")
     # 无 progress（直接调用）沿用旧行为，不误伤
     assert write_layer("eval", rows, tmp_path)["frozen"] is True

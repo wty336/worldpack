@@ -2,7 +2,7 @@
   "layer": "eval",
   "version": "route-a-v1",
   "written_at": "2026-09-16",
-  "frozen": true,
+  "frozen": false,
   "modules": {
     "extract": {
       "count": 198,
