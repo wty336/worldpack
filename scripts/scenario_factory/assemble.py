@@ -519,10 +519,17 @@ def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path,
         by_mod.setdefault(s["module"], []).append(s)
     manifest = {"layer": layer, "version": SAMPLE_VERSION,
                 "written_at": datetime.date.today().isoformat(),
-                "frozen": layer == "eval", "modules": {}}
+                "frozen": False, "modules": {}}
     if progress:
         manifest["progress"] = progress
         manifest["complete"] = all(p["pending"] == 0 for p in progress.values())
+    # **eval 冻结纪律**：只有"已声明目标全部达成"的 eval 才配叫 `frozen`。
+    # 2026-09-14 实测踩到：分阶段构建 eval（先产 200 张看质量）时，中间态被写成
+    # `frozen=True` + `complete=True`，而它只有 198/1000 条 —— 读的人会把它当成那杆"尺子"，
+    # 而尺子的完整性是决策的前提（决策 14）。
+    # 无 `progress` 时（直接调用/测试）无从判断，沿用旧行为，不误伤。
+    manifest["frozen"] = bool(layer == "eval"
+                              and (progress is None or manifest.get("complete", False)))
     for mod, rows in sorted(by_mod.items()):
         f = layer_dir / f"{mod}.jsonl"
         f.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
@@ -535,7 +542,7 @@ def write_layer(layer: str, samples: list[dict], out_dir: pathlib.Path,
         }
     (layer_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    if layer == "eval":  # 冻结纪律（spec §8 + plan-phase1-data.md §3.3 扩展）
+    if manifest["frozen"]:  # 冻结纪律（spec §8 + plan-phase1-data.md §3.3 扩展）
         with (layer_dir / "OPEN_LOG.md").open("a", encoding="utf-8") as fh:
             fh.write(f"- {manifest['written_at']} WRITE 出库 "
                      f"{sum(m['count'] for m in manifest['modules'].values())} 条；"
