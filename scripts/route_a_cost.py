@@ -38,6 +38,7 @@ COMPONENT_OF = {
     "rubric_quality": "质检员抽检",
     "rubric_score": "轨道 2 评委打分",
     "rubric_pairwise": "轨道 2 评委成对",
+    "confab_triage": "决策 16 人读清单 LLM 预分诊",
     "aux": "其他·未分类（早期标签：演绎/质检混记）",
 }
 
