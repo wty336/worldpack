@@ -1,21 +1,47 @@
 {
   "layer": "eval",
   "version": "route-a-v1",
-  "written_at": "2026-09-16",
-  "frozen": false,
+  "written_at": "2026-09-18",
+  "frozen": true,
   "modules": {
+    "compress": {
+      "count": 283,
+      "file": "eval\\compress.jsonl",
+      "sha256": "f86bbca36312f9c4f3d3ba1d9e95e37d2da5fd44829dd5a9ff0843ff9a535aaa"
+    },
     "extract": {
-      "count": 198,
+      "count": 992,
       "file": "eval\\extract.jsonl",
-      "sha256": "3406dcb92eecb9eb604d77c51f67985817a619d1aff5f5f498d2e149bea5dd08"
+      "sha256": "dc660a8ab4eb08dbc2a0889889c9498d2db68740715cff9f94f2a08a727c47d8"
+    },
+    "judge": {
+      "count": 1046,
+      "file": "eval\\judge.jsonl",
+      "sha256": "0baae7f6fd8eb0ebadb897671bfea4edd5c3980758532958600a7d3fd62d000f"
     }
   },
   "progress": {
-    "extract": {
-      "target": 200,
-      "kept": 198,
-      "dropped": 2,
+    "compress": {
+      "target": 300,
+      "kept": 283,
+      "dropped": 17,
       "skipped": 0,
+      "rejected": 0,
+      "pending": 0
+    },
+    "extract": {
+      "target": 1000,
+      "kept": 992,
+      "dropped": 8,
+      "skipped": 0,
+      "rejected": 0,
+      "pending": 0
+    },
+    "judge": {
+      "target": 1792,
+      "kept": 1046,
+      "dropped": 343,
+      "skipped": 403,
       "rejected": 0,
       "pending": 0
     }
