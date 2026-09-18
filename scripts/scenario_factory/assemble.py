@@ -32,14 +32,16 @@ from game_agent.compression import COMPRESS_SYSTEM, SUMMARY_MAX_TARGET
 from game_agent.evalmeta import file_digest
 from game_agent.memory import EXTRACT_SYSTEM
 from game_agent.worldpack import WorldPack
-from scripts.rubric_judge import (QUALITY_SAMPLE_SEED, label_check, quality_sample,
-                                  sample_positions, select)
+from scripts.rubric_judge import (QUALITY_SAMPLE_SEED, _complete, _extract_json,
+                                  label_check, quality_sample, sample_positions, select)
 
 from . import worklog
 from .cards import (REPO_ROOT, LONG_INPUT_TOKENS, ScenarioCard, card_seed,
                     generate_card, layer_of)
 from .materialize import MaterializeError, build_material, load_pack
-from .verbalize import _meta_soft, _name_confusables, verbalize_card
+from .verbalize import (VERBALIZE_SYSTEM, VERBALIZE_TEMPERATURE, _meta_soft,
+                        _name_confusables, _repair_missing, _style_rule, _violations,
+                        verbalize_card)
 
 # card_hook_check 不是包成员（脚本层）：注入 scripts/ 后 import
 # （脚本层先例见 scripts/diag_turn.py:17；tests 层不用此法）
@@ -194,6 +196,124 @@ def _speaker_card_text(pack: WorldPack, speaker: str) -> str:
     if spec is None:
         return ""
     return "\n".join(f"{f}：{spec.model_dump().get(f)}" for f in CARD_FIELDS)
+
+
+# ---------------------------------------------------------------------------
+# 正常样本（判官训练集的**负例**，2026-09-18 补：计划 §4.2.2 的"误报口径"）
+# ---------------------------------------------------------------------------
+# **问题**：工厂的 judge 卡**必带 corruption**（`cards.py` 校验"恰好 1 条"）⇒ 一条"通过"样本都没有。
+# 计划 §4.2.2 明写"正常样本另按**误报口径**造（每题材 ≥40）"，而且理由与工厂规格自己写过的
+# "只报一致率会把'全判通过'的退化解报成高分"同构：**只喂正例训出来的判官 = "全判违规"的退化解**
+# —— 检出率好看、误报率不可控。
+#
+# **为什么不改卡生成器**（代价差 10 倍）：judge 卡的随机流按 `(seed, seq, module)` 决定，
+# 往类别空间里加第 4 类会**平移所有既有卡的抽签** ⇒ 三层 judge 全部重产（≈¥41 / 15h）✗。
+# 故正常样本走**独立附加模块**（`judge_normal`，自己的种子段 `seed_base + 7000 + i`）：
+# 既有卡**逐字节不变**（守卫 `test_normal_stream_does_not_disturb_existing_cards` 钉住）✓，
+# 导出训练集时与 judge 合并即可。
+NORMAL_MODULE = "judge_normal"
+NORMAL_SEED_OFFSET = 7000     # 层内空闲段；judge 用 1000、compress 用 2000，故 7000 不冲突
+NORMAL_PER_GENRE_MIN = 40     # 计划 §4.2.2：正常样本每题材 ≥40
+MODULES = ("extract", "judge", "compress", NORMAL_MODULE)
+
+NORMAL_CHECK_SYSTEM = (
+    "你是判定校验员。给定【材料】与【叙事】，判断叙事里**有没有**下列问题之一：\n"
+    "OOC = 说话人的语气、底线或禁忌与其角色卡冲突；\n"
+    "设定矛盾 = 叙事把材料里的某个值写成了另一个值；\n"
+    "虚构事实 = 叙事把材料里从未有过的事**当作既成事实直接断言**。\n"
+    "只输出一行 JSON：没有问题就输出 {\"问题\": \"无\"}；"
+    "有问题则输出 {\"问题\": \"OOC|设定矛盾|虚构事实\", \"依据\": \"引用叙事原文\"}。"
+)
+
+
+def normal_card(seed_base: int, i: int) -> ScenarioCard:
+    """正常样本用的卡：**内容取自独立种子段的 judge 卡**，但去掉 corruption。
+
+    ⚠️ 种子必须走 `NORMAL_SEED_OFFSET`（不能复用 judge 的 seed）：`card_id = sc-{seed}-{seq}`，
+    复用会让正常样本与 judge 样本**同 id** —— 而 id 是数据集唯一键，`write_layer` 会因"层内 id 重复"
+    **直接拒写**（发现① 的同类事故；守卫 `test_normal_stream_does_not_disturb_existing_cards` 抓到）。
+
+    `module` 改成 `extract` 是**有意**的：`verbalize_card` 只在 `module == "judge"` 时拼接
+    矛盾指令（`_judge_hint`），于是这张卡走"纯叙事"路径 —— 不制造任何缺陷 ✓；
+    同时 `_violations` 对非 judge 卡要求**全部** facts 的 anchors 在位 ✓（负例也必须忠实）。
+    """
+    card = generate_card(seed_base + NORMAL_SEED_OFFSET + i, i, "judge")
+    return card.model_copy(update={"module": "extract", "corruptions": []})
+
+
+def _normal_material(card: ScenarioCard) -> str:
+    """正常样本的材料：**全部**事实都物化（负例的材料必须齐全，否则判官无从对照）。"""
+    full = card.material.model_copy(update={"facts": list(range(len(card.facts)))})
+    return build_material(card.model_copy(update={"material": full}))
+
+
+def _normal_ok(llm, material: str, card: ScenarioCard, text: str) -> str | None:
+    """**误报口径**校验：这段叙事真的"没有问题"吗？返回问题类型（None = 干净）。
+
+    这是负例的**生成时门禁**：与缺陷样本方向相反 —— 那里查"缺陷有没有演出来"，
+    这里查"**有没有多演出缺陷**"。空/解析失败 = 未判定 ⇒ **不算干净**（"空 = 未知 ≠ 通过"）。
+    """
+    user = f"【材料】\n{material}\n\n【叙事】\n{text}"
+    try:
+        d = _extract_json(_complete(llm, NORMAL_CHECK_SYSTEM, user, purpose="label_check"))
+    except (ValueError, KeyError, TypeError):
+        return "未判定"
+    problem = str(d.get("问题", "")).strip()
+    return None if problem in ("无", "") else problem
+
+
+def build_normal_sample(llm, card: ScenarioCard) -> BuildResult:
+    """正常样本（判官负例）：材料齐全 + 叙事忠实无缺陷 + 标签 `通过`。
+
+    与缺陷样本同款的两道关：① anchors 全在位（程序）② 误报口径（语义，生成时门禁，重演一次）。
+    """
+    try:
+        material = _normal_material(card)
+    except MaterializeError as e:
+        return BuildResult(None, f"材料装配失败: {e}")
+    pack = load_pack(card.pack)
+    speaker = card.material.present[0] if card.material.present else ""
+    speaker_card = _speaker_card_text(pack, speaker)
+    user = (f"语体：{card.axes.style}；长度约 {card.history_spec.target_tokens} token；"
+            f"可掺入的闲笔：{card.history_spec.noise}\n场景卡 JSON：\n{card.model_dump_json()}")
+    user += _style_rule(card)
+    user += (f"\n\n**说话人与舞台**：在场角色是「{speaker}」，其角色卡如下：\n{speaker_card}\n"
+             "叙事里让 TA **正常开口**（至少一句直接引语），语气与角色卡相符；"
+             "**不要制造任何矛盾**：不得改写卡面事实、不得新增材料里没有的既成事实、"
+             "不得违背其底线/禁忌；卡面 facts 的 anchors（专名/数字）必须原样出现。")
+    msgs = [{"role": "system", "content": VERBALIZE_SYSTEM}, {"role": "user", "content": user}]
+    max_tokens = int(card.history_spec.target_tokens * 1.2)
+    last: list[str] = []
+    for _ in range(2):                      # 与缺陷样本同款：首演 + 重演一次
+        text, finish = complete_checked(llm, msgs, purpose="verbalize_judge",
+                                        max_tokens=max_tokens,
+                                        temperature=VERBALIZE_TEMPERATURE)
+        if finish == "length":
+            last = ["截断"]
+            continue
+        if last := _violations(card, text):
+            if repaired := _repair_missing(llm, card, text, last,
+                                           purpose="verbalize_judge", max_tokens=max_tokens):
+                if not (last := _violations(card, repaired)):
+                    text = repaired
+                else:
+                    continue
+            else:
+                continue
+        if problem := _normal_ok(llm, material, card, text):   # 误报口径：必须真的干净
+            last = [f"正常样本不干净: {problem}"]
+            continue
+        return BuildResult({
+            "id": card.card_id, "module": NORMAL_MODULE, "version": SAMPLE_VERSION,
+            "genre": card.axes.genre, "pack": card.pack, "material": material,
+            "narration": text, "expect": "通过", "category": "normal",
+            "speaker": speaker, "speaker_card": speaker_card, "detail": "",
+            "facts": [f.text for f in card.facts],     # 负例标签 = `通过`；facts 仅供审计对照
+            "meta_soft": _meta_soft(text),
+            "name_confusables": _name_confusables(card, text),
+            **_length_fields(card, text),
+        })
+    return BuildResult(None, f"正常样本丢弃: {last}")
 
 
 def _fabrication_hit(summary: str, history: str) -> str | None:
@@ -472,7 +592,14 @@ def quota_gaps(samples: list[dict]) -> list[str]:
         for (g, c), n in sorted(Counter((r.get("genre", "?"), r.get("category", "?"))
                                         for r in jud).items()):
             if n < JUDGE_PER_GENRE_CLASS_MIN:
-                gaps.append(f"judge 覆盖 {g}/{c}: {n} < {JUDGE_PER_GENRE_CLASS_MIN}（§4.5 每题材每类 ≥5）")
+                gaps.append(f"judge 覆盖 {g}/{c}: {n} < {JUDGE_PER_GENRE_CLASS_MIN}"
+                            "（§4.5 每题材每类 ≥5）")
+    norm = by_mod.get(NORMAL_MODULE, [])
+    if norm:      # 正常样本（负例）：计划 §4.2.2 要求**每题材 ≥40**（否则误报率不可控）
+        for g, n in sorted(Counter(r.get("genre", "?") for r in norm).items()):
+            if n < NORMAL_PER_GENRE_MIN:
+                gaps.append(f"正常样本 {g}: {n} < {NORMAL_PER_GENRE_MIN}"
+                            "（plan-phase1-data §4.2.2 误报口径：缺负例 → 判官会学成'总能挑出毛病'）")
     return gaps
 
 
@@ -600,13 +727,21 @@ def _filter_by_category(indices: list[int], module: str, seed_base: int,
     return keep, skip
 
 
+def _card_for(seed_base: int, i: int, module: str) -> ScenarioCard:
+    """模块 → 卡。正常样本走**独立种子段**（`seed_base + NORMAL_SEED_OFFSET + i`），
+    故既有模块的卡逐字节不变（改卡生成器会让 judge 三层全部重产，见 `NORMAL_MODULE` 注释）。"""
+    if module == NORMAL_MODULE:
+        return normal_card(seed_base, i)
+    return generate_card(card_seed(seed_base, i, module), i, module)
+
+
 def _produce(llm, module: str, indices: list[int], seed_base: int, sampling: str,
              journal: worklog.Journal, seen: set[str]) -> int:
     """按索引产卡并**每张卡立刻入日志**（中断只丢正在产的那一张）。返回本次新增条数。"""
-    builders = {"extract": build_extract_sample, "judge": build_judge_sample}
+    builders = {"extract": build_extract_sample, "judge": build_judge_sample,
+                NORMAL_MODULE: build_normal_sample}
     for i in indices:
-        # seed 走 card_seed（层内按模块错开）：三模块共用 seed_base+i 会让 card_id 撞车（发现①）
-        card = generate_card(card_seed(seed_base, i, module), i, module)
+        card = _card_for(seed_base, i, module)
         if module == "compress":
             r = build_compress_sample(llm, card, sampling=sampling)
         else:
@@ -703,7 +838,7 @@ def _seen_from_disk(out_dir: pathlib.Path, layer: str,
             f = _layer_seen_file(out_dir, other)
             if f.exists():
                 seen |= set(json.loads(f.read_text(encoding="utf-8")))
-        for mod in ("extract", "judge", "compress"):
+        for mod in MODULES:
             j = worklog.read_journal(worklog.journal_path(out_dir, other, mod))
             skip = pending.get(mod, set()) if other == layer else set()
             seen |= {fingerprint(_sample_text(e["sample"]))
@@ -809,7 +944,7 @@ def print_status(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: st
                  targets: dict[str, int]) -> None:
     """`--status`：只读进度（零 API 成本）——十来小时的批，随时要能回答"跑到哪了"。"""
     print(f"[进度] {out_dir}/{layer}")
-    for mod in ("extract", "judge", "compress"):
+    for mod in MODULES:
         j = worklog.read_journal(worklog.journal_path(out_dir, layer, mod))
         if not j.entries and not j.header:
             if mod in targets:
@@ -944,7 +1079,7 @@ def _load_journals(out_dir: pathlib.Path, layer: str, seed_base: int, sampling: 
       而 `factory_version`/模型/种子段不一致必须拒绝（否则会把两代产线一起发布出去）。
     """
     journals: dict[str, worklog.Journal] = {}
-    for mod in ("extract", "judge", "compress"):
+    for mod in MODULES:
         jp = worklog.journal_path(out_dir, layer, mod)
         producing = mod in targets
         if producing and fresh and jp.exists():
@@ -968,6 +1103,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--layer", required=True, choices=["train", "dev", "eval"])
     p.add_argument("--extract", type=int, default=0)
     p.add_argument("--judge", type=int, default=0)
+    p.add_argument("--judge-normal", type=int, default=0,
+                   help="正常样本（判官负例，计划 §4.2.2「误报口径」）：独立种子段，"
+                        "不动既有 judge 卡；每题材 ≥40")
     p.add_argument("--compress", type=int, default=0)
     p.add_argument("--sampling", default="off", choices=["off", "long", "all"])
     p.add_argument("--seed-base", type=int, default=None,
@@ -998,7 +1136,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     # `requested` = **本次显式请求**（唯一驱动产出的东西：说好只跑一部分，就不能顺带把别的模块也跑了）
     requested = {mod: n for mod, n in (("extract", args.extract), ("judge", args.judge),
-                                       ("compress", args.compress)) if n}
+                                       ("compress", args.compress),
+                                       (NORMAL_MODULE, args.judge_normal)) if n}
     if only and "judge" not in requested:
         print("[✗] --only-category 只对 judge 有意义（类别是 judge 卡独有的轴）")
         return 1
@@ -1008,11 +1147,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:  # 配额预演：零 API 成本，先看轴分布再决定产多少
         for mod, n in sorted(requested.items()):
-            genres = Counter(generate_card(card_seed(seed_base, i, mod), i, mod).axes.genre
-                             for i in range(n))
-            long_n = sum(1 for i in range(n)
-                         if generate_card(card_seed(seed_base, i, mod), i, mod
-                                          ).history_spec.target_tokens >= LONG_INPUT_TOKENS)
+            cards = [_card_for(seed_base, i, mod) for i in range(n)]
+            genres = Counter(c.axes.genre for c in cards)
+            long_n = sum(1 for c in cards
+                         if c.history_spec.target_tokens >= LONG_INPUT_TOKENS)
             print(f"[dry-run] {mod}: {n} 卡，题材 {dict(genres)}，长输入 {long_n}/{n}")
         return 0
 
@@ -1047,7 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
 
     seen = _seen_from_disk(out_dir, args.layer, {m: set(v) for m, v in pending.items()})
     try:
-        for mod in ("extract", "judge", "compress"):
+        for mod in MODULES:
             if not pending.get(mod):
                 continue
             keep, skipped = _filter_by_category(pending[mod], mod, seed_base, only)

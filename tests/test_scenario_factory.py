@@ -1160,6 +1160,139 @@ def test_dedup_handles_judge_samples_without_input_key():
     assert [s["id"] for s in out] == ["j1", "j3"] and dup == 1
 
 
+class _NormalStub:
+    """正常样本的替身 LLM：演绎走主队列，**误报口径检查**（purpose=label_check）走专线。"""
+
+    def __init__(self, narrations, verdicts):
+        self.narrations = list(narrations)
+        self.verdicts = list(verdicts)
+        self.calls = 0
+
+    def complete_with_meta(self, messages, **kw):
+        if kw.get("purpose") == "label_check":
+            v = self.verdicts.pop(0) if len(self.verdicts) > 1 else self.verdicts[0]
+            return SimpleNamespace(text=json.dumps({"问题": v}, ensure_ascii=False),
+                                   finish_reason="stop")
+        self.calls += 1
+        t = self.narrations.pop(0) if len(self.narrations) > 1 else self.narrations[0]
+        return SimpleNamespace(text=t, finish_reason="stop")
+
+
+def test_normal_stream_does_not_disturb_existing_cards():
+    """**关键不变量**：正常样本走独立种子段，既有 judge 卡**逐字节不变**。
+
+    为什么必须钉死：judge 卡的随机流按 `(seed, seq, module)` 决定，往类别空间里加第 4 类
+    会**平移所有既有卡的抽签** ⇒ 三层 judge 全部重产（≈¥41 / 15h）。故正常样本用
+    `seed_base + 7000 + i`（独立段），既有模块一行不动。
+    """
+    from scripts.scenario_factory.assemble import _card_for
+
+    for i in (0, 1, 7, 42, 100):
+        assert (_card_for(10000, i, "judge").model_dump()
+                == generate_card(card_seed(10000, i, "judge"), i, "judge").model_dump()), \
+            f"既有 judge 卡 i={i} 被改动了"
+        assert (_card_for(10000, i, "extract").model_dump()
+                == generate_card(card_seed(10000, i, "extract"), i, "extract").model_dump())
+    for i in range(50):     # 正常样本的 card_id 与既有模块不撞（发现①的同类风险）
+        ids = {_card_for(10000, i, m).card_id
+               for m in ("extract", "judge", "compress", "judge_normal")}
+        assert len(ids) == 4, f"i={i} 出现同 id: {ids}"
+
+
+def test_normal_card_has_no_corruption_and_full_material():
+    """正常样本（判官负例）：无 corruption、材料**齐全**、走「纯叙事」路径（module=extract）。"""
+    from scripts.scenario_factory.assemble import NORMAL_MODULE, _normal_material, normal_card
+
+    card = normal_card(10000, 0)
+    assert card.corruptions == [] and card.module == "extract", \
+        "正常样本必须无缺陷、且 module 非 judge（否则会拼接矛盾指令）"
+    assert card.seed == 10000 + 7000, "正常样本须走独立种子段（否则 card_id 与 judge 撞车）"
+    mat = _normal_material(card)
+    assert "关键事实" in mat, "负例材料必须齐全（否则判官无从对照）"
+    for f in card.facts:
+        for a in f.anchors:
+            assert a in mat, f"正常样本材料缺 anchor: {a}"
+    assert NORMAL_MODULE == "judge_normal"
+
+
+def _normal_fixture():
+    from scripts.scenario_factory.assemble import normal_card
+
+    card = normal_card(10000, 0)
+    return card, "，".join(a for f in card.facts for a in f.anchors)
+
+
+def test_normal_sample_is_kept_when_the_gate_says_clean():
+    from scripts.scenario_factory.assemble import build_normal_sample
+
+    card, anchors = _normal_fixture()
+    r = build_normal_sample(_NormalStub([f"他开口说：{anchors}。"], ["无"]), card)
+    assert r.sample, r.dropped_reason
+    assert r.sample["expect"] == "通过" and r.sample["category"] == "normal"
+    assert r.sample["module"] == "judge_normal" and r.sample["detail"] == ""
+
+
+def test_normal_sample_dropped_when_the_gate_finds_a_defect():
+    """**误报口径门禁**（与缺陷样本方向相反）：叙事"多演出了缺陷" → 重演一次仍不干净 → 丢弃。"""
+    from scripts.scenario_factory.assemble import build_normal_sample
+
+    card, anchors = _normal_fixture()
+    llm = _NormalStub([f"叙事：{anchors}。"], ["OOC"])       # 判定粘滞：两次都判不干净
+    r = build_normal_sample(llm, card)
+    assert r.sample is None and "正常样本" in (r.dropped_reason or ""), r.dropped_reason
+    assert llm.calls == 2, f"应重演一次再丢，实际演绎 {llm.calls} 次"
+
+
+def test_normal_sample_undetermined_is_not_a_pass():
+    """空/解析失败 = **未判定** ⇒ 不得当成「干净」（"空 = 未知 ≠ 通过"）。"""
+    from scripts.scenario_factory.assemble import build_normal_sample
+
+    card, anchors = _normal_fixture()
+
+    class _Bad(_NormalStub):
+        def complete_with_meta(self, messages, **kw):
+            if kw.get("purpose") == "label_check":
+                return SimpleNamespace(text="这不是 JSON", finish_reason="stop")
+            return super().complete_with_meta(messages, **kw)
+
+    r = build_normal_sample(_Bad([f"叙事：{anchors}。"], ["无"]), card)
+    assert r.sample is None and "未判定" in (r.dropped_reason or ""), r.dropped_reason
+
+
+def test_normal_quota_requires_40_per_genre():
+    """计划 §4.2.2：正常样本**每题材 ≥40**（不足则判官误报率不可控）。"""
+    rows = [{"id": f"n{i}", "module": "judge_normal", "genre": "仙侠",
+             "category": "normal", "expect": "通过",
+             "target_tokens": 600, "realized_chars": 500} for i in range(10)]
+    gaps = quota_gaps(rows)
+    assert any("正常样本 仙侠: 10 < 40" in g for g in gaps), gaps
+    ok = [dict(rows[0], id=f"m{i}") for i in range(40)]
+    assert not [g for g in quota_gaps(ok) if "正常样本" in g]
+
+
+def test_normal_samples_do_not_dilute_the_family_quota():
+    """家族配额的分母是**缺陷样本**；正常样本另立模块、另算口径（plan-phase1-data §4.2.2）。
+
+    规格原文："家族配额 confab≥40% / setting≥25% / ooc≥20% …… **正常样本另**按'误报口径'
+    造（每题材 ≥40）"——三条下界之和只有 85%，本就给"另算"留了位置。
+    这个口径必须钉死：正常样本若并进同一分母，confab 份额会被稀释到 34.8%（实测），
+    照本宣科的读者会以为"配额破了"并去灌更多 confab —— 把判官往"总能挑出毛病"推，
+    正好毁掉同一节要求的误报率口径。
+    """
+    def _j(cats, module="judge"):
+        return [{"id": f"{module}-{i}", "module": module, "genre": "仙侠",
+                 "category": c, "target_tokens": 600, "realized_chars": 500}
+                for i, c in enumerate(cats)]
+
+    defects = _j(["confab"] * 8 + ["setting"] * 6 + ["ooc"] * 6)   # 40/30/30 ✓
+    normals = _j(["normal"] * 100, module="judge_normal")
+    assert [g for g in quota_gaps(defects + normals) if "judge 家族" in g] == []
+
+    merged = [dict(r, module="judge") for r in defects + normals]
+    assert any("judge 家族 confab" in g for g in quota_gaps(merged)), \
+        "正常样本混进 judge 模块后 confab 被稀释到 6.7%，配额门必须报警"
+
+
 def test_quota_gaps_reports_genre_skew():
     balanced = _rows("extract", ["古代武侠"] * 5 + ["仙侠"] * 5)
     assert quota_gaps(balanced) == []

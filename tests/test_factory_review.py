@@ -128,6 +128,40 @@ def test_cli_writes_both_the_list_and_the_fulltext(tmp_path, capsys):
         "缺文件应报错退出，而不是写出一份空清单"
 
 
+def test_judge_review_list_carries_the_normal_samples(tmp_path):
+    """judge 人读清单**必须带上正常样本**（决策 37 的负例走独立模块文件）。
+
+    两个模块文件、一份清单：漏掉负例就是**把误报率那一侧排除在复核之外**——
+    而"门禁判通过、人判其实有毛病"正是这份清单要找的东西。
+    （实测坑：① 补完 train/dev 后旧清单仍是 1093/1177 条，出库层已经 1314/1387 条了。）
+    """
+    from scripts.scenario_factory.factory_review import load_module_rows
+
+    d = tmp_path / "train"
+    d.mkdir(parents=True, exist_ok=True)
+    defect = {"id": "sc-1", "module": "judge", "genre": "仙侠", "category": "confab",
+              "expect": "问题类型：虚构事实", "detail": "「密码本」", "speaker_card": "沈青秋",
+              "material": "材料", "narration": "叙事", "realized_chars": 2, "target_tokens": 600}
+    normal = {"id": "sc-2", "module": "judge_normal", "genre": "仙侠", "category": "normal",
+              "expect": "通过", "detail": "", "speaker_card": "沈青秋",
+              "material": "材料", "narration": "叙事", "realized_chars": 2, "target_tokens": 600}
+    for mod, row in (("judge", defect), ("judge_normal", normal)):
+        (d / f"{mod}.jsonl").write_text(json.dumps(row, ensure_ascii=False) + "\n",
+                                        encoding="utf-8")
+
+    rows = load_module_rows(tmp_path, "train", "judge")
+    assert [r["id"] for r in rows] == ["sc-1", "sc-2"], "清单漏了正常样本"
+    md = render(tmp_path, "train", "judge")
+    assert "sc-2" in md
+    # 清单必须逐个文件自证来源 —— 负例来自另一个文件，不能只写 judge.jsonl
+    assert "judge_normal.jsonl" in md and md.count("sha256") == 2, md.splitlines()[2]
+    # 其他模块不受影响（extract 没有独立的负例文件）
+    assert load_module_rows(tmp_path, "train", "extract") == []
+    # 缺 judge_normal.jsonl 的旧层照常出清单（不崩、不报假数）
+    (d / "judge_normal.jsonl").unlink()
+    assert [r["id"] for r in load_module_rows(tmp_path, "train", "judge")] == ["sc-1"]
+
+
 def test_judge_and_compress_shapes(tmp_path):
     """三模块字段形态不同，清单要各自渲染对（否则人会以为"字段没了 = 数据坏了"）。"""
     j = {"id": "sc-1", "module": "judge", "genre": "仙侠", "expect": "问题类型：设定矛盾",

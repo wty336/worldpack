@@ -1,7 +1,7 @@
 {
   "layer": "dev",
   "version": "route-a-v1",
-  "written_at": "2026-09-15",
+  "written_at": "2026-09-18",
   "frozen": false,
   "modules": {
     "compress": {
@@ -18,6 +18,11 @@
       "count": 1177,
       "file": "dev\\judge.jsonl",
       "sha256": "6105e83777d35d3753351aad49061efbbce489b6b79dc101373ea51dd0fd37f4"
+    },
+    "judge_normal": {
+      "count": 210,
+      "file": "dev\\judge_normal.jsonl",
+      "sha256": "0cd6a1c39156708dffcc75a12ec46d7001696474deac3a222cec585673307852"
     }
   },
   "progress": {
@@ -42,6 +47,14 @@
       "kept": 1177,
       "dropped": 396,
       "skipped": 597,
+      "rejected": 0,
+      "pending": 0
+    },
+    "judge_normal": {
+      "target": 260,
+      "kept": 210,
+      "dropped": 50,
+      "skipped": 0,
       "rejected": 0,
       "pending": 0
     }

@@ -1,7 +1,7 @@
 {
   "layer": "train",
   "version": "route-a-v1",
-  "written_at": "2026-09-15",
+  "written_at": "2026-09-18",
   "frozen": false,
   "modules": {
     "compress": {
@@ -18,6 +18,11 @@
       "count": 1093,
       "file": "train\\judge.jsonl",
       "sha256": "ba146fa9cef574ed79ff4ede629a99c06a2503c46c2746c8bd7e9103bdef4cf3"
+    },
+    "judge_normal": {
+      "count": 221,
+      "file": "train\\judge_normal.jsonl",
+      "sha256": "0c1c32e5561f6c379031d655090662bc7493e13a164d393f678b9332858ebaf9"
     }
   },
   "progress": {
@@ -42,6 +47,14 @@
       "kept": 1093,
       "dropped": 375,
       "skipped": 912,
+      "rejected": 0,
+      "pending": 0
+    },
+    "judge_normal": {
+      "target": 260,
+      "kept": 221,
+      "dropped": 39,
+      "skipped": 0,
       "rejected": 0,
       "pending": 0
     }

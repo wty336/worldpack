@@ -26,6 +26,11 @@ from game_agent.evalmeta import file_digest
 from .cards import REPO_ROOT
 from . import worklog
 
+# 正常样本（负例）的模块名（决策 37）。与 `assemble.NORMAL_MODULE` 同值——
+# 这里**有意不 import assemble**：那个模块在导入期就把 LLM 客户端/演绎器拉起来，
+# 而清单渲染是纯本地文字活（`docs/factory-review` 的用法是随时可跑、离线可跑）。
+NORMAL_MODULE = "judge_normal"
+
 DATA_ROOT = REPO_ROOT / "data" / "route-a"
 MODULES = ("extract", "judge", "compress")
 
@@ -50,6 +55,32 @@ def load_rows(out_dir: pathlib.Path, layer: str, module: str) -> list[dict]:
     return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
+def _source_files(out_dir: pathlib.Path, layer: str, module: str) -> list[pathlib.Path]:
+    """这份清单的行来自哪些文件（judge 含正常样本那个附加模块）。
+
+    清单头部必须**逐个列出并附 sha256** —— 否则 221 条负例的来源在清单里没有留痕，
+    而"清单自证来源"正是这个模块存在的理由之一（决策 37 引入第二个文件后新加）。
+    """
+    files = [out_dir / layer / f"{module}.jsonl"]
+    if module == "judge":
+        files.append(out_dir / layer / f"{NORMAL_MODULE}.jsonl")
+    return files
+
+
+def load_module_rows(out_dir: pathlib.Path, layer: str, module: str) -> list[dict]:
+    """出库行；**judge 一并带上正常样本**（负例是同一个人读面）。
+
+    `judge.jsonl` 与 `judge_normal.jsonl` 是**两个模块文件**（决策 37：负例走独立附加模块，
+    免得稀释缺陷侧的家族配额分母），但人读清单**只有一份** —— 正常样本恰恰是误报率那一侧，
+    最需要人眼（门禁判"通过"而人判"其实有毛病"，正是要找的标注错误）。漏掉它们
+    等于把 ① 补的那一课排除在复核之外。
+    """
+    rows = load_rows(out_dir, layer, module)
+    if module == "judge":
+        rows += load_rows(out_dir, layer, NORMAL_MODULE)
+    return rows
+
+
 def label_violations(out_dir: pathlib.Path, layer: str) -> dict[str, list[str]]:
     """被标签自检点名的条目（**报告-only** 的证据文件，格式兼容旧版单 dict）。"""
     f = out_dir / layer / f"label-check-{layer}.json"
@@ -70,7 +101,7 @@ def dropped(out_dir: pathlib.Path, layer: str) -> dict | None:
 
 def _body(row: dict) -> str:
     """样本的"表面文本"（三模块各有落点，口径同 `assemble._sample_text` 的人读版）。"""
-    if row.get("module") == "judge":
+    if row.get("module") in ("judge", "judge_normal"):   # 正常样本（负例）与 judge 同形
         return row.get("narration", "")
     if row.get("module") == "compress":
         return row.get("output", "")
@@ -159,14 +190,15 @@ def _detail_md(row: dict, viol: dict[str, list[str]]) -> str:
     if mod == "extract":
         lines.append(f"**已有事实**：{'；'.join(row.get('existing') or []) or '（无）'}\n")
         lines.append("**标签**：\n" + _labels_md(row) + "\n")
-    elif mod == "judge":
+    elif mod in ("judge", "judge_normal"):
         lines.append(f"**问题类型**：{row.get('expect', '?')}　**矛盾依据**：{row.get('detail', '')}\n")
         lines.append(f"**说话人角色卡**：\n\n```\n{row.get('speaker_card', '')}\n```\n")
         lines.append(f"**材料**：\n\n```\n{row.get('material', '')}\n```\n")
     else:
         lines.append("**要点（须在摘要中保住）**："
                      + "；".join(p["text"] for p in row.get("preserve_points", [])) + "\n")
-    title = {"extract": "回合文本", "judge": "叙事", "compress": "摘要"}[mod]
+    title = {"extract": "回合文本", "judge": "叙事", "judge_normal": "叙事（正常样本）",
+             "compress": "摘要"}[mod]
     lines.append(f"**{title}**（{row.get('realized_chars', len(_body(row)))} 字 / "
                  f"卡面目标 {row.get('target_tokens', '?')} token）：\n")
     lines.append("```\n" + _body(row).strip() + "\n```\n")
@@ -182,7 +214,7 @@ def render(out_dir: pathlib.Path, layer: str, module: str,
     **全文（逐条叙事）拆到附录文件**：200 条的全文是 900 KB / 15000 行，
     与"扫一眼看有没有问题"是两种读法 —— 合成一份会让人读不动（首版就是合成的一份）。
     """
-    rows = load_rows(out_dir, layer, module) if rows is None else rows
+    rows = load_module_rows(out_dir, layer, module) if rows is None else rows
     viol = label_violations(out_dir, layer)
     drop = dropped(out_dir, layer)
     f = out_dir / layer / f"{module}.jsonl"
@@ -192,7 +224,8 @@ def render(out_dir: pathlib.Path, layer: str, module: str,
     labels = [(r["id"], x) for r in rows for x in r.get("labels", [])]
     qa = qa_stats(rows)
 
-    src = (f"`{_rel(f)}`（sha256 `{file_digest(f)[:16]}`）" if f.exists()
+    srcs = [(f, file_digest(f)) for f in _source_files(out_dir, layer, module) if f.exists()]
+    src = ("、".join(f"`{_rel(p)}`（sha256 `{d[:16]}`）" for p, d in srcs) if srcs
            else "（行由调用方直接传入）")
     md = [f"# 出库人读清单：{layer} / {module}\n",
           f"- 生成于 {datetime.date.today().isoformat()}；来源 {src}；**{len(rows)} 条**",
@@ -244,7 +277,7 @@ def render(out_dir: pathlib.Path, layer: str, module: str,
 def render_full(out_dir: pathlib.Path, layer: str, module: str,
                 rows: list[dict] | None = None) -> str:
     """附录：逐条全文（供抽查）。"""
-    rows = load_rows(out_dir, layer, module) if rows is None else rows
+    rows = load_module_rows(out_dir, layer, module) if rows is None else rows
     viol = label_violations(out_dir, layer)
     md = [f"# 出库全文：{layer} / {module}（{len(rows)} 条）\n",
           "> 这是**附录**（逐条叙事全文）；总览/风险项/索引/标签总表在清单主体里。\n"]
@@ -274,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     out_dir = pathlib.Path(args.out)
-    rows = load_rows(out_dir, args.layer, args.module)
+    rows = load_module_rows(out_dir, args.layer, args.module)
     if not rows:
         print(f"[✗] {out_dir}/{args.layer}/{args.module}.jsonl 不存在或为空")
         return 1
