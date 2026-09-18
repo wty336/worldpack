@@ -22,6 +22,12 @@ data/**/.work/
 # 清单主体（索引 + 标签总表 + 风险项）入库，那才是人读面。
 reports/*-review-*-full.md
 
+# 训练导出（④）的 jsonl：**纯派生数据**（34 MB，`export_training` 秒级零成本重生成，
+# 且逐条校验过），不像 `data/route-a/*.jsonl` 那样要花 ¥96 才能重造 ⇒ 不入库；
+# `manifest.json`（条数/摘要/种子/切分）入库 —— 它是这次导出的**回执**，
+# 拿着它就能核对任何一次重生成（`dataset_sha256` 可比对）。
+data/training/*.jsonl
+
 # IDE
 .idea/
 .vscode/

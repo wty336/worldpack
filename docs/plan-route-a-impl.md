@@ -3669,7 +3669,6 @@ judge/compress 单价待其首批实测回填。
 train 1314 / dev 1387 条已重生成（`reports/judge-review-{train,dev}-*.md`）。
 
 ### 决策 16 执行：confab 人读清单的 LLM 预分诊（2026-09-18）
-
 **要人判的那一条**：断言的虚构事实**不得由材料已有事实组合推出**。1388 行
 （train 457 / dev 491 / eval 440）逐行读不现实 ⇒ 分两段筛，仪器 `scripts/scenario_factory/confab_triage.py`。
 
@@ -3754,6 +3753,61 @@ confab 19.5% / ooc 17.1% / setting 11.4% / **normal 8.6%** —— 缺陷侧更�
 **残余敞口（如实记）**：172 条可疑里人眼读过 6 条（5 条句式档 + 1 条 pins），
 其余 **166 条仍只经过"程序 + 确认式 LLM"两道** —— 收窄它只能靠人读，
 或等 ⑤训练/⑥评测的分家族切片把问题指出来，没有便宜的替代品。
+
+### ④ 训练格式导出（2026-09-18）
+
+**目标**：三层出库 JSONL → 能直接喂 LoRA 的 SFT 数据，且**输入模板逐字对齐生产调用**
+（plan-phase1-data §4.2 硬纪律：*"否则训练分布与推理分布不一致"*）。
+
+**做法 —— 不重抄任何模板**：
+
+- extract / compress 的 user 内容**直接取出库样本的 `input` 字段** —— 工厂里它就是
+  `assemble.extract_messages` / `assemble.compress_messages`（生产同款）渲染的；
+- judge 的 user 用**生产的 `JudgeSystem._judge_messages`** 现场渲染（复用而非重抄 ⇒ 逐字一致是构造出来的）；
+- 三条 system 全取生产常量（`EXTRACT_SYSTEM` / `JUDGE_SYSTEM` / `COMPRESS_SYSTEM`）。
+
+**目标文本 = 生产输出契约**，且**逐条回读验证**（"契约一致"的可执行形式）：
+
+| 模块 | 目标 | 回读用的生产解析器 |
+| --- | --- | --- |
+| extract | `重要性\|事实`（≤5 条；无可记 → `无`） | `memory.parse_facts`（`无`/`没有` 是哨兵） |
+| judge | 缺陷 → `问题类型：类别：描述`；正常 → `通过` | `judge.parse_verdict`（只看首 10 字） |
+| compress | 摘要正文 | 非空（长度是**提示词指导**，不是硬门，见发现④） |
+
+**层纪律（决策 32：生产批 = train + dev，eval 单独跑再冻结）**：
+
+- `train` 层 → 训练集，再切 **5% 留出**（`(module, seed)` 确定性、≥20 条）；
+- `dev` 层 → **域内验证集** —— 它是**轴值孪生**（决策 19），"换一组轴值还灵不灵"比
+  同分布随机切分更有信息量；
+- `eval` 层 → **不进训练**（冻结的尺子）：导出时用 id 集合硬拦，混进来**直接拒写**
+  （守卫带"必须报警"夹具）。
+
+**结果**：**5265 条** —— 训练侧 2466（948 / 1248 / 270）、留出 136、验证 2663；
+`dataset_sha256 b61b2feadd4a826b`，三条 system 指纹入 manifest。
+
+**混比核对（4:3:2 是采样权重，不是数据量配额）**：
+
+| 模块 | 训练条数 | 自然占比 | 规格权重 | 按权重抽时每 epoch 抽中 |
+| --- | --- | --- | --- | --- |
+| extract | 948 | 38.4% | 44.4% | 0.86× 全量 |
+| judge | 1248 | 50.6% | 33.3% | **1.52×** 全量 |
+| compress | 270 | 10.9% | 22.2% | **0.49×** 全量 |
+
+⇒ judge 偏多、compress 偏少：按规格权重抽时，judge 每 epoch 会重复约 1.5 遍、
+compress 每两 epoch 才过一遍。权重写进 manifest 由训练侧照抽 —— **不替训练侧删数据**
+（judge 的量正是决策 35 灌出来的，删了就把配额工夫白费）。另：compress **148/270** 条摘要
+超提示词目标，`over_target` 带进 meta 让训练侧自己决定要不要过滤。
+
+**入库纪律**：`data/training/*.jsonl`（34 MB）**不入库** —— 纯派生数据、秒级零成本重生成，
+不像 `data/route-a/*.jsonl` 要花 ¥96 才能重造；入 `manifest.json`（条数/摘要/种子/切分/
+`dataset_sha256`），它是这次导出的**回执**，拿着它可核对任何一次重生成。
+
+**守卫 +10**（计数 540 → **550**，`tests/test_export_training.py`）：目标回读（extract/judge）/
+`无` 哨兵 / judge 的 user **就是**生产函数的产物 / 三条 system == 生产常量 / 切分确定且与训练集不相交 /
+**两条"必须报警"**（重要性被改、judge 缺陷目标被写成「通过」）/ eval 层混入即拒写 / 混比与来源文件钉住。
+
+**产出**：`scripts/scenario_factory/export_training.py`（`--check` 只校验不写盘）+
+`data/training/`（9 个 jsonl + manifest.json）。**下一步 ⑤ 训练 / ⑥ 评测未开始。**
 
 ---
 
