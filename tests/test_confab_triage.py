@@ -226,6 +226,29 @@ def test_pin_overrides_a_clean_verdict(tmp_path, monkeypatch):
     assert "人读指定 1 条" in md and _row(0)["id"] in md
 
 
+def test_flip_mark_is_sticky_across_refresh(tmp_path, monkeypatch):
+    """翻转痕迹**粘滞**：`--refresh` 跑第二遍不许把第一遍记下的翻转抹掉。
+
+    实测踩到：改完粗筛口径跑了一次 `--refresh`（28 条 suspect→clean），移完 pins 又跑一次
+    —— 第二遍把 `flipped` 覆写成 False，于是报告说"翻转 0 条"、计划档说"28 条"，两处对不上。
+    审计痕迹必须是单调的：翻过就是翻过（`prev_level` 记**最初**那一档）。
+    """
+    monkeypatch.setattr(ct, "DATA_ROOT", tmp_path)
+    (tmp_path / "train").mkdir(parents=True)
+    (tmp_path / "train" / "judge.jsonl").write_text(
+        json.dumps(_row(0), ensure_ascii=False) + "\n", encoding="utf-8")
+    ct.triage_layer("train", _Stub(), echo=lambda *a: None)                 # → clean
+    ct.triage_layer("train",                                              # 重判 → suspect
+                    _Stub('{"断言": "否", "材料有依据": "否", "依据": "问句", "材料出处": ""}'),
+                    redo={_row(0)["id"]}, echo=lambda *a: None)
+    assert ct.read_verdicts("train")[_row(0)["id"]]["flipped"] is True
+
+    ct.refresh_layer("train", echo=lambda *a: None)          # 只重算第一段
+    e = ct.read_verdicts("train")[_row(0)["id"]]
+    assert e["flipped"] is True, "第二遍 refresh 把翻转痕迹抹掉了"
+    assert e["prev_level"] == "clean", f"prev_level 应记最初那一档，实际 {e['prev_level']}"
+
+
 def test_review_list_mismatch_is_flagged(tmp_path, monkeypatch, capsys):
     """人读清单与出库 confab 行不一致 = 清单过期（决策 37 踩过两次的坑）。"""
     monkeypatch.setattr(ct, "DATA_ROOT", tmp_path)

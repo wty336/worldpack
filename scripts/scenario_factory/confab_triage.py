@@ -349,8 +349,13 @@ def refresh_layer(layer: str, *, echo=print) -> dict:
         hard = hard_checks(row, anchor)
         signals = suspect_signals(row, anchor)
         level, why = classify(hard, signals, old.get("verdict"))
+        # 翻转痕迹**粘滞**：一旦翻过就一直是"翻过"，且 `prev_level` 记**最初**那一档。
+        # 为什么（实测踩到）：`--refresh` 跑第二遍时，第一遍记下的 28 条翻转被覆写成
+        # `flipped=False` —— 报告说"翻转 0 条"、计划档说"28 条"，两处对不上。
+        already = bool(old.get("flipped"))
         out.append({**old, "level": level, "why": why,
-                    "prev_level": old.get("level"), "flipped": old.get("level") != level})
+                    "prev_level": old.get("prev_level") if already else old.get("level"),
+                    "flipped": already or old.get("level") != level})
     for e in out:
         append_verdict(layer, e)
     flipped = sum(1 for e in out if e.get("flipped"))
