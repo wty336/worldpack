@@ -16,8 +16,9 @@
 | 机器 | ✅ 2× A800-SXM4-80GB（**NVLink 未启用**，拓扑 PHB）、32 核、472 GB 内存、磁盘可用 124 GB |
 | 环境 | ✅ `/home/ubuntu/venv`：torch 2.6.0+cu124 / transformers 5.17.0 / peft 0.20.0 / accelerate 1.15.0 / bitsandbytes 0.50.2 / datasets 5.0.1 / trl 1.13.0；`cuda=True 卡数=2 bf16=True` |
 | 仓库 | ✅ `/home/ubuntu/game_agent` 已是 git 仓库（跟踪 `origin/main`，公开仓库 ⇒ 免凭据 `git pull`） |
-| 权重 | ⏳ **Qwen3-14B 下载中**（bf16，29.55 GB / 18 个文件） |
-| 训练脚本 | ❌ **未写**（本轮要交付的第一件东西，见 §4） |
+| 权重 | ⏳ **Qwen3-14B 下载中**（bf16，29.55 GB / 18 个文件；已下 ~20 GB） |
+| 训练脚本 | ✅ **已写好并通过 render 阶段全量验证**（2466 条，关 thinking 守卫全过）—— 见 §4 |
+| 实测 token | ✅ 4.04 M token/epoch（不加权）/ 4.83 M（按 4:3:2）—— 见 §3.1 |
 
 ---
 
@@ -115,8 +116,8 @@ text = tokenizer.apply_chat_template(
 | 底座 | `Qwen/Qwen3-14B`（bf16，本地路径 `/home/ubuntu/models/Qwen3-14B`） | 决策 38 |
 | 适配器 | **本轮只训"侧信道组"一个 LoRA**（extract/judge/compress 合并多任务）；主回合 LoRA 属 Phase 2 | §5 方案 A |
 | 混比 | `extract : judge : compress = 4 : 3 : 2`（**采样权重**，见 `data/training/manifest.json`） | §5 |
-| 序列长度 | **16384**（覆盖 100% 样本：最长 14,805 字符；compress p95 12,655） | 实测 |
-| packing | 开（≈334 个 packed 序列/epoch） | 提吞吐 |
+| 序列长度 | **16384**（实测最长 **11,611** token ⇒ 零截断，还有 29% 余量） | 2026-09-18 真 tokenizer 实测 |
+| packing | 开（≈295 个 packed 序列/epoch） | 提吞吐 |
 | LoRA | r=16, alpha=32, dropout=0.05, target = 全部线性层（q/k/v/o + gate/up/down） | 常规起点 |
 | 精度 | bf16（实测 `bf16=True`），**不用 QLoRA**（80 GB 卡上没必要，还慢） | §2 显存账 |
 | 梯度检查点 | 开 | 长序列省显存 |
@@ -130,6 +131,23 @@ text = tokenizer.apply_chat_template(
 **可复现字段（写进训练报告，§5 要求）**：`seed` / `epochs` / `lr` / `dataset_sha256`
 （= `b61b2feadd4a826b`）/ 三条 prompt 指纹（`EXTRACT_SYSTEM` / `JUDGE_SYSTEM` / `COMPRESS_SYSTEM`，
 在 `manifest.json` 的 `prompts` 里）/ 底座 `model_root` / `transformers`+`peft`+`trl` 版本号。
+
+### 3.1 实测 token 数（2026-09-18，`--stage render` 在真 tokenizer 上跑出来的）
+
+| 模块 | 条数 | token 总量 | 中位 | 最大 |
+| --- | --- | --- | --- | --- |
+| extract | 948 | 1,313,608 | 1,043 | 3,195 |
+| judge | 1,248 | 1,624,609 | 1,102 | 2,664 |
+| compress | 270 | 1,104,035 | 2,366 | 11,611 |
+| **合计** | **2,466** | **4,042,252** | | |
+
+- **token/字符 ≈ 0.74**（此前按 0.65 估、按字符直算是 1.0 ⇒ 从 −12% 到 +35% 的区间，现在是实测）；
+- **一个 epoch（不加权）4.04 M token**；**按 4:3:2 抽一个 epoch ≈ 4.83 M token**
+  —— compress 只占 11% 的**条数**，却占 **46%** 的 token（均长 4,089 vs extract 1,386）；
+- **步数**：4.83 M ÷ 16384 ≈ **295 packs/epoch** ÷ 4 packs/步 ≈ **74 步/epoch**
+  ⇒ 5 epoch ≈ 370 步、8 epoch ≈ 590 步（LoRA 常规区间 ✓）；
+- **ETA（估）**：按 2 卡 bf16 LoRA 2.5~4k token/s ⇒ **20~32 分钟/epoch**，
+  5 epoch ≈ **1.7~2.7 小时**。**这个数在 §5 试跑后要用实测 tok/s 替换**。
 
 ---
 

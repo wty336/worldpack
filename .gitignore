@@ -28,6 +28,10 @@ reports/*-review-*-full.md
 # 拿着它就能核对任何一次重生成（`dataset_sha256` 可比对）。
 data/training/*.jsonl
 
+# 训练产物（⑤）：adapter / 日志 / 指标 —— 机器产出、体积随实验增长，
+# 人读小结（训练报告）另存 `reports/` 再入库。
+runs/
+
 # IDE
 .idea/
 .vscode/
