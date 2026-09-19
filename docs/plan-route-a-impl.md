@@ -3842,6 +3842,21 @@ deepspeed 不需要、`sdpa` 可替代 flash-attn），但 `datasets` / `trl` �
 
 **新工具**：`scripts/remote_run.py` —— 远程执行（主机/用户/密码**全走环境变量，仓库不留凭据**；
 远端 stdout/stderr 分开透传 + 带回退出码，不让"跑完了"冒充"成功了"）。
+复杂命令走 `--script`（本地脚本经 SFTP 送上去整份执行）——
+**本机 shell 的引号会在传参时被吃掉**（我为此连踩两次：命令被拆成多个参数、`--dry-run` 被当成自己的选项）。
+
+**置备完成（2026-09-18，两件事都做完并验证）**：
+
+| 项 | 结果 |
+| --- | --- |
+| **git 仓库化** | `git init -b main` + remote + `fetch` + `reset --hard origin/main` ⇒ HEAD **79fbc75**、跟踪 `origin/main`、**改动/未跟踪 0 条**（与远端逐字节一致），11 项派生数据被 `.gitignore` 保护、原样保留 |
+| **仓库是公开的** | `git ls-remote` **匿名**即返回 ⇒ 服务器 `git pull` **无需任何 token**（实测 `git pull --ff-only` 报 `Already up to date`） |
+| **装 datasets / trl** | `datasets 5.0.1` + `trl 1.13.0`；装前 `pip install --dry-run` 确认**只加叶子包**（aiohttp/fsspec/dill 等 16 个），**torch 2.6.0+cu124 / transformers 5.17.0 / peft 0.20.0 一个没动**；`pip check` 干净；`cuda=True 卡数=2 bf16=True` |
+
+**两个脚本**（幂等、无凭据）：`scripts/gpu_box_setup.sh`（置备）+
+`scripts/gpu_box_check.sh`（**起飞前检查**：git 落后几个提交 / 数据在不在 / 卡空不空 / 包齐不齐 / 权重有没）。
+
+**⑤ 的唯一前置未满足**：**Qwen2.5-14B-Instruct 权重未下载**（机器上只有 Qwen3-8B）。
 
 ---
 

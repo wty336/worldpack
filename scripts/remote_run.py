@@ -19,16 +19,24 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
+import pathlib
 import sys
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="远程执行命令（凭据走环境变量）")
-    p.add_argument("command", help="要执行的 shell 命令（一整条字符串）")
+    p.add_argument("command", nargs="?", help="要执行的 shell 命令（简单一行用）")
+    p.add_argument("--script", default=None,
+                   help="本地脚本文件：经 SFTP 上传后整份执行 —— **复杂命令走这条**，"
+                        "免得跟本机 shell 的引号打架（我在这上面反复吃过亏）")
     p.add_argument("--cwd", default=None, help="先 cd 到该目录")
     p.add_argument("--timeout", type=float, default=1800.0, help="秒（默认 30 分钟）")
     args = p.parse_args(argv)
+    if bool(args.command) == bool(args.script):
+        print("[✗] 给一个：位置命令 或 --script（不要都给/都不给）", file=sys.stderr)
+        return 2
 
     host = os.environ.get("DSH_SSH_HOST")
     user = os.environ.get("DSH_SSH_USER")
@@ -46,11 +54,26 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
-    cmd = f"cd {args.cwd} && {args.command}" if args.cwd else args.command
     cli = paramiko.SSHClient()
     cli.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     cli.connect(host, username=user, password=pw, timeout=30, banner_timeout=30)
     try:
+        if args.script:
+            local = pathlib.Path(args.script)
+            body = local.read_text(encoding="utf-8")
+            # 远端路径按内容摘要命名：同内容重跑即幂等，也不覆盖别的脚本
+            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
+            remote = f"/tmp/dsh_remote_{digest}.sh"
+            sftp = cli.open_sftp()
+            with sftp.file(remote, "w") as fh:
+                fh.write(body)
+            sftp.close()
+            print(f"[上传] {local.name} → {remote}（{len(body)} 字节）", file=sys.stderr)
+            cmd = f"bash {remote}"
+        else:
+            cmd = args.command
+        if args.cwd:
+            cmd = f"cd {args.cwd} && {cmd}"
         _, out, err = cli.exec_command(cmd, timeout=args.timeout)
         text = out.read().decode("utf-8", "replace")
         errt = err.read().decode("utf-8", "replace")
