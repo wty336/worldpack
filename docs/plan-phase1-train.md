@@ -12,13 +12,15 @@
 
 | 项 | 状态 |
 | --- | --- |
-| 数据 | ✅ `data/training/` 9 个 jsonl —— 训练 2466 / 留出 136 / 验证（dev 层）2663，`dataset_sha256 b61b2feadd4a826b` |
+| 数据 | ✅ `data/training/` 9 个 jsonl —— 训练 2466 / 留出 136 / 验证（dev 层）2663，`dataset_sha256 b61b2feadd4a826b`（2026-09-19 服务器侧复算一致） |
 | 机器 | ✅ 2× A800-SXM4-80GB（**NVLink 未启用**，拓扑 PHB）、32 核、472 GB 内存、磁盘可用 124 GB |
-| 环境 | ✅ `/home/ubuntu/venv`：torch 2.6.0+cu124 / transformers 5.17.0 / peft 0.20.0 / accelerate 1.15.0 / bitsandbytes 0.50.2 / datasets 5.0.1 / trl 1.13.0；`cuda=True 卡数=2 bf16=True` |
+| 环境 | ✅ `/home/ubuntu/venv`：torch 2.6.0+cu124 / transformers 5.17.0 / peft 0.20.0 / accelerate 1.15.0 / bitsandbytes 0.50.2 / datasets 5.0.1 / trl 1.13.0 / **liger-kernel 0.8.3**；`cuda=True 卡数=2 bf16=True` |
 | 仓库 | ✅ `/home/ubuntu/game_agent` 已是 git 仓库（跟踪 `origin/main`，公开仓库 ⇒ 免凭据 `git pull`） |
-| 权重 | ⏳ **Qwen3-14B 下载中**（bf16，29.55 GB / 18 个文件；已下 ~20 GB） |
-| 训练脚本 | ✅ **已写好并通过 render 阶段全量验证**（2466 条，关 thinking 守卫全过）—— 见 §4 |
-| 实测 token | ✅ 4.04 M token/epoch（不加权）/ 4.83 M（按 4:3:2）—— 见 §3.1 |
+| 权重 | ✅ Qwen3-14B 已下载并核验（28 GB / 18 个文件；`max_position_embeddings=40960` ✓） |
+| 训练脚本 | ✅ **已写好并通过 render 阶段全量验证**（2466 条，关 thinking 守卫全过）—— 见 §4；**环境排障四项已固化进脚本**，见 `reports/train-debug-20260919.md` |
+| 100 步试跑 | ✅ **已通过**（30 步版）：峰值 **45.6 GB**、**2963 tok/s**、21.8s/步、loss 1.49→1.13 —— 见 `reports/train-debug-20260919.md` §4 |
+| 正式训练 | ✅ 2026-09-19 17:56 起跑（5 epoch，ETA ≈2.3 h，nohup 日志 `/tmp/train_ep5.log`） |
+| 实测 token | ✅ 4.04 M token/epoch（不加权）/ **4.84 M（按 4:3:2 加权池实测）**—— 见 §3.1 |
 
 ---
 
@@ -146,8 +148,9 @@ text = tokenizer.apply_chat_template(
   —— compress 只占 11% 的**条数**，却占 **46%** 的 token（均长 4,089 vs extract 1,386）；
 - **步数**：4.83 M ÷ 16384 ≈ **295 packs/epoch** ÷ 4 packs/步 ≈ **74 步/epoch**
   ⇒ 5 epoch ≈ 370 步、8 epoch ≈ 590 步（LoRA 常规区间 ✓）；
-- **ETA（估）**：按 2 卡 bf16 LoRA 2.5~4k token/s ⇒ **20~32 分钟/epoch**，
-  5 epoch ≈ **1.7~2.7 小时**。**这个数在 §5 试跑后要用实测 tok/s 替换**。
+- **ETA（实测，2026-09-19 smoke）**：**2963 tok/s**（双卡合计）、**21.8 s/步**、
+  **75 步/epoch**（wrapped 打包切 ~300 块）、5 epoch ≈ **2 小时 17 分**。
+  估算区间（20~32 分/epoch）里的 tok/s 假设偏乐观（实测 ~1480/卡），真实 ETA 在区间上沿。
 
 ---
 
@@ -243,7 +246,7 @@ python -m scripts.train_sidechannel --stage render --tokenizer <tokenizer 目录
 | --- | --- | --- |
 | **thinking 关不掉** | 输出以 ` thinking` 开头、解析器返回"未知" | §2.2 换服务侧旗标 → 仍不行则引擎侧加 kwargs → 30 分钟内搞不定就**回退 Qwen2.5**（决策 38 回退条款） |
 | **小数据过拟合** | holdout 早降、dev 反升 | 减 epoch；judge 材料复用率高（1018 种材料 / 1093 条缺陷样本，最多 1 份材料 13 条共用）⇒ 材料级记忆风险，看 dev 曲线 |
-| **显存不足** | 16K + 有效批 16 OOM | 降有效批（**不许截断序列**）；仍不行开 QLoRA（4-bit，慢 1.5 倍） |
+| **显存不足** | ~~16K + 有效批 16 OOM~~ **已解决**：实测峰值 45.6 GB（余量 34 GB） | 根因是 trl 1.13/transformers 5.17 的四个环境坑（fp32 加载 56GB、检查点不启用、bfd 强制 padding-free、warmup_ratio 移除），非配方问题——处置已固化进脚本，见 `reports/train-debug-20260919.md`。若再现：显式 `--grad-offload`（−6.5GB）→ `--qlora`（最后手段）；**不许截断序列** |
 | **NVLink 缺失** | — | 只用 **DDP**（LoRA 梯度同步量小，无影响）；**不要**上张量并行 / ZeRO-3 |
 | **LoRA 摸不到门禁** | judge T1 confab 仍低于零样本基线 | 先看是不是数据/提示词问题；确属容量不足才考虑**全参微调**（bf16+Adam ≈112 GB ⇒ 两张卡 ZeRO-2） |
 | **判"此路不通"** | 契约合规修不好，或 T1 切片**低于零样本基线** | 停训，回头查数据（`reports/confab-triage-20260918.md` 的 172 条可疑档正好是候选） |
@@ -270,11 +273,12 @@ python -m scripts.scenario_factory.export_training   # 重建训练集（零成�
 
 ## 附：进度清单
 
-- [ ] 权重下载完成并核验（18 个文件 / 29.55 GB / `config.json` 的 `max_position_embeddings=40960`）
-- [x] **`scripts/train_sidechannel.py` + `train_sidechannel_smoke.sh` 已写好**（守卫 12 条，本机全绿）
+- [x] 权重下载完成并核验（18 个文件 / 28 GB / `config.json` 的 `max_position_embeddings=40960`）
+- [x] **`scripts/train_sidechannel.py` + `train_sidechannel_smoke.sh` 已写好**（守卫 15 条，含加权池接线 2 条）
+- [x] 环境排障四项已固化进脚本并有回归哨兵（模型 dtype 打印 / 检查点 0 标志位守卫）—— `reports/train-debug-20260919.md`
 - [ ] §2.2 关 thinking 在**服务侧**验证通过（curl 返回不以 `<think>` 开头）
 - [ ] §2.3 端到端守卫通过（引擎真实路径，解析失败率 0）
-- [ ] §5 100 步试跑：tok/s、显存峰值、token/epoch 三个数落档 + ETA 重算
-- [ ] §6 5 epoch 正式训练完成，adapter 与 `train_log.jsonl` 落盘
+- [x] §5 试跑（30 步）：45.6 GB / 2963 tok/s / 4.84M token per epoch 落档 + ETA 实测 2.3 h
+- [ ] §6 5 epoch 正式训练完成，adapter 与 `train_log.jsonl` 落盘（进行中：2026-09-19 17:56 起跑）
 - [ ] §7 自检五项全过（**契约合规 0 失败**是硬门）
 - [ ] §8 交接 ⑥：Qwen3-14B 基座基线重测清单确认
