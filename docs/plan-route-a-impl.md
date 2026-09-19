@@ -3809,6 +3809,40 @@ compress 每两 epoch 才过一遍。权重写进 manifest 由训练侧照抽 �
 **产出**：`scripts/scenario_factory/export_training.py`（`--check` 只校验不写盘）+
 `data/training/`（9 个 jsonl + manifest.json）。**下一步 ⑤ 训练 / ⑥ 评测未开始。**
 
+### GPU 机实测踩点（2026-09-18，为 ⑤ 训练）
+
+**硬件**：2× **A800-SXM4-80GB**（驱动 580.178.04 / CUDA 13.0），32 核 / 472 GB 内存；
+磁盘 443 G 用 301 G（**可用 124 G**；`medical-train` 占 251 G 属另一个项目）。
+
+> ⚠️ **NVLink 实测全 `inActive`、拓扑 `PHB`** —— 虽是 SXM4 形态，**两卡之间没有 NVLink 直连**
+> （走 PCIe 主机桥）。⇒ **DDP + LoRA 无影响**（只同步很小的梯度）；
+> **张量并行 / ZeRO-3 会明显吃亏**，若要走全参微调就用 ZeRO-2 或单卡 + CPU offload。
+
+**环境（实测）**：
+
+| venv | 关键包 | CUDA |
+| --- | --- | --- |
+| `/home/ubuntu/venv`（训练） | torch 2.6.0+cu124 · transformers 5.17.0 · peft 0.20.0 · accelerate 1.15.0 · bitsandbytes 0.50.2 | 可用、2 卡可见 ✓ |
+| `/home/ubuntu/venv-vllm`（推理） | vllm 0.29.0 · torch 2.13.0+cu130 | 可用 ✓ |
+
+缺 `trl` / `datasets` / `deepspeed` / `flash_attn` —— 都不是拦路虎（LoRA 用 DDP 即可、
+deepspeed 不需要、`sdpa` 可替代 flash-attn），但 `datasets` / `trl` 装上会省事。
+联网：huggingface.co **200 / 0.83 s**、hf-mirror 200、modelscope 302 ✓ ⇒ 下模型可行。
+
+**权重缺口**：机器上只有 **Qwen3-8B（16 G）**，**计划指定的 Qwen2.5-14B-Instruct 不在**
+（计划里记过 Qwen3 的坑：默认 chat template 带 thinking，而引擎 SDK 未传
+`chat_template_kwargs`）⇒ ⑤ 之前要下 14B（约 30 G，空间够）。
+
+**代码同步**：`/home/ubuntu/game_agent` **不是 git 仓库**（无 `.git`），是文件拷贝；
+`export_training.py` 的 sha256 与本机**逐字节一致**（`92fdb43566076e63`）⇒ 内容是最新的。
+
+**跨机复现性（顺带验证 ④）**：远端缺 `data/training/*.jsonl`（派生数据、被 gitignore，
+而这份拷贝来自仓库内容）⇒ 在远端一条命令重建，得到**同一个 `dataset_sha256 b61b2feadd4a826b`**，
+5265 条目标回读全过。**④ 的导出可跨机复现**，"manifest 当回执"的用法被实测验证。
+
+**新工具**：`scripts/remote_run.py` —— 远程执行（主机/用户/密码**全走环境变量，仓库不留凭据**；
+远端 stdout/stderr 分开透传 + 带回退出码，不让"跑完了"冒充"成功了"）。
+
 ---
 
 ## 自检（写作技能要求）
