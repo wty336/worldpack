@@ -37,9 +37,13 @@ echo "=== ① render 阶段（零 GPU）：渲染守卫 + **实测 token 数** =
 
 echo
 echo "=== ② smoke 阶段：${STEPS} 步 × ${NPROC} 卡（每卡批 ${PER_DEVICE} × 累积 ${GRAD_ACCUM}）==="
+EXTRA=""
+[ "${QLORA:-}" = "1" ] && EXTRA="$EXTRA --qlora" && echo "（QLORA=1：显式 4-bit）"
+[ "${LIGER:-}" = "1" ] && EXTRA="$EXTRA --liger" && echo "（LIGER=1：融合损失，16K 实测 −26 GB）"
+[ "${OFFLOAD:-}" = "1" ] && EXTRA="$EXTRA --grad-offload" && echo "（OFFLOAD=1：检查点激活进内存）"
 CUDA_VISIBLE_DEVICES=0,1 "$PY" -m torch.distributed.run --nproc_per_node="$NPROC" \
   -m scripts.train_sidechannel --stage smoke --model "$MODEL" --out "$OUT" \
-  --max-steps "$STEPS" --per-device-batch "$PER_DEVICE" --grad-accum "$GRAD_ACCUM"
+  --max-steps "$STEPS" --per-device-batch "$PER_DEVICE" --grad-accum "$GRAD_ACCUM" $EXTRA
 
 echo
 echo "=== ③ 试跑小结（要把这三行抄进手册/训练报告）==="
