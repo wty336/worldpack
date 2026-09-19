@@ -86,14 +86,22 @@ text = tokenizer.apply_chat_template(
 )
 ```
 
-⚠️ Qwen3 在 `enable_thinking=False` 时，模板会在 assistant 前缀里塞一个**空的 think 块**；
-因此**损失只算答案段**（`train_on_responses_only` 或等价做法），答案段里**不得出现 ` thinking`**。
+**2026-09-18 在真 tokenizer 上量出来的渲染形态**（不是推测）：
+
+```
+<|im_start|>assistant\n<think>\n\n</think>\n\n      ← 空 think 块被预填进 **prompt**
+通过<|im_end|>\n                                     ← 答案段（**只对它算损失**）
+```
+
+⇒ ① 守卫要断言 `<think>`（**不带空格**）——第一版写成 `" thinking"` 是**假阴性**；
+② 答案段由**同一次渲染切出**（`full[len(prompt):]`），边界由构造保证，不另写拼接逻辑；
+③ 服务侧 `enable_thinking=False` 时 prompt 同样带这个空块，模型直接从答案续写 ⇒ 两侧一致。
 
 ### 2.3 守卫（三条，缺一不可）
 
-1. **渲染守卫**：数据准备时断言 —— 渲染串含预期的 assistant 前缀，且**答案段无 ` thinking`**；
-   随机 20 条人工可读的样本落盘供抽查。
-2. **服务守卫**：起服务后 `curl` 一次，断言返回**不以 ` thinking` 开头**。
+1. **渲染守卫**（`scripts/train_sidechannel.py` 的 `guard_render`）：答案段无 `<think>`、
+   生成前缀以空 think 块结尾；再落 20 条可读样本供抽查。
+2. **服务守卫**：起服务后 `curl` 一次，断言返回**不以 ` thinking`/`<think>` 开头**。
 3. **端到端守卫**（最硬的一条）：走**引擎真实路径**（`DEEPSEEK_BASE_URL` 指向本地 vLLM）
    跑 3 条 judge + 3 条 extract，断言 `parse_verdict` / `parse_facts` **能正确吃下**输出
    （判官不得返回 `None`）。**解析失败率必须为 0**（plan-phase1-data §6.3 第 4 条）。
@@ -113,7 +121,7 @@ text = tokenizer.apply_chat_template(
 | 精度 | bf16（实测 `bf16=True`），**不用 QLoRA**（80 GB 卡上没必要，还慢） | §2 显存账 |
 | 梯度检查点 | 开 | 长序列省显存 |
 | 优化器 / lr | AdamW / **1e-4**，cosine，warmup 3% | LoRA 常规 |
-| 有效批 | 目标 8~16 个 packed 序列（全局） | 见下 |
+| 有效批 | **每卡 1 × 累积 2 × 2 卡 = 4 个 packed 序列/步** | **步数是主约束**：334 packs/epoch ÷ 4 ≈ **84 步/epoch**；LoRA 通常要 200~1000 步，5 epoch ≈ 420 步 ✓。若取 8~16 packs/步，5 epoch 只有 105~210 步，**偏少** |
 | epoch | **3 / 5 / 8 三档对照**（每档 ≈1~2.5 h，实测后定） | §5 早停纪律 |
 | 早停依据 | **留出 136 条 + dev 2663 条**（轴值孪生，决策 19）；dev 不再降即停 | 决策 19 |
 | 保存 | **只存 adapter**（几十~几百 MB），每 epoch + 最终各一份 | 便宜，便于对照 |
@@ -125,19 +133,31 @@ text = tokenizer.apply_chat_template(
 
 ---
 
-## 4. 待写的训练脚本（本轮第一件交付物）
+## 4. 训练脚本（**已写好**：`scripts/train_sidechannel.py`）
 
-新建 `scripts/train_sidechannel.py`（在那台机器上跑，本机不跑）。设计要求：
+三个 stage，对应手册三步：
 
-1. **数据**：读 `data/training/{module}.train.jsonl`，按 4:3:2 **加权采样**（不删数据、不改文件）；
-   `dev` 作验证集；`holdout` 另作同分布留出。
-2. **渲染**：`apply_chat_template(..., enable_thinking=False)` + **只对答案段算损失**（§2.2）。
-3. **配置**：超参全部走 CLI/常量，**每条都写进训练报告**；默认值即 §3 表。
-4. **产物**：`runs/<训练名>/` 下 —— `adapter/`（LoRA 权重）、`config.json`（全部超参）、
-   `train_log.jsonl`（每步 loss/lr/**tok·s⁻¹**/显存峰值）、`holdout_metrics.json`、`README.md`（人读小结）。
-5. **训练名含关键超参**（如 `qwen3-14b-lora-r16-ep5-4-3-2`），避免多组对照互相覆盖。
-6. **不许静默降级**：OOM 就报错退出并打印当前配置（不许偷偷减 batch/截断序列）——
-   "训练跑完了"不等于"按配置训练完了"。
+| stage | 需要什么 | 干什么 |
+| --- | --- | --- |
+| `render` | 只要 **tokenizer**（零 GPU） | 渲染全量训练集 + 跑关 thinking 守卫 + **实测 token 数**（替换字符折算的估算）+ 落 20 条可读样本 |
+| `smoke` | 权重 + GPU | 100 步试跑，`train_log.jsonl` 记 loss/lr/每步耗时/显存峰值 |
+| `train` | 权重 + GPU | 正式训练，每 epoch 存 adapter，末尾存 holdout 指标与可复现字段 |
+
+设计要点（与手册 §4 的六条要求一一对应）：
+
+1. **数据**：读 `data/training/{module}.{split}.jsonl`；`MixedSampler` 按 4:3:2 抽一个 epoch
+   —— **按模块定条数（最大余数法）+ 交错分片**，于是"跨卡不重""各卡步数相同"是**构造保证**的
+   （初版各自有放回抽样会被两张卡抽到同一条：浪费算力且让重复样本在 DDP 梯度平均里被加权）；
+2. **渲染**：`enable_thinking=False`，prompt/completion 由同一次渲染切出，`guard_render` 逐条断言；
+3. **配置**：全部超参进 `runs/<name>/config.json`；
+4. **产物**：`adapter/` + `config.json` + `train_log.jsonl` + `holdout_metrics.json` + `README.md`；
+5. **训练名含关键超参**：`qwen3-14b-lora-r16-ep5-4-3-2`；
+6. **不许静默降级**：OOM / 渲染守卫失败 / 样本超 `seq_len` / trl API 不匹配，一律**报错退出并打印当前配置**。
+
+**守卫 12 条**（`tests/test_train_sidechannel.py`，不需要 GPU）：渲染切分与三条关 thinking 断言
+（含"假阴性"那条的回归）/ 模板变更检测 / 渲染不自洽检测 / 混比 4:3:2 绊线 / 跨任务打乱 /
+换 epoch 换顺序且可复现 / **DDP 分片不重不漏且等长** / 小模块被重复采样 / 缺模块报错 /
+数据读取容错 / 训练名带超参。
 
 ---
 
@@ -146,9 +166,10 @@ text = tokenizer.apply_chat_template(
 **目的**：把估算法换成实测法 —— 量三个数，然后重算 ETA。
 
 ```bash
-# 在本机（凭据走环境变量）：
-uv run --quiet --with paramiko python scripts/remote_run.py \
-    --cwd /home/ubuntu/game_agent --script scripts/train_sidechannel_smoke.sh
+# 在 GPU 机上（代码目录内）；权重下完后一条命令跑完 ①②③
+bash scripts/train_sidechannel_smoke.sh
+# 只跑渲染守卫（零 GPU，只要 tokenizer，权重没下完也能跑）：
+python -m scripts.train_sidechannel --stage render --tokenizer <tokenizer 目录>
 ```
 
 **要记录的三个数**（写进 `train_log.jsonl` 与报告）：
@@ -232,9 +253,9 @@ python -m scripts.scenario_factory.export_training   # 重建训练集（零成�
 ## 附：进度清单
 
 - [ ] 权重下载完成并核验（18 个文件 / 29.55 GB / `config.json` 的 `max_position_embeddings=40960`）
-- [ ] §2.2 关 thinking 在**服务侧**验证通过（curl 返回不以 ` thinking` 开头）
+- [x] **`scripts/train_sidechannel.py` + `train_sidechannel_smoke.sh` 已写好**（守卫 12 条，本机全绿）
+- [ ] §2.2 关 thinking 在**服务侧**验证通过（curl 返回不以 `<think>` 开头）
 - [ ] §2.3 端到端守卫通过（引擎真实路径，解析失败率 0）
-- [ ] §4 训练脚本 `scripts/train_sidechannel.py` + smoke 脚本写完
 - [ ] §5 100 步试跑：tok/s、显存峰值、token/epoch 三个数落档 + ETA 重算
 - [ ] §6 5 epoch 正式训练完成，adapter 与 `train_log.jsonl` 落盘
 - [ ] §7 自检五项全过（**契约合规 0 失败**是硬门）
