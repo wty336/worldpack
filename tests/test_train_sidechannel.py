@@ -12,8 +12,8 @@ from collections import Counter
 
 import pytest
 
-from scripts.train_sidechannel import (MIX, MixedSampler, guard_render, load_split,
-                                       render_pair, run_name)
+from scripts.train_sidechannel import (MIX, MixedSampler, build_weighted_pool, guard_render,
+                                       load_split, render_pair, run_name)
 
 # Qwen3 实测形态（2026-09-18 在真 tokenizer 上量出来的）：
 #   enable_thinking=False ⇒ 生成前缀以「空 think 块」结尾，答案段干净
@@ -159,6 +159,36 @@ def test_sampler_refuses_a_missing_module():
     """混比里声明了但没有数据的模块 ⇒ 报错（数据没导出全时必须响亮地失败）。"""
     with pytest.raises(RuntimeError, match="没有数据"):
         MixedSampler(["extract"], MIX, seed=1)
+
+
+# --- 2b. 加权池接线（踩过的坑：MixedSampler 只写了类+测试、从未传进 trainer）----
+
+def _pairs(n_ex=400, n_ju=300, n_co=100):
+    def row(tag):
+        return {"id": tag, "module": tag.split("-")[0], "prompt": "", "completion": ""}
+    return ([row(f"extract-{i}") for i in range(n_ex)]
+            + [row(f"judge-{i}") for i in range(n_ju)]
+            + [row(f"compress-{i}") for i in range(n_co)])
+
+
+def test_weighted_pool_matches_mix_exactly_and_reuses_only_real_rows():
+    """接线守卫：池子条数 = 训练集条数、配比按最大余数法精确、id 全部真实。"""
+    pairs = _pairs()
+    pool = build_weighted_pool(pairs, seed=1)
+    share = Counter(p["module"] for p in pool)
+    assert len(pool) == len(pairs), "一个 epoch 的池子条数应与训练集相同（不删数据）"
+    assert share == {"extract": 355, "judge": 267, "compress": 178}, share  # 800 行 4:3:2 精确值
+    # 采样权重 ⇒ 大模块被下采样（池子只含抽中的行）、小模块重复采样；id 必须是真实的
+    assert {p["id"] for p in pool} <= {p["id"] for p in pairs}, "池子里不得出现编造的 id"
+    dup = [i for i, c in Counter(p["id"] for p in pool).items() if c > 1]
+    assert any(i.startswith("compress-") for i in dup), "compress 池 100 抽 178 ⇒ 必须重复采样"
+
+
+def test_weighted_pool_is_deterministic():
+    pairs = _pairs()
+    assert build_weighted_pool(pairs, seed=9) == build_weighted_pool(pairs, seed=9)
+    assert build_weighted_pool(pairs, seed=9) != build_weighted_pool(pairs, seed=10), (
+        "换 seed 应换池（可复现 ≠ 一成不变）")
 
 
 # --- 3. 数据读取与训练名 -----------------------------------------------------

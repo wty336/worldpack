@@ -37,6 +37,7 @@ import pathlib
 import random
 import sys
 import time
+from collections import Counter
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data" / "training"
@@ -55,6 +56,9 @@ DEFAULTS = dict(
     grad_accum=2,           # ⇒ 全局有效批 = 1 × 2 × 卡数；步数是主约束（见手册 §3）
     packing=True,
     logging_steps=5, save_each_epoch=True,
+    qlora=False,            # 显式换 4-bit（手册 §9 显存不足的处置）；默认 bf16 全精度
+    liger=False,            # 融合线性交叉熵：16K 实测 −26 GB（logits/fp32 损失不物化）
+    grad_offload=False,     # 检查点激活 offload 到内存：实测 −6.5 GB、+0.5s/步（与 liger 勿叠加）
 )
 
 
@@ -123,6 +127,16 @@ def build_pairs(tokenizer, rows: list[dict]) -> list[dict]:
         out.append({"id": r["id"], "module": r["module"], "prompt": prompt,
                     "completion": completion})
     return out
+
+
+def build_weighted_pool(pairs: list[dict], seed: int) -> list[dict]:
+    """按 4:3:2 采样权重抽一个 epoch 的行池（复用 MixedSampler：最大余数法定条数 +
+    小模块重复采样、跨任务打乱）。trl 的 packing（wrapped，整池拼接切片）吃整个池子
+    ⇒ token 混比 = 采样权重；逐 epoch 换序由 Trainer 的采样器负责（seed 固定 ⇒ 可复现）。
+    （踩过的坑：初版 MixedSampler 只写了类+测试，从未传进 trainer —— 训练吃的是自然混比。）"""
+    sampler = MixedSampler([p["module"] for p in pairs], MIX, seed)
+    sampler.set_epoch(0)
+    return [pairs[i] for i in sampler]
 
 
 # ---------------------------------------------------------------------------
@@ -243,8 +257,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- 渲染 + 守卫（render 阶段到此为止，零 GPU）--------------------------
     pairs = build_pairs(tokenizer, train_rows)
-    tok_counts = {m: [len(tokenizer(p["prompt"] + p["completion"])["input_ids"])
-                      for p in pairs if p["module"] == m] for m in MODULES}
+    row_toks: dict[str, int] = {}
+    tok_counts = {m: [] for m in MODULES}
+    for p in pairs:
+        n = len(tokenizer(p["prompt"] + p["completion"])["input_ids"])
+        row_toks[p["id"]] = n
+        tok_counts[p["module"]].append(n)
     stats = {m: {"n": len(v), "总 token": sum(v),
                  "中位": sorted(v)[len(v) // 2] if v else 0, "最大": max(v) if v else 0}
              for m, v in tok_counts.items()}
@@ -260,6 +278,12 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
+    # ---- 4:3:2 加权池（手册 §5：采样权重，不是数据量配额）-------------------
+    pool = build_weighted_pool(pairs, args.seed)
+    pool_counts = dict(Counter(p["module"] for p in pool))
+    weighted_tok = sum(row_toks[p["id"]] for p in pool)
+    print(f"[混比] 4:3:2 加权池（一个 epoch）：{pool_counts} 行 ≈ {weighted_tok:,} token")
+
     if args.stage == "render":
         dest = pathlib.Path(args.out) / run_name(args)
         dest.mkdir(parents=True, exist_ok=True)
@@ -268,6 +292,8 @@ def main(argv: list[str] | None = None) -> int:
                 fh.write(json.dumps(p, ensure_ascii=False) + "\n")
         (dest / "token_stats.json").write_text(
             json.dumps({"per_module": stats, "total_per_epoch": total_tok,
+                        "mix": MIX, "weighted_pool_counts": pool_counts,
+                        "weighted_per_epoch": weighted_tok,
                         "seq_len": args.seq_len}, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8", newline="\n")
         print(f"[✓] render 阶段完成（{time.time() - t0:.1f}s）→ {dest}/"
@@ -294,12 +320,14 @@ def main(argv: list[str] | None = None) -> int:
                 "full_text_loss": args.full_text_loss, "packing": not args.no_packing,
                 "world_size": int(os.environ.get("WORLD_SIZE", 1)),
                 "measured_tokens_per_epoch": total_tok,
+                "mix": MIX, "weighted_pool_counts": pool_counts,
+                "weighted_tokens_per_epoch": weighted_tok,
                 "token_stats": stats})
     (dest / "config.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n",
                                       encoding="utf-8", newline="\n")
 
     ds_train = Dataset.from_list([{"prompt": p["prompt"], "completion": p["completion"],
-                                   "module": p["module"]} for p in pairs])
+                                   "module": p["module"]} for p in pool])
     hold_pairs = build_pairs(tokenizer, hold_rows) if hold_rows else []
     ds_hold = Dataset.from_list([{"prompt": p["prompt"], "completion": p["completion"],
                                   "module": p["module"]} for p in hold_pairs]) if hold_pairs else None
@@ -336,17 +364,41 @@ def main(argv: list[str] | None = None) -> int:
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj"])
 
+    # trl 1.13.0 的 SFTConfig 已移除 warmup_ratio（守卫实测：传了会被拒）。
+    # 折算成 warmup_steps 保持配方语义（0.03 ⇒ 总步数的 3%）；旧版 trl 两参都有，
+    # 本地/服务器双端兼容。换算显式打印 —— 是 API 适配，不是静默降级。
+    world = int(os.environ.get("WORLD_SIZE", 1))
+    eff_batch = args.per_device_batch * args.grad_accum * world
+    packs_per_epoch = math.ceil(weighted_tok / args.seq_len) if not args.no_packing else len(pool)
+    steps_per_epoch = max(1, math.ceil(packs_per_epoch / eff_batch))
+    total_steps = args.max_steps if args.max_steps > 0 else args.epochs * steps_per_epoch
+    warmup_steps = max(1, round(args.warmup_ratio * total_steps))
+    print(f"[warmup] SFTConfig 无 warmup_ratio（trl 1.13.0 API）→ 折算 warmup_steps={warmup_steps}"
+          f"（{args.warmup_ratio:.0%} × {total_steps} 步，按 {steps_per_epoch} 步/epoch）")
+
     trl_kwargs = dict(
         output_dir=str(dest), num_train_epochs=args.epochs,
         per_device_train_batch_size=args.per_device_batch,
         gradient_accumulation_steps=args.grad_accum,
         learning_rate=args.lr, lr_scheduler_type="cosine",
-        warmup_ratio=args.warmup_ratio, weight_decay=args.weight_decay,
+        warmup_steps=warmup_steps, weight_decay=args.weight_decay,
         bf16=True, gradient_checkpointing=True, logging_steps=args.logging_steps,
         save_strategy="epoch" if args.save_each_epoch else "no",
         max_steps=args.max_steps, seed=args.seed, report_to=[],
         max_length=args.seq_len, packing=not args.no_packing,
+        # wrapped = 旧 ConstantLengthDataset 语义（整池拼接切片）。不用 bfd：
+        # bfd 会强制 padding-free，需要 Flash Attention —— 本机 torch 2.6+cu124
+        # 无 FA 预编译轮子（源码编译缺 CUDA 工具链），SDPA 在 padding-free 平铺
+        # 16K 序列上回退 math 后端 ⇒ 双卡 80GB 顶满 OOM（实测）。损失掩码由 labels
+        # 携带，不依赖序列边界，wrapped 无损失。
+        packing_strategy="wrapped" if not args.no_packing else "bfd",
         completion_only_loss=not args.full_text_loss,
+        use_liger_kernel=args.liger,
+        gradient_checkpointing_kwargs={"offload": True} if args.grad_offload else None,
+        # trl 1.13：model_init_kwargs 不指定 dtype 时模型以 **fp32** 加载（56 GB 权重，
+        # 16K 必 OOM——实测踩坑）。显式 bf16：28 GB。bf16=True 只管训练 autocast，
+        # 不管加载。
+        model_init_kwargs={"dtype": torch.bfloat16},
         dataset_kwargs={"add_special_tokens": False} if args.full_text_loss else {},
     )
     try:
@@ -356,16 +408,62 @@ def main(argv: list[str] | None = None) -> int:
               f"    当前 trl 版本请对照手册 §4 调整；**不要**改成本地静默降级。", file=sys.stderr)
         return 2
 
+    quant_cfg = None
+    if args.qlora:
+        from transformers import BitsAndBytesConfig
+        quant_cfg = BitsAndBytesConfig(
+            load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True)
+        print("[QLoRA] 显式启用 4-bit（nf4 + 双量化，bf16 计算）—— 手册 §9 显存不足的处置路径。"
+              "显式旗标，**不是静默降级**：cfg 会记下 qlora=true。")
+    if args.liger:
+        print("[Liger] 显式启用融合线性交叉熵（logits/fp32 损失不物化）—— 16K 实测峰值 −26 GB。"
+              "显式旗标：cfg 会记下 liger=true。")
+    if args.grad_offload:
+        print("[Offload] 显式启用检查点激活 offload（−6.5 GB 显存，+~0.5s/步）。"
+              "显式旗标：cfg 会记下 grad_offload=true。**勿与 liger 叠加**（实测互相干扰）。")
+
     trainer = SFTTrainer(model=args.model, args=sft_cfg, train_dataset=ds_train,
                          eval_dataset=ds_hold, peft_config=lora,
+                         quantization_config=quant_cfg,
                          callbacks=[_EpochSamplerCB()])
+    if os.environ.get("MEM_TRACE") == "1":
+        torch.cuda.memory._record_memory_history(True)
+    # trl 1.13 的 TRLTrainer 不执行 transformers Trainer 里的 gradient_checkpointing_enable
+    # （实测踩坑：args.gradient_checkpointing=True 但模型上 0 个标志位 → 40 层激活全存 → 16K
+    # 峰值 82 GB OOM）。显式补上（经 peft 转发到 base model，探针验证 108→72 GB）。
+    trainer.model.gradient_checkpointing_enable()
+    p = next(trainer.model.parameters())
+    print(f"[模型] 参数 dtype={p.dtype}（期望 bfloat16——fp32 会吃 56 GB 权重，16K 必 OOM）")
+    gc_on = sum(1 for x in trainer.model.modules()
+                if getattr(x, "gradient_checkpointing", False))
+    if gc_on < 1:
+        print("[✗] 梯度检查点启用失败（0 个模块标志位）—— 16K 下必然 OOM，**不许静默降级**。",
+              file=sys.stderr)
+        return 2
+    print(f"[检查点] 已显式启用（trl 1.13 不自动做），{gc_on} 个模块标志位开（期望 41 = 40 层 + 顶层）")
     try:
         trainer.train()
     except torch.cuda.OutOfMemoryError:
-        print("[✗] 显存不足 —— **不静默降级**。当前配置：\n"
+        print(f"[✗] 显存不足（峰值已分配 {torch.cuda.max_memory_allocated() / 1e9:.1f} GB / "
+              f"当前预留 {torch.cuda.memory_reserved() / 1e9:.1f} GB）—— **不静默降级**。当前配置：\n"
               + json.dumps(cfg, ensure_ascii=False, indent=2)
-              + "\n    处置：调小 --per-device-batch / --grad-accum，或显式换 QLoRA；"
+              + "\n    处置：调小 --per-device-batch / --grad-accum，或显式 --qlora；"
                 "**不许截断序列**（手册 §9）。", file=sys.stderr)
+        if os.environ.get("MEM_TRACE") == "1":
+            try:
+                snap = torch.cuda.memory._snapshot()         # dict，segment 列表在 snap["segments"]
+                blocks = [b for seg in snap["segments"] for b in seg["blocks"]
+                          if b.get("state") == "active_allocated" and b["size"] > 0]
+                blocks.sort(key=lambda b: -b["size"])
+                print("[内存指纹] OOM 时最大的活跃分配（file:line = 分配点）：", file=sys.stderr)
+                for b in blocks[:12]:
+                    fr = (b.get("history") or [{}])[0].get("frames") or [{}]
+                    f = fr[0]
+                    print(f"  {b['size'] / 1e9:7.2f} GB  <- {f.get('filename', '?')}"
+                          f":{f.get('line', '?')} {f.get('name', '')}", file=sys.stderr)
+            except Exception as e:                           # noqa: BLE001
+                print(f"  （内存快照失败：{type(e).__name__}: {e}）", file=sys.stderr)
         return 3
 
     trainer.save_model(str(dest / "adapter"))
