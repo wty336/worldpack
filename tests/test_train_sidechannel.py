@@ -23,22 +23,50 @@ QWEN3_PROMPT = ("<|im_start|>system\n你是判定校验员<|im_end|>\n"
 
 
 class _StubTok:
-    """模拟 Qwen3 的 chat template 行为（前缀 + 答案段）。"""
+    """**忠实**模拟 Qwen3 的 chat template（这一点很要紧）。
 
-    def __init__(self, prompt=QWEN3_PROMPT, answer="通过<|im_end|>\n"):
-        self.prompt, self.answer = prompt, answer
+    初版桩忽略了 `messages`、只会吐固定串 —— 于是训练脚本里"两次渲染都喂含答案的
+    messages"这个**真 bug** 照样全绿（它在真实数据上才被守卫抓到）。忠实模拟的代价很小：
+    按 messages 逐条拼、`enable_thinking=False` 时给 assistant 加**空 think 块**、
+    `add_generation_prompt=True` 时补一个 assistant 前缀。
+    """
+
+    def __init__(self, answer="通过"):
+        self.answer = answer
 
     def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True,
                             enable_thinking=False):
-        return self.prompt if add_generation_prompt else self.prompt + self.answer
+        think = "" if enable_thinking else "<think>\n\n</think>\n\n"
+        out = ""
+        for m in messages:
+            pre = think if m["role"] == "assistant" else ""
+            out += f"<|im_start|>{m['role']}\n{pre}{m['content']}<|im_end|>\n"
+        if add_generation_prompt:
+            out += f"<|im_start|>assistant\n{think}"
+        return out
+
+
+def _msgs(answer="通过"):
+    return [{"role": "system", "content": "你是判定校验员"},
+            {"role": "user", "content": "材料"},
+            {"role": "assistant", "content": answer}]
 
 
 # --- 1. 渲染与关 thinking 守卫 ---------------------------------------------
 
 def test_render_pair_splits_at_the_generation_boundary():
-    prompt, completion = render_pair(_StubTok(), [{"role": "user", "content": "x"}])
-    assert prompt == QWEN3_PROMPT and completion == "通过<|im_end|>\n"
+    prompt, completion = render_pair(_StubTok(), _msgs())
+    # 前缀只到 user 为止 + assistant 的空 think 块；答案段**只有**答案（不含前缀内容）
+    assert prompt.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n"), repr(prompt[-40:])
+    assert "通过" not in prompt, "生成前缀里不该出现答案（否则等于把答案喂给模型）"
+    assert completion == "通过<|im_end|>\n", repr(completion)
     guard_render(prompt, completion)          # 实测形态必须过守卫
+
+
+def test_render_pair_rejects_messages_without_assistant_turn():
+    """messages 末条必须是 assistant —— 否则 prompt 渲染会喂进"半截对话"。"""
+    with pytest.raises(RuntimeError, match="末条必须是 assistant"):
+        render_pair(_StubTok(), _msgs()[:2])
 
 
 def test_guard_catches_thinking_leak_in_the_answer():
@@ -59,13 +87,16 @@ def test_guard_catches_template_change():
 
 
 def test_render_pair_rejects_inconsistent_rendering():
+    """两次渲染若不自洽（完整串不以生成前缀开头）⇒ 报错 —— 这是挡"喂错 messages"的兜底。"""
     class _Bad(_StubTok):
         def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True,
                                 enable_thinking=False):
-            return ("别的串" if add_generation_prompt else self.prompt + self.answer)
+            if add_generation_prompt:
+                return "别的前缀"
+            return super().apply_chat_template(messages, tokenize, False, enable_thinking)
 
     with pytest.raises(RuntimeError, match="渲染不自洽"):
-        render_pair(_Bad(), [{"role": "user", "content": "x"}])
+        render_pair(_Bad(), _msgs())
 
 
 # --- 2. 加权采样（4:3:2 + 跨任务打乱）--------------------------------------

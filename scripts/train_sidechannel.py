@@ -65,11 +65,15 @@ DEFAULTS = dict(
 def render_pair(tokenizer, messages: list[dict]) -> tuple[str, str]:
     """返回 (生成前缀, 答案段)。两者**由同一次渲染切出**，边界由构造保证。
 
-    `add_generation_prompt=True` 与 `add_generation_prompt=False` 只差答案段 ⇒
-    完整串必以前缀开头（不成立就说明模板行为变了，直接报错）。
+    ⚠️ 两次渲染喂的 messages **不一样**：生成前缀只喂到 user 为止（`messages[:-1]`），
+    含答案的那次才喂全部。**踩过的坑**：初版两次都喂全量，于是"前缀"里已经包含了答案，
+    自洽性断言当场报错（守卫抓到的就是这么个真 bug）。所以下面先验证形态，
+    再断言 `full` 以前缀开头 —— 这个断言正是用来挡这类错的。
     """
+    if not messages or messages[-1].get("role") != "assistant":
+        raise RuntimeError(f"messages 末条必须是 assistant（实际 {messages[-1:]!r}）")
     prompt = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
+        messages[:-1], tokenize=False, add_generation_prompt=True, enable_thinking=False)
     full = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=False, enable_thinking=False)
     if not full.startswith(prompt):
