@@ -666,6 +666,11 @@ flash 在同包的 ③ 数字作为 teacher 参照（已备：`reports/phase1-cr
 
 ## 5. Step 3 · 训练（1~2 天）
 
+> **2026-09-18 更新（决策 38）**：底座由 `Qwen/Qwen2.5-14B-Instruct` 改为 **`Qwen/Qwen3-14B`（bf16）**
+> ——理由是现在已进入多卡阶段（2× A800-SXM4-80GB），而 Qwen3 原本就规划在此时启用。
+> **连带**：thinking 要用 `chat_template_kwargs={"enable_thinking": false}` 显式关（训练/服务两侧一致），
+> 且换底座后**所有 14B 基线必须重测**。**逐条执行步骤见 `docs/plan-phase1-train.md`**（本文 §5 只留配方）。
+
 - **适配器架构（2026-09-12 拍板 = 方案 A）**：同一底座权重 + **两个 LoRA 适配器** ——
   「侧信道组」（judge/extract/compress）与「主回合」（Phase 2 单独训）。
   主回合**永不挂**侧信道适配器：LoRA 不改底座权重，故侧信道训练不可能污染叙事；

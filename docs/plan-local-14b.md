@@ -497,6 +497,13 @@ judge_every=5, reflect_every=10`，`keep_turns` 用 Game 缺省 6（§2.2 注记
 - **首选 Qwen2.5-14B-Instruct(-AWQ)**：无 thinking 协议、工具调用稳定、vLLM 直接支持；
 - Qwen3-14B：默认 chat template 带 thinking，引擎 SDK 调用未传 `chat_template_kwargs` →
   需给 `llm.py` 的 `create()` 加 `extra_body` 或换无思考模板；验证期不碰，多卡对照再评估；
+  > **2026-09-18 更新（决策 38）**：Phase 1 侧信道训练**已改用 `Qwen/Qwen3-14B`（bf16）** ——
+  > 本条原定"留到多卡/云对照阶段"，现在正是多卡阶段（2× A800-SXM4-80GB），且实测其
+  > `max_position_embeddings = 40960`。**关 thinking 的两条链路不同**（本文只写了引擎侧
+  > `extra_body`，那是 **DeepSeek 的约定**）：本地 Qwen3 + vLLM 要用
+  > `chat_template_kwargs={"enable_thinking": false}`（服务侧 `--default-chat-template-kwargs`
+  > 或引擎侧追加 `extra_body`）。执行手册见 **`docs/plan-phase1-train.md`** §2；
+  > 换底座 ⇒ **基线必须在 Qwen3-14B 上重测**（原基线是 Qwen2.5-14B-AWQ）。
 - 长窗变体（如 Qwen2.5-14B 长窗/1M 档）：先确认 vLLM 加载与 rope 上限；4090 上不必追 128K；
 - R1-Distill 系：推理谱系，不作创作起点（附录 A）。
 

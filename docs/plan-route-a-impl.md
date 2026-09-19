@@ -3858,6 +3858,28 @@ deepspeed 不需要、`sdpa` 可替代 flash-attn），但 `datasets` / `trl` �
 
 **⑤ 的唯一前置未满足**：**Qwen2.5-14B-Instruct 权重未下载**（机器上只有 Qwen3-8B）。
 
+### 决策 38：训练底座换 `Qwen/Qwen3-14B`（bf16）+ ⑤ 训练执行手册（2026-09-18）
+
+`plan-local-14b` 原本把 Qwen3 定为"留到多卡/云对照阶段"——现在正是多卡阶段（2× A800-SXM4-80GB），
+故 Phase 1 侧信道 LoRA 的底座由 `Qwen2.5-14B-Instruct` 改为 **`Qwen/Qwen3-14B`（bf16，29.55 GB）**，
+实测 `max_position_embeddings = 40960`（比 32K 更宽，最长样本 14,805 字符零截断）。
+
+**为什么不换 AWQ**：AWQ 是离线量化好的**推理**格式；QLoRA 链路（peft + bitsandbytes）是在加载
+bf16/fp16 权重时**现场**量化，不认 AWQ（[peft#2745](https://github.com/huggingface/peft/issues/2745)
+仍是未实现 feature request）。AWQ + LoRA 是推理侧组合（vLLM 支持），80 GB 卡上也不必需。
+
+**代价（已一并认下）**：① thinking 要显式关，且**训练/服务两侧机制不同** ——
+引擎现在发的 `extra_body={"thinking": {"type": "disabled"}}`（`llm.py:333`）是 **DeepSeek 的约定**，
+对 Qwen3+vLLM **无效**；正确做法是 `chat_template_kwargs={"enable_thinking": false}`
+（服务侧 `--default-chat-template-kwargs` 或引擎侧追加 `extra_body`）。
+若不关：`judge.parse_verdict` 只看首 10 字、`extract.parse_facts` 逐行当事实 ⇒ **两个生产解析器都会读错**。
+② 换底座 = 换基线：现有 14B 基线是 Qwen2.5-14B-AWQ（`reports/local14b-p0-20260911.md`），**必须重测**。
+③ 回退条款：若关 thinking 30 分钟内验证不通过，立即回退 Qwen2.5-14B-Instruct。
+
+**执行手册**：**`docs/plan-phase1-train.md`**（现状 / 决策 / 关 thinking 机制与三条守卫 / 训练配方 /
+100 步试跑 / 正式训练 / 训练后自检五项 / ⑥ 交接清单 / 风险回退 / 命令速查 / 进度清单）。
+> 该手册写的都是**怎么跑、看什么、怎么算过**；判据本身的真源仍是 `plan-phase1-data` §6。
+
 ---
 
 ## 自检（写作技能要求）
