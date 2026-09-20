@@ -238,6 +238,15 @@ python -m scripts.train_sidechannel --stage render --tokenizer <tokenizer 目录
 4. **报告 schema**（§6.4）里 `endpoint.model_root` 记 `Qwen/Qwen3-14B`、`max_model_len` 记实际窗口；
 5. **数据守卫三连**：`eval_quota_check --gate` / `axis_coverage_check --gate` / `near_dup_check --gate`。
 
+> **2026-09-20 更新：`eval_quota_check` 已补齐达标（5/5 包）** —— 缺口只有 `normal`
+> （误报率分母）一项，每包缺 22~26 条；用已有的真轨迹候选 + 两个包补采，
+> 花 **¥0.56 / 约 10 分钟**补齐（normal 现为 40~76）。执行证据链见
+> **`reports/normals-fill-20260920.md`**（含一条教训：P1 的历史 provenance 记着 12% 良率，
+> 照它排计划会把成本算错一个量级 —— 实测良率 **97%**）。
+> **只剩 `axis_coverage_check` 1 处不达标**（`mainline_band` 轴所有包都在 4-6 档 ⇒ 该轴未留出），
+> 修法要动**评测包内容**（节点数做到 8~12），属独立工作项。
+> **尺子变了 ⇒ 两侧重测**；normal 片此前本不可判，故无"旧结论作废"的损失。
+
 ---
 
 ## 9. 风险与回退
