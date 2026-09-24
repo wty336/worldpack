@@ -20,13 +20,21 @@ from .factgraph import build_graph, check_graph  # agent-first 第 5 件：事�
 JUDGE_SYSTEM = (
     "你是游戏叙事的质量校验员。对照给定材料，检查最新一轮叙事是否存在以下问题：\n"
     "① OOC：角色说话做事违背其人设、语气、底线；\n"
-    "② 设定矛盾：与世界观、既定事实、已发生事件、关键事实冲突；\n"
+    "② 设定矛盾：与世界观、既定事实、已发生事件、关键事实冲突；"
+    "若材料含「上一轮叙事」，还包括与其直接矛盾（前后不一致）；\n"
     "③ 虚构事实：编造从未发生的约定、承诺、事件（尤其注意把泛泛之语升级成具体承诺）。\n"
     "若没有问题，只输出：通过\n"
     "若有问题，输出：问题类型：具体描述（引用叙事原文），最多列 2 条。"
 )
 
 JUDGE_TEMPERATURE = 0.0  # E1（P0）：判定类调用固定温度 0，保证质量门禁结果可复现
+
+# 设计加固 B2：反馈复查提示词（只答"已修正 / 未修正"）
+RECHECK_SYSTEM = (
+    "你是游戏叙事的复查员。此前一轮叙事曾收到一条质量问题反馈，"
+    "请判断最新一轮叙事是否已经自然修正了该问题——不要求提及或道歉，"
+    "只要同类问题不再出现即算修正。只输出：已修正 或 未修正"
+)
 
 
 def parse_verdict(output: str) -> tuple[bool | None, str]:
@@ -56,7 +64,7 @@ class JudgeSystem:
         ]
 
     def check(
-        self, narration: str, materials: str, state=None, pack=None
+        self, narration: str, materials: str, state=None, pack=None, history=None
     ) -> tuple[bool | None, str]:
         """检查一轮叙事。返回 (判定, 判定原文)：True 通过 / False 有问题 / **None 未知**。
 
@@ -65,7 +73,8 @@ class JudgeSystem:
           **不影响主线**（调用点只在 False 时注入校验反馈），但也**不得谎报为通过**；
         - agent-first 第 5 件（事实图代码层）：state+pack 都提供时，附跑 confab
           "缺席证据"检查——代码层查到违规 → **确定性 False**（LLM 未知时也照常工作）；
-          state/pack 缺省 = 图检查关闭（旧调用方零改动，向后兼容）。
+          state/pack 缺省 = 图检查关闭（旧调用方零改动，向后兼容）；
+        - 设计加固 A1：history 提供时图纳入压缩摘要与选择日志（防长局误报）。
         """
         try:
             output = complete_with_empty_retry(
@@ -80,7 +89,39 @@ class JudgeSystem:
         else:
             ok, verdict = parse_verdict(output)
         if state is not None and pack is not None:
-            violation = check_graph(self.llm, narration, build_graph(pack, state))
+            violation = check_graph(
+                self.llm, narration, build_graph(pack, state, history)
+            )
             if violation:
                 return False, violation
         return ok, verdict
+
+
+def recheck_feedback(llm, narration: str, verdict: str, materials: str = "") -> bool | None:
+    """B2：复查上一轮校验反馈是否已修正。True=已修正 / False=未修正 / None=未知。
+
+    三态纪律与主判定同口径：未知不当作已修正放行，也不当作未修正误伤
+    （调用方对 None 不升级、不注入）。失败静默（异常 → None）。
+    """
+    if not verdict or not narration:
+        return None
+    user = f"<此前的问题反馈>\n{verdict}\n</此前的问题反馈>\n\n<最新叙事>\n{narration}\n</最新叙事>"
+    if materials:
+        user = f"<材料>\n{materials}\n</材料>\n\n{user}"
+    try:
+        output = complete_with_empty_retry(
+            llm,
+            [
+                {"role": "system", "content": RECHECK_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+            purpose="judge",
+            max_tokens=JUDGE_MAX_TOKENS,
+            temperature=JUDGE_TEMPERATURE,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    text = (output or "").strip()
+    if not text:
+        return None
+    return text[:10].replace(" ", "").startswith("已修正")

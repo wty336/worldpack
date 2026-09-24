@@ -92,6 +92,7 @@ def _make_game(sid: str) -> Game:
         extract_every=2, compress_threshold=30000, judge_every=5, reflect_every=10,
         critique_on_critical=True,  # agent-first 第 2 件：关键节点内轮自校正
         plan_node=True,  # agent-first 第 4 件：节点目标拆子步骤
+        factcheck_every=1,  # 设计加固 B1：缺席证据检查每轮常开（确定性层）
     )
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import difflib
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,8 +34,9 @@ from .compression import (
 )
 from .context import ContextBuilder, select_lore
 from .events import EventSystem
-from .judge import JudgeSystem
-from .llm import LLMClient
+from .factgraph import build_graph, check_graph  # 设计加固 B1：缺席检查常开轮
+from .judge import JudgeSystem, recheck_feedback  # 设计加固 B2：反馈复查
+from .llm import LLMTurnError, LLMClient
 from .memory import (
     EXTRACT_SYSTEM,
     INSIGHT_CAP,
@@ -52,7 +54,7 @@ from .save import save_game
 from .schedule import ScheduleSystem
 from .state import GameState, InsightEntry
 from .stats import StatChangeError, StatsSystem
-from .storyline import StorylineEngine, filter_choices
+from .storyline import FREE_INPUT_OPTION, StorylineEngine, filter_choices
 from .worldpack import ActionSpec, CriticalChoice, EndingSpec, WorldPack
 
 
@@ -61,6 +63,9 @@ class GameError(Exception):
 
 
 REPETITION_THRESHOLD = 0.6  # 相邻回合叙事相似度阈值：超过则注入反重复提示（试玩反馈 #3/#4）
+REPETITION_WINDOW = 6  # 设计加固 A3：长程重复回看的整轮叙事条数（进程内窗口）
+REPETITION_GRAM = 6  # 设计加固 A3：字符 n-gram 长度（中文短语级）
+LONG_REPETITION_THRESHOLD = 0.25  # 设计加固 A3：当前叙事被窗口内旧叙事覆盖的 gram 比例上限
 
 
 @dataclass
@@ -90,6 +95,7 @@ class Game:
         reflect_every: int = 0,  # A3（P1）：>0 时每 N 回合做关系洞察反思（0=关闭）
         critique_on_critical: bool = False,  # agent-first 第 2 件：关键节点内轮自校正
         plan_node: bool = False,  # agent-first 第 4 件：节点目标拆子步骤（plan-and-execute）
+        factcheck_every: int = 0,  # 设计加固 B1：>0 时每 N 回合独立跑缺席证据检查（0=关闭）
     ):
         self.pack = pack
         self.state = state
@@ -114,7 +120,12 @@ class Game:
         self.reflect_every = reflect_every  # A3 反思间隔（0=关闭）
         self.critique_on_critical = critique_on_critical  # agent-first 第 2 件
         self.plan_node = plan_node  # agent-first 第 4 件
+        self.factcheck_every = factcheck_every  # 设计加固 B1：缺席检查常开轮
         self.judge = JudgeSystem(llm)  # M2b
+        # 设计加固 A3/B2 的进程内状态（不落盘：读档后退化为改前行为，无正确性影响）
+        self._narration_window: list[str] = []  # 长程反重复回看窗口
+        self._pending_verdict: str | None = None  # 待复查的校验反馈（B2 闭环）
+        self._meltdown_round = False  # A5：本轮含熔断兜底（其文案不进反重复窗口）
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -220,7 +231,7 @@ class Game:
         last = views[-1]
         self.ending = last.ending
         self.last_choices = last.choices
-        if narration:
+        if narration and not self._meltdown_round:  # A5：熔断兜底文案不进反重复窗口
             self._check_repetition(narration)
         return TurnView(
             narration=narration or None,
@@ -229,24 +240,69 @@ class Game:
         )
 
     def _check_repetition(self, narration: str) -> None:
-        """相邻回合相似度检测：模型复读已写过的段落时注入反重复提示（下一轮生效）。"""
-        if not self.last_narration:
-            self.last_narration = narration
-            return
-        ratio = difflib.SequenceMatcher(None, self.last_narration, narration).ratio()
+        """反重复双层检测（设计加固 A3）：
+
+        - 相邻轮相似度（原路径，试玩反馈 #3/#4）；
+        - 滑动窗口 n-gram 覆盖率（长程复读机：隔多轮重复同一桥段）；
+        相邻轮命中时跳过长程检查（一轮至多一条提示）。窗口为进程内状态，
+        读档重置——与 last_narration 同生命周期。
+        """
+        adjacent_hit = False
+        if self.last_narration:
+            ratio = difflib.SequenceMatcher(None, self.last_narration, narration).ratio()
+            adjacent_hit = ratio >= REPETITION_THRESHOLD
+            if adjacent_hit:
+                self.history.append(
+                    {
+                        "role": "user",
+                        "name": "engine",  # A-2：引擎元消息，排除出检索上下文
+                        "content": (
+                            f"[反重复提示] 本轮叙事与上一轮高度重复（相似度 {ratio:.0%}）。"
+                            "请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、"
+                            "人物关系的新变化。"
+                        ),
+                    }
+                )
         self.last_narration = narration
-        if ratio >= REPETITION_THRESHOLD:
-            self.history.append(
-                {
-                    "role": "user",
-                    "name": "engine",  # A-2：引擎元消息，排除出检索上下文
-                    "content": (
-                        f"[反重复提示] 本轮叙事与上一轮高度重复（相似度 {ratio:.0%}）。"
-                        "请避免复述已经写过的场景与对话，改为推进新情节：新的事件、新的细节、"
-                        "人物关系的新变化。"
-                    ),
-                }
-            )
+        if not adjacent_hit:
+            overlap = self._long_repetition_overlap(narration)
+            if overlap is not None:
+                self.history.append(
+                    {
+                        "role": "user",
+                        "name": "engine",  # A-2：引擎元消息
+                        "content": (
+                            f"[反重复提示] 本轮叙事与更早回合高度重复（内容覆盖 {overlap:.0%}）。"
+                            "请避免复用已写过的情节与表达，改为推进新的事件与发展。"
+                        ),
+                    }
+                )
+        self._narration_window.append(narration)
+        if len(self._narration_window) > REPETITION_WINDOW:
+            del self._narration_window[: len(self._narration_window) - REPETITION_WINDOW]
+
+    def _long_repetition_overlap(self, narration: str) -> float | None:
+        """当前叙事 vs 窗口内旧叙事的最大 n-gram 覆盖率；超阈值返回覆盖率，否则 None。"""
+        grams = self._grams(narration)
+        if not grams:
+            return None
+        best = 0.0
+        for prev in self._narration_window:
+            if not prev:
+                continue
+            prev_grams = self._grams(prev)
+            if not prev_grams:
+                continue
+            overlap = sum(1 for g in grams if g in prev_grams) / len(grams)
+            best = max(best, overlap)
+        return best if best >= LONG_REPETITION_THRESHOLD else None
+
+    @staticmethod
+    def _grams(text: str) -> set[str]:
+        """字符 n-gram 集合（空白归一；短于 gram 长度的文本返回空集）。"""
+        compact = re.sub(r"\s+", "", text)
+        n = REPETITION_GRAM
+        return {compact[i : i + n] for i in range(len(compact) - n + 1)}
 
     def _llm_round(self) -> TurnView:
         # M2b 压缩：接近阈值时批量压缩（只碰历史，不碰静态前缀与事实区块）
@@ -254,24 +310,45 @@ class Game:
             self._compress_history()
         # 记忆来源追踪（M2a）：每**玩家可见回合**计一次——内轮自校正的重生成不另计
         self.state.turn_count += 1
+        self._meltdown_round = False
         critical = self.critique_on_critical and self._in_critical_node()
         # 关键节点不流式：先缓冲，自校正通过后再一次性回放（坏稿不能让玩家先看到）
         pre_history = list(self.history) if critical else None  # 第一稿前的前缀（剥稿用）
-        result = self._generate_turn(stream=not critical)
-        if critical:
-            result = self._critique_and_regenerate(result, pre_history)
-            if result.narration and self.on_text is not None:
-                self.on_text(result.narration)  # 缓冲后一次性回放（CLI 去重逻辑兼容）
+        try:
+            result = self._generate_turn(stream=not critical)
+            if critical:
+                result = self._critique_and_regenerate(result, pre_history)
+                if result.narration and self.on_text is not None:
+                    self.on_text(result.narration)  # 缓冲后一次性回放（CLI 去重逻辑兼容）
+        except LLMTurnError:
+            # 设计加固 A5（design §10.3 落地）：熔断炸的是"本轮"不是会话——
+            # 保守回合兜底，玩家可继续。熔断时 run_turn 的协议重试消息未同步进
+            # history（同步只在成功返回后发生），状态天然干净。
+            return self._meltdown_fallback()
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
+        self._maybe_replan(outcome.messages)  # 设计加固 A4：卡壳推进提示触发重规划
         # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子；含对话历史）
         if outcome.node_completed is not None and self.autosave_path is not None:
             save_game(self.state, self.autosave_path, self.history)
+        # 设计加固 B2：先复查上一轮校验反馈是否已修正，再做本轮检查
+        if self._pending_verdict and result.narration:
+            self._recheck_feedback(result.narration)
         # M2a 迭代4：确定性提取兜底（弥补 remember 主动性的覆盖缺口）
         if self.extract_every > 0 and self.state.turn_count % self.extract_every == 0:
             self._extract_facts()
+        # 设计加固 B1：缺席证据检查（确定性层）常开，LLM judge 降频采样——
+        # judge 采样轮跳过独立检查（judge.check 内含同一检查，避免同轮两次抽取）
+        judge_runs = self.judge_every > 0 and self.state.turn_count % self.judge_every == 0
+        if (
+            self.factcheck_every > 0
+            and not judge_runs
+            and self.state.turn_count % self.factcheck_every == 0
+            and result.narration
+        ):
+            self._factcheck_turn(result.narration)
         # M2b 语义校验：每 N 回合检查最新叙事，失败注入下轮修正提示
-        if self.judge_every > 0 and self.state.turn_count % self.judge_every == 0:
+        if judge_runs:
             self._judge_turn(result.narration)
         # A3 反思：每 N 回合对记忆增长达标的 NPC 合成关系洞察（侧信道，失败静默）
         if self.reflect_every > 0 and self.state.turn_count % self.reflect_every == 0:
@@ -281,6 +358,39 @@ class Game:
             choices=filter_choices(self.pack, result.choices),
             ending=outcome.ending,
         )
+
+    def _meltdown_fallback(self) -> TurnView:
+        """A5：协议熔断的保守回合。文案是引擎中性文案（F1：引擎层不含内容）。"""
+        self._meltdown_round = True
+        self.history.append(
+            {
+                "role": "user",
+                "name": "engine",  # A-2：引擎元消息
+                "content": "[引擎熔断] 本轮生成多次未达协议，已放弃本轮。",
+            }
+        )
+        return TurnView(
+            narration="（本轮生成失败，已跳过——请换个说法或行动再试，或读档重来。）",
+            choices=self.last_choices or [FREE_INPUT_OPTION],
+        )
+
+    def _maybe_replan(self, messages: list[dict]) -> None:
+        """A4：卡壳保护注入推进提示的回合重规划——旧计划可能已偏离实际剧情。
+
+        清空计划复用 _ensure_plan 的侧信道生成（失败静默 = 无计划，与首生成同口径）。
+        快照刷新到当前 flags、指针归零（新计划新基线）。
+        """
+        if not self.plan_node:
+            return
+        if not any("【推进提示】" in (m.get("content") or "") for m in messages):
+            return
+        node = self.story.active_node(self.state)
+        if node is None:
+            return
+        self.state.node_plan = []
+        self.state.node_plan_step = 0
+        self.state.node_flags_snapshot = dict(self.state.flags)
+        self._ensure_plan(node)
 
     def _apply_change(self, args: dict) -> str:
         for key in ("target", "stat", "delta", "reason"):
@@ -409,11 +519,12 @@ class Game:
         """
         if not result.narration:
             return result
-        materials = self.builder.status_text(
-            self.state, self.story.active_node(self.state)
-        )
         ok, verdict = self.judge.check(
-            result.narration, materials, state=self.state, pack=self.pack
+            result.narration,
+            self._judge_materials(),
+            state=self.state,
+            pack=self.pack,
+            history=self.history,  # 设计加固 A1：图纳入摘要与选择日志
         )  # agent-first 第 5 件：附跑事实图（confab 缺席证据代码判定）
         if ok is not False or not verdict:
             return result
@@ -626,20 +737,73 @@ class Game:
         """语义校验：失败则注入下轮修正提示（侧信道，失败静默）。"""
         if not narration:
             return
+        ok, verdict = self.judge.check(
+            narration,
+            self._judge_materials(),  # 设计加固 A2：材料附上一轮叙事
+            state=self.state,
+            pack=self.pack,
+            history=self.history,  # 设计加固 A1：图纳入摘要与选择日志
+        )  # agent-first 第 5 件：附跑事实图（confab 缺席证据代码判定）
+        if ok is False and verdict:  # None = 未知（判定不可用）→ 不注入反馈，也不当作通过
+            self._inject_feedback(verdict)
+
+    def _judge_materials(self) -> str:
+        """A2（design §10.2-4 落地）：判官材料 = 状态栏 + 上一轮叙事。
+
+        此前判官只拿得到当前状态栏，"与上一轮衔接是否自然 / 是否前后矛盾"
+        没有证据面——连贯性检查名存实亡。首轮（无上文）不附。
+        """
         materials = self.builder.status_text(
             self.state, self.story.active_node(self.state)
         )
-        ok, verdict = self.judge.check(
-            narration, materials, state=self.state, pack=self.pack
-        )  # agent-first 第 5 件：附跑事实图（confab 缺席证据代码判定）
-        if ok is False and verdict:  # None = 未知（判定不可用）→ 不注入反馈，也不当作通过
-            self.history.append(
-                {
-                    "role": "user",
-                    "name": "engine",  # A-2：引擎元消息，排除出检索上下文
-                    "content": (
-                        f"【校验反馈】上一轮叙事存在质量问题：{verdict}\n"
-                        "请在后续叙事中自然修正，避免重复此类问题。"
-                    ),
-                }
-            )
+        if self.last_narration:
+            materials += f"\n\n<上一轮叙事>\n{self.last_narration}\n</上一轮叙事>"
+        return materials
+
+    def _inject_feedback(self, verdict: str) -> None:
+        """注入校验反馈并登记复查（设计加固 B2：fire-and-forget → 一次复查闭环）。"""
+        self.history.append(
+            {
+                "role": "user",
+                "name": "engine",  # A-2：引擎元消息，排除出检索上下文
+                "content": (
+                    f"【校验反馈】上一轮叙事存在质量问题：{verdict}\n"
+                    "请在后续叙事中自然修正，避免重复此类问题。"
+                ),
+            }
+        )
+        self._pending_verdict = verdict
+
+    def _recheck_feedback(self, narration: str) -> None:
+        """B2：复查上一轮反馈是否已自然修正（一次复查，至多一次升级反馈）。
+
+        未知/失败 → 清除队列不升级（三态纪律同口径：未知 ≠ 通过，但也不误伤）；
+        升级反馈不再登记复查——连环提示没有边际收益。
+        """
+        verdict = self._pending_verdict
+        self._pending_verdict = None
+        ok = recheck_feedback(self.llm, narration, verdict, self._judge_materials())
+        if ok is not False:
+            return
+        self.history.append(
+            {
+                "role": "user",
+                "name": "engine",  # A-2：引擎元消息
+                "content": (
+                    f"【校验反馈·仍未修正】上一轮反馈的问题仍未解决：{verdict}\n"
+                    "本轮必须正面处理该问题：直接修正相关叙事内容，不要回避。"
+                ),
+            }
+        )
+
+    def _factcheck_turn(self, narration: str) -> None:
+        """B1：缺席证据检查常开轮（确定性层每轮，LLM judge 降频采样）。
+
+        与 _judge_turn 共用反馈注入与复查队列；违规是确定性判定
+        （代码查表），不依赖 LLM judge 的可用性。
+        """
+        violation = check_graph(
+            self.llm, narration, build_graph(self.pack, self.state, self.history)
+        )
+        if violation:
+            self._inject_feedback(violation)

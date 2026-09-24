@@ -79,9 +79,22 @@ class FactGraph:
         return tok in self.token_set or tok in self.quoted
 
 
-def build_graph(pack, state) -> FactGraph:
-    """从世界包 + 状态构建事实图（与 status_text 材料同源；不含 flags）。"""
+def build_graph(pack, state, history: list[dict] | None = None) -> FactGraph:
+    """从世界包 + 状态构建事实图（与 status_text 材料同源；不含 flags）。
+
+    设计加固 A1：history 提供时纳入**压缩摘要**与**关键选择日志**——
+    长局中早期事实只活在摘要里，不入图会被缺席判定误报为"虚构"
+    （证据面"该有的"必须有，宁可少拦不误拦）。choice_log 的选项文本
+    是代码结算过的既成剧情，同理接地。
+    """
     facts: list[str] = []
+    if history is not None:
+        from .compression import summary_text  # 局部导入：compression 不依赖本模块，无环
+
+        summary = summary_text(history)
+        if summary:
+            facts.append(summary)
+        facts += [c.text for c in state.choice_log]
     if state.player_facts:
         facts += [m.fact for m in state.player_facts if not m.superseded]  # A5：取代者才接地
     for npc_id in state.present_npcs:

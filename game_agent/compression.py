@@ -68,6 +68,14 @@ def locate_summary(history: list[dict]) -> int:
     return -1
 
 
+def summary_text(history: list[dict]) -> str:
+    """当前压缩摘要的正文（无摘要返回空串）。设计加固 A1：摘要入事实图。"""
+    idx = locate_summary(history)
+    if idx < 0:
+        return ""
+    return str(history[idx].get("content") or "").replace(SUMMARY_MARK, "").strip()
+
+
 def history_text(history: list[dict]) -> str:
     """把消息历史渲染为摘要器可读的纯文本（只保留内容，忽略协议细节）。"""
     lines = []
