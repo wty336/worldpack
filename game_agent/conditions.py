@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .state import GameState
 
 _OPS = frozenset({"eq", "ne", "gt", "gte", "lt", "lte"})
-_KEYS = frozenset({"all", "any", "not", "day", "flags", "stat", "affection"})
+_KEYS = frozenset({"all", "any", "not", "day", "flags", "stat", "affection", "counter", "item"})
 
 
 class ConditionError(Exception):
@@ -54,6 +54,18 @@ def validate_condition(cond: Any, where: str = "condition") -> None:
                 raise ConditionError(f"{where}.{key}: 必须是 {{名称: {{操作: 数值}}}} 映射")
             for name, ops in value.items():
                 _validate_comparisons(ops, f"{where}.{key}.{name}")
+        elif key == "counter":  # 批次 E：计数器比较，同 stat
+            if not isinstance(value, dict):
+                raise ConditionError(f"{where}.counter: 必须是 {{名称: {{操作: 数值}}}} 映射")
+            for name, ops in value.items():
+                _validate_comparisons(ops, f"{where}.counter.{name}")
+        elif key == "item":  # 批次 E：持有判定，同 flags（true=已持有 / false=已失去）
+            if not isinstance(value, dict) or not all(
+                isinstance(v, bool) for v in value.values()
+            ):
+                raise ConditionError(
+                    f"{where}.item: 必须是 {{物品id: true/false}} 映射"
+                )
         else:
             raise ConditionError(
                 f"{where}: 未知条件键 '{key}'（可用: {', '.join(sorted(_KEYS))}）"
@@ -134,6 +146,17 @@ def evaluate(cond: Any, state: "GameState") -> bool:
                 if actual is None:
                     raise ConditionError(f"条件引用了未声明的好感对象 '{npc_id}'")
                 if not _compare_all(actual, ops):
+                    return False
+        elif key == "counter":  # 批次 E
+            for name, ops in value.items():
+                actual = state.counters.get(name)
+                if actual is None:
+                    raise ConditionError(f"条件引用了未声明的计数器 '{name}'")
+                if not _compare_all(actual, ops):
+                    return False
+        elif key == "item":  # 批次 E：未声明物品静默判"未持有"（引用合法性由加载期校验管）
+            for item_id, want in value.items():
+                if (item_id in state.items) != bool(want):
                     return False
         else:
             raise ConditionError(f"未知条件键 '{key}'")

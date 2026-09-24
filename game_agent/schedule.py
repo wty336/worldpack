@@ -157,4 +157,6 @@ def _dump_effects(effects: ActionEffects) -> dict:
             k: v.model_dump() if hasattr(v, "model_dump") else v
             for k, v in effects.affections.items()
         },
+        "counters": dict(effects.counters),  # 批次 E
+        "items": {k: list(v) for k, v in effects.items.items()},  # 批次 E
     }

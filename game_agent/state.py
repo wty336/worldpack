@@ -77,6 +77,8 @@ class GameState:
     action_points_left: int = 0  # 当日剩余行动点（from_pack 按世界包初始化）
     stats: dict[str, float] = field(default_factory=dict)
     affections: dict[str, float] = field(default_factory=dict)
+    counters: dict[str, float] = field(default_factory=dict)  # 批次 E：计数器真值
+    items: list[str] = field(default_factory=list)  # 批次 E：持有物品 id（有序集合）
     flags: dict[str, bool] = field(default_factory=dict)
     scene: str = ""
     scene_id: str = ""  # 批次 D：当前地点表 id（未声明地点表恒为 ""）
@@ -113,6 +115,8 @@ class GameState:
             action_points_left=pack.schedule.day_action_points,
             stats={k: float(v.initial) for k, v in s.stats.items()},
             affections={k: float(v.initial) for k, v in s.affections.items()},
+            counters={k: float(v.initial) for k, v in s.counters.items()},  # 批次 E
+            items=[i.id for i in s.items if i.initial],  # 批次 E
             flags=dict(s.flags),
             scene=scene,
             scene_id=scene_id,
@@ -133,6 +137,8 @@ class GameState:
             "action_points_left": self.action_points_left,
             "stats": dict(self.stats),
             "affections": dict(self.affections),
+            "counters": dict(self.counters),
+            "items": list(self.items),
             "flags": dict(self.flags),
             "scene": self.scene,
             "scene_id": self.scene_id,
@@ -172,6 +178,8 @@ class GameState:
             action_points_left=d.get("action_points_left", 0),
             stats=dict(d["stats"]),
             affections=dict(d["affections"]),
+            counters=dict(d.get("counters", {})),  # 老档缺省空（批次 E）
+            items=list(d.get("items", [])),
             flags=dict(d["flags"]),
             scene=d.get("scene", ""),
             scene_id=d.get("scene_id", ""),  # 老档缺省空

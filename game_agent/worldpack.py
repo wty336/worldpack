@@ -121,6 +121,27 @@ class AffectionSpec(BaseModel):
     initial: float
 
 
+class CounterSpec(BaseModel):
+    """批次 E：计数器——int 真值（计数型机制状态，如"赠礼次数""突破层数"）。
+
+    只能由代码路径（行动/事件/关键选择/自定义工具的效果）写入，LLM 不可写
+    （与 flags 同纪律）；状态栏展示、事实图接地、条件 DSL 可引用。
+    """
+
+    label: str
+    initial: int = 0
+    min: int = 0
+    max: int = 999999
+
+
+class ItemSpec(BaseModel):
+    """批次 E：物品——集合真值（持有/失去，如"听雨剑""密码本"）。"""
+
+    id: str
+    label: str
+    initial: bool = False  # 开局是否已持有
+
+
 class EffectSpec(BaseModel):
     """D3（P2）：带随机/衰减的收益曲线（design.md §5.3）。
 
@@ -143,6 +164,8 @@ EffectValue = float | EffectSpec  # 普通数字 = 确定性作者定义；dict 
 class ActionEffects(BaseModel):
     stats: dict[str, EffectValue] = Field(default_factory=dict)
     affections: dict[str, EffectValue] = Field(default_factory=dict)
+    counters: dict[str, int] = Field(default_factory=dict)  # 批次 E：计数器增减
+    items: dict[str, list[str]] = Field(default_factory=dict)  # 批次 E：{"gain": [...], "lose": [...]}
 
 
 class ActionCheck(BaseModel):
@@ -203,6 +226,8 @@ class ScheduleSpec(BaseModel):
     flags: dict[str, bool] = Field(default_factory=dict)
     actions: list[ActionSpec] = Field(default_factory=list)
     tools: list[CustomToolSpec] = Field(default_factory=list)  # 批次 C：自定义效果型工具
+    counters: dict[str, CounterSpec] = Field(default_factory=dict)  # 批次 E：计数器
+    items: list[ItemSpec] = Field(default_factory=list)  # 批次 E：物品
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +463,24 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"（可用 id/名称: {sorted(loc_refs)}）"
             )
 
+    # 0.6) counters/items schema 校验（批次 E）
+    for name, counter in schedule.counters.items():
+        if not counter.label.strip():
+            raise WorldPackError(f"计数器 '{name}' 的 label 不能为空")
+        if counter.min > counter.max:
+            raise WorldPackError(f"计数器 '{name}' 的 min > max")
+        if not counter.min <= counter.initial <= counter.max:
+            raise WorldPackError(
+                f"计数器 '{name}' 的 initial {counter.initial} 在范围 "
+                f"[{counter.min}, {counter.max}] 之外"
+            )
+    item_ids = [i.id for i in schedule.items]
+    if len(item_ids) != len(set(item_ids)):
+        raise WorldPackError(f"物品 id 重复: {item_ids}")
+    for item in schedule.items:
+        if not item.label.strip():
+            raise WorldPackError(f"物品 '{item.id}' 的 label 不能为空")
+
     # 1) 收集全部引用 + 校验条件结构（when/completion 语法错误在加载期暴露）
     def _check_cond(cond: dict[str, Any], where: str) -> None:
         try:
@@ -448,10 +491,14 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     flag_refs: set[str] = set()
     aff_refs: set[str] = set()
     stat_refs: set[str] = set()
+    counter_refs: set[str] = set()  # 批次 E：条件里引用的计数器
+    item_refs: set[str] = set()  # 批次 E：条件里引用的物品
     for node in mainline.nodes:
         dumped = node.model_dump()
         _collect_refs(dumped, "flags", flag_refs)
         _collect_refs(dumped, "stat", stat_refs)
+        _collect_refs(dumped, "counter", counter_refs)
+        _collect_refs(dumped, "item", item_refs)
         _check_cond(node.when, f"主线节点 '{node.id}' 的 when")
         _check_cond(node.completion, f"主线节点 '{node.id}' 的 completion")
         missing_npcs = set(node.on_enter.present) - set(npcs)
@@ -466,6 +513,8 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         _collect_refs(dumped, "affection", aff_refs)
         _collect_refs(dumped, "affections", aff_refs)
         _collect_refs(dumped, "stat", stat_refs)
+        _collect_refs(dumped, "counter", counter_refs)
+        _collect_refs(dumped, "item", item_refs)
         if ev.trigger.when is not None:
             _check_cond(ev.trigger.when, f"事件 '{ev.id}' 的 trigger.when")
     for ending in endings.endings:
@@ -474,6 +523,8 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         _collect_refs(dumped, "affection", aff_refs)
         _collect_refs(dumped, "affections", aff_refs)
         _collect_refs(dumped, "stat", stat_refs)
+        _collect_refs(dumped, "counter", counter_refs)
+        _collect_refs(dumped, "item", item_refs)
         _check_cond(ending.when, f"结局 '{ending.id}' 的 when")
 
     # 2) 逐项比对，报错带具体名字与出处文件
@@ -491,6 +542,17 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     if missing_stats:
         raise WorldPackError(
             f"引用了未声明的属性: {sorted(missing_stats)}——请在 schedule.yaml 的 stats 中声明"
+        )
+    missing_counters = counter_refs - set(schedule.counters)  # 批次 E
+    if missing_counters:
+        raise WorldPackError(
+            f"引用了未声明的计数器: {sorted(missing_counters)}——"
+            f"请在 schedule.yaml 的 counters 中声明"
+        )
+    missing_items = item_refs - set(item_ids)  # 批次 E
+    if missing_items:
+        raise WorldPackError(
+            f"引用了未声明的物品: {sorted(missing_items)}——请在 schedule.yaml 的 items 中声明"
         )
     for aff_id in declared_affections:
         if aff_id not in npcs:
@@ -510,13 +572,20 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
             except ConditionError as e:
                 raise WorldPackError(str(e)) from e
             req_flags, req_stats, req_affs = set(), set(), set()
+            req_counters: set[str] = set()  # 批次 E
             _collect_refs(action.requires, "flags", req_flags)
             _collect_refs(action.requires, "stat", req_stats)
             _collect_refs(action.requires, "affection", req_affs)
+            _collect_refs(action.requires, "counter", req_counters)
             if req_flags - declared_flags:
                 raise WorldPackError(
                     f"行动 '{action.id}' 的 requires 引用了未声明的 flag: "
                     f"{sorted(req_flags - declared_flags)}"
+                )
+            if req_counters - set(schedule.counters):
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 requires 引用了未声明的计数器: "
+                    f"{sorted(req_counters - set(schedule.counters))}"
                 )
             if req_stats - declared_stats:
                 raise WorldPackError(
@@ -545,6 +614,18 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
             if bad_aff:
                 raise WorldPackError(
                     f"行动 '{action.id}' 的 {label} 引用了未声明的好感对象: {sorted(bad_aff)}"
+                )
+            bad_counters = set(effects.counters) - set(schedule.counters)  # 批次 E
+            if bad_counters:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 {label} 引用了未声明的计数器: {sorted(bad_counters)}"
+                )
+            bad_items = set()  # 批次 E：gain/lose 的物品引用
+            for kind, ids in effects.items.items():
+                bad_items |= set(ids) - set(item_ids)
+            if bad_items:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 {label} 引用了未声明的物品: {sorted(bad_items)}"
                 )
         bad_npcs = set(action.present) - set(npcs)
         if bad_npcs:
@@ -575,13 +656,20 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
             except ConditionError as e:
                 raise WorldPackError(str(e)) from e
             req_flags, req_stats, req_affs = set(), set(), set()
+            req_counters: set[str] = set()  # 批次 E
             _collect_refs(tool.requires, "flags", req_flags)
             _collect_refs(tool.requires, "stat", req_stats)
             _collect_refs(tool.requires, "affection", req_affs)
+            _collect_refs(tool.requires, "counter", req_counters)
             if req_flags - declared_flags:
                 raise WorldPackError(
                     f"自定义工具 '{tool.id}' 的 requires 引用了未声明的 flag: "
                     f"{sorted(req_flags - declared_flags)}"
+                )
+            if req_counters - set(schedule.counters):
+                raise WorldPackError(
+                    f"自定义工具 '{tool.id}' 的 requires 引用了未声明的计数器: "
+                    f"{sorted(req_counters - set(schedule.counters))}"
                 )
             if req_stats - declared_stats:
                 raise WorldPackError(
@@ -625,6 +713,20 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
             raise WorldPackError(
                 f"自定义工具 '{tool.id}' 的 effects 引用了未声明的 flag: "
                 f"{sorted(bad_tool_flags)}"
+            )
+        bad_tool_counters = set(tool.effects.get("counters") or {}) - set(schedule.counters)
+        if bad_tool_counters:
+            raise WorldPackError(
+                f"自定义工具 '{tool.id}' 的 effects 引用了未声明的计数器: "
+                f"{sorted(bad_tool_counters)}"
+            )
+        tool_item_refs: set[str] = set()
+        tool_items = tool.effects.get("items") or {}
+        tool_item_refs |= set(tool_items.get("gain") or []) | set(tool_items.get("lose") or [])
+        if tool_item_refs - set(item_ids):
+            raise WorldPackError(
+                f"自定义工具 '{tool.id}' 的 effects 引用了未声明的物品: "
+                f"{sorted(tool_item_refs - set(item_ids))}"
             )
 
     # 4) 事件触发校验：condition/time 必须有 when；schedule 必须有 action 且存在于行动表
@@ -671,6 +773,60 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 _collect_refs(effects.model_dump(), "flags", writable_flags)
     for tool in schedule.tools:  # 批次 C：自定义工具效果也是合法的 flag 写入路径
         _collect_refs(tool.effects, "flags", writable_flags)
+
+    # 5.5) 批次 E：counters/items 的可达性（复用 flag 可达性同一模式）
+    def _collect_item_effects(node: Any, gain: set[str], lose: set[str]) -> None:
+        """收集效果字典里 items 效果的 gain/lose 物品 id。"""
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "items" and isinstance(v, dict):
+                    gain.update(v.get("gain") or [])
+                    lose.update(v.get("lose") or [])
+                else:
+                    _collect_item_effects(v, gain, lose)
+        elif isinstance(node, list):
+            for x in node:
+                _collect_item_effects(x, gain, lose)
+
+    def _collect_item_conditions(node: Any, out: dict[str, bool]) -> None:
+        """收集条件字典里 item 条件的 (物品id → want)。"""
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "item" and isinstance(v, dict):
+                    for iid, want in v.items():
+                        out[iid] = bool(want)
+                else:
+                    _collect_item_conditions(v, out)
+        elif isinstance(node, list):
+            for x in node:
+                _collect_item_conditions(x, out)
+
+    writable_counters: set[str] = set()
+    gainable_items: set[str] = set()
+    losable_items: set[str] = set()
+    for node in mainline.nodes:
+        for choice in node.critical_choices:
+            for opt in choice.options:
+                _collect_refs(opt.effects, "counters", writable_counters)
+                _collect_item_effects(opt.effects, gainable_items, losable_items)
+    for ev in events.events:
+        _collect_refs(ev.effects, "counters", writable_counters)
+        _collect_item_effects(ev.effects, gainable_items, losable_items)
+    for tool in schedule.tools:
+        _collect_refs(tool.effects, "counters", writable_counters)
+        _collect_item_effects(tool.effects, gainable_items, losable_items)
+    for action in schedule.actions:
+        for effects in (
+            action.effects,
+            action.critical_effects,
+            action.failure_effects,
+        ):
+            if effects is None:
+                continue
+            writable_counters |= set(effects.counters)
+            gainable_items |= set(effects.items.get("gain") or [])
+            losable_items |= set(effects.items.get("lose") or [])
+
     for node in mainline.nodes:
         completion_flags: set[str] = set()
         _collect_refs(node.completion, "flags", completion_flags)
@@ -681,6 +837,28 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"但没有任何代码路径（关键选择/事件/日程行动的效果）能写入它们——"
                 f"该节点将永远无法完成"
             )
+        # 批次 E：completion 引用的计数器必须有增减路径；物品必须可得/可失
+        completion_counters: set[str] = set()
+        _collect_refs(node.completion, "counter", completion_counters)
+        unreachable_counters = completion_counters - writable_counters
+        if unreachable_counters:
+            raise WorldPackError(
+                f"主线节点 '{node.id}' 的 completion 要求计数器 {sorted(unreachable_counters)}，"
+                f"但没有任何代码路径能增减它们——该节点将永远无法完成"
+            )
+        completion_items: dict[str, bool] = {}
+        _collect_item_conditions(node.completion, completion_items)
+        for iid, want in completion_items.items():
+            if want and iid not in gainable_items:
+                raise WorldPackError(
+                    f"主线节点 '{node.id}' 的 completion 要求持有物品 '{iid}'，"
+                    f"但没有任何代码路径能获得它——该节点将永远无法完成"
+                )
+            if not want and iid not in losable_items:
+                raise WorldPackError(
+                    f"主线节点 '{node.id}' 的 completion 要求失去物品 '{iid}'，"
+                    f"但没有任何代码路径能失去它——该节点将永远无法完成"
+                )
         # agent-first 第 4 件：作者手写子步骤的格式校验（1~4 条、每条 ≤40 字）
         if not 0 <= len(node.steps) <= 4:
             raise WorldPackError(

@@ -458,6 +458,16 @@ class Game:
                 for k, v in self.state.affections.items() if k in self.pack.npcs
             )
             lines.append(f"好感：{aff_str}")
+        if self.state.counters:  # 批次 E：query_world 同状态栏口径
+            counters_str = " · ".join(
+                f"{self.pack.schedule.counters[k].label} {v:g}"
+                for k, v in self.state.counters.items()
+                if k in self.pack.schedule.counters
+            )
+            lines.append(f"计数：{counters_str}")
+        held = [i.label for i in self.pack.schedule.items if i.id in self.state.items]
+        if held:
+            lines.append("持有：" + "、".join(held))
         node = self.story.active_node(self.state)
         lines.append(
             f"主线目标：{node.goal if node is not None else '自由探索，等待主线事件'}"

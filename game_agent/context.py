@@ -177,6 +177,17 @@ class ContextBuilder:
                 if k in self.pack.npcs
             )
             lines.append(f"好感：{aff_str}")
+        if state.counters:  # 批次 E：计数器进状态栏（代码提炼的显式状态）
+            counters_str = " · ".join(
+                f"{self.pack.schedule.counters[k].label} {v:g}"
+                for k, v in state.counters.items()
+                if k in self.pack.schedule.counters
+            )
+            lines.append(f"计数：{counters_str}")
+        if state.items:  # 批次 E：持有物品进状态栏
+            held = [i.label for i in self.pack.schedule.items if i.id in state.items]
+            if held:
+                lines.append("持有：" + "、".join(held))
         if node is not None:
             lines.append(f"剧情进度：主线节点「{node.title}」（进行中）")
             lines.append(f"当前主线目标：{node.goal}")

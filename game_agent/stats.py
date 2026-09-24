@@ -206,6 +206,53 @@ class StatsSystem:
             )
             notes.append(f"{entry.label} 好感 {delta:+g}" + ("（已达边界）" if capped else ""))
 
+        # 批次 E：计数器（增减 + 边界饱和；审计入 stat_log，stat 记为 counter:<名>）
+        for name, value in (effects.get("counters") or {}).items():
+            entry = self.spec.counters.get(name)
+            if entry is None:
+                raise StatChangeError(f"效果引用了未声明的计数器 '{name}'")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise StatChangeError(
+                    f"计数器 '{name}' 的效果值必须是数字，当前为 {value!r}"
+                )
+            delta = float(value)
+            before = state.counters[name]
+            capped = False
+            if before + delta > entry.max:
+                delta, capped = entry.max - before, True
+            elif before + delta < entry.min:
+                delta, capped = entry.min - before, True
+            if delta == 0:
+                continue  # 已在边界，无实际变化
+            after = before + delta  # 钳制后重算：after == before + delta（审计不变量）
+            state.counters[name] = after
+            state.stat_log.append(
+                StatChangeRecord(
+                    state.day, "player", f"counter:{name}", float(delta),
+                    "worldpack effect", before, after,
+                )
+            )
+            notes.append(f"{entry.label} {delta:+g}" + ("（已达边界）" if capped else ""))
+
+        # 批次 E：物品（获得/失去；集合语义，不入 stat_log——持有状态本身即可从存档审计）
+        item_effects = effects.get("items") or {}
+        if item_effects:
+            declared = {i.id: i for i in self.spec.items}
+            for item_id in item_effects.get("gain") or []:
+                entry = declared.get(item_id)
+                if entry is None:
+                    raise StatChangeError(f"效果引用了未声明的物品 '{item_id}'")
+                if item_id not in state.items:
+                    state.items.append(item_id)
+                    notes.append(f"获得物品：{entry.label}")
+            for item_id in item_effects.get("lose") or []:
+                entry = declared.get(item_id)
+                if entry is None:
+                    raise StatChangeError(f"效果引用了未声明的物品 '{item_id}'")
+                if item_id in state.items:
+                    state.items.remove(item_id)
+                    notes.append(f"失去物品：{entry.label}")
+
         for flag, value in effects.get("flags", {}).items():
             if flag not in self.spec.flags:
                 raise StatChangeError(f"效果引用了未声明的 flag '{flag}'")

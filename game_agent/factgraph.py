@@ -115,6 +115,14 @@ def build_graph(pack, state, history: list[dict] | None = None) -> FactGraph:
     for k, v in state.stats.items():
         if k in pack.schedule.stats:
             facts.append(f"{pack.schedule.stats[k].label} {v:g}")
+    # 批次 E：计数器与持有物入图（叙事引用"还有三次赠礼""当掉听雨剑"可接地）
+    for k, v in state.counters.items():
+        if k in pack.schedule.counters:
+            facts.append(f"{pack.schedule.counters[k].label} {v:g}")
+    for item_id in state.items:
+        item = next((i for i in pack.schedule.items if i.id == item_id), None)
+        if item is not None:
+            facts.append(f"持有物品{item.label}")
 
     token_set: set[str] = set()
     quoted: set[str] = set()
