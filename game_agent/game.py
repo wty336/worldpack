@@ -87,6 +87,7 @@ class Game:
         keep_turns: int = 6,  # M2b：压缩时保留的近窗回合数
         judge_every: int = 0,  # M2b：>0 时每 N 回合做一次语义校验（0=关闭）
         reflect_every: int = 0,  # A3（P1）：>0 时每 N 回合做关系洞察反思（0=关闭）
+        critique_on_critical: bool = False,  # agent-first 第 2 件：关键节点内轮自校正
     ):
         self.pack = pack
         self.state = state
@@ -109,6 +110,7 @@ class Game:
         self.keep_turns = keep_turns  # M2b 压缩近窗
         self.judge_every = judge_every  # M2b 语义校验间隔（0=关闭）
         self.reflect_every = reflect_every  # A3 反思间隔（0=关闭）
+        self.critique_on_critical = critique_on_critical  # agent-first 第 2 件
         self.judge = JudgeSystem(llm)  # M2b
 
     # ------------------------------------------------------------------
@@ -245,17 +247,16 @@ class Game:
         # M2b 压缩：接近阈值时批量压缩（只碰历史，不碰静态前缀与事实区块）
         if self.compress_threshold > 0 and history_tokens(self.history) > self.compress_threshold:
             self._compress_history()
-        messages = self.builder.build_messages(
-            self.state, self.history, self.story.active_node(self.state)
-        )
-        self.state.turn_count += 1  # 记忆来源追踪（M2a）
-        result = self.llm.run_turn(
-            messages, self._apply_change, on_text=self.on_text, remember=self._remember,
-            query_world=self._query_world,
-        )
-        # run_turn 返回的消息含 system 前缀；历史只保留对话部分，
-        # 否则下轮 build_messages 会把 system 重复注入（压缩测试抓到的潜伏 bug）
-        self.history = [m for m in result.messages if m.get("role") != "system"]
+        # 记忆来源追踪（M2a）：每**玩家可见回合**计一次——内轮自校正的重生成不另计
+        self.state.turn_count += 1
+        critical = self.critique_on_critical and self._in_critical_node()
+        # 关键节点不流式：先缓冲，自校正通过后再一次性回放（坏稿不能让玩家先看到）
+        pre_history = list(self.history) if critical else None  # 第一稿前的前缀（剥稿用）
+        result = self._generate_turn(stream=not critical)
+        if critical:
+            result = self._critique_and_regenerate(result, pre_history)
+            if result.narration and self.on_text is not None:
+                self.on_text(result.narration)  # 缓冲后一次性回放（CLI 去重逻辑兼容）
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
         # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子；含对话历史）
@@ -356,6 +357,74 @@ class Game:
                 "可选行动：" + "；".join(f"{a.label}（{a.cost} 行动点）" for a in actions)
             )
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # agent-first 第 2 件：关键节点内轮自校正（Reflexion）
+    # ------------------------------------------------------------------
+
+    def _in_critical_node(self) -> bool:
+        """当前主线节点是否带关键选择（critical_choices 非空）。"""
+        node = self.story.active_node(self.state)
+        return node is not None and bool(node.critical_choices)
+
+    def _generate_turn(self, stream: bool) -> "TurnResult":
+        """一次叙事生成：组装 → run_turn → 历史同步（turn_count 由调用方计）。"""
+        messages = self.builder.build_messages(
+            self.state, self.history, self.story.active_node(self.state)
+        )
+        result = self.llm.run_turn(
+            messages, self._apply_change,
+            on_text=self.on_text if stream else None,
+            remember=self._remember,
+            query_world=self._query_world,
+        )
+        # run_turn 返回的消息含 system 前缀；历史只保留对话部分，
+        # 否则下轮 build_messages 会把 system 重复注入（压缩测试抓到的潜伏 bug）
+        self.history = [m for m in result.messages if m.get("role") != "system"]
+        return result
+
+    def _critique_and_regenerate(
+        self, result: "TurnResult", pre_history: list[dict] | None
+    ) -> "TurnResult":
+        """关键节点内轮自校正：judge 判劣 → 附结构化反馈重生成一次（至多 2 稿）。
+
+        纪律：
+        - 只在 False（有明确问题）时重生成；None（未知）不给反馈、不重生成
+          ——"未知 ≠ 通过"，但也无反馈可给（与 _judge_turn 同口径）；
+        - 重生成后**从历史中剥掉第一稿**（其叙事文本不再进入后续上下文，防止
+          "两个版本都当真"污染后续回合；第一稿的工具效果已落 stat_log 真值）；
+        - 第二稿仍判劣也**接受**（不熔断）：自校正是质量优化层，不是硬门禁。
+        """
+        if not result.narration:
+            return result
+        materials = self.builder.status_text(
+            self.state, self.story.active_node(self.state)
+        )
+        ok, verdict = self.judge.check(result.narration, materials)
+        if ok is not False or not verdict:
+            return result
+        self.history.append(
+            {
+                "role": "user",
+                "name": "engine",  # A-2：引擎元消息，排除出检索上下文
+                "content": (
+                    f"【内轮自校正】上一稿叙事存在质量问题：{verdict}\n"
+                    "请重写本轮叙事，自然修正上述问题，并避免重复上一稿的文本。"
+                ),
+            }
+        )
+        second = self._generate_turn(stream=False)
+        if pre_history is None:
+            return second  # 无前缀可回放（防御分支，正常路径恒有）
+        marker = next(
+            i for i, m in enumerate(second.messages)
+            if m.get("name") == "engine" and "【内轮自校正】" in (m.get("content") or "")
+        )
+        # 剥掉第一稿与反馈：历史 = 本轮输入前的前缀 + 第二稿及其后续
+        self.history = pre_history + [
+            m for m in second.messages[marker + 1:] if m.get("role") != "system"
+        ]
+        return second
 
     # ------------------------------------------------------------------
     # A3（P1）：反思层——零散记忆 → 关系洞察

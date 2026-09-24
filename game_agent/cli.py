@@ -78,6 +78,7 @@ def _cmd_play(args: argparse.Namespace) -> int:
         pack, state, llm, autosave_path=AUTOSAVE,
         extract_every=2, compress_threshold=30000, judge_every=5,  # M2a/M2b 长局引擎
         reflect_every=10,  # A3（P1）：每 10 回合合成关系洞察
+        critique_on_critical=True,  # agent-first 第 2 件：关键节点内轮自校正
     )
     # 流式显示：内容增量实时输出（修复"等很久才有反应"的体验）
     game.on_text = _make_stream_display(game)
