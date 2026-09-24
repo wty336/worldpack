@@ -187,6 +187,8 @@ class NodeSpec(BaseModel):
     on_enter: OnEnter
     critical_choices: list[CriticalChoice] = Field(default_factory=list)
     free_scope: str = ""
+    steps: list[str] = Field(default_factory=list)  # agent-first 第 4 件：作者手写的
+    #   顺序子步骤（1~4 条，每条 ≤40 字；空 = 由引擎侧信道生成，见 docs/design-planning.md）
 
 
 class MainlineSpec(BaseModel):
@@ -495,6 +497,18 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"但没有任何代码路径（关键选择/事件/日程行动的效果）能写入它们——"
                 f"该节点将永远无法完成"
             )
+        # agent-first 第 4 件：作者手写子步骤的格式校验（1~4 条、每条 ≤40 字）
+        if not 0 <= len(node.steps) <= 4:
+            raise WorldPackError(
+                f"主线节点 '{node.id}' 的 steps 必须在 0~4 条之间（当前 {len(node.steps)} 条）"
+            )
+        for i, step in enumerate(node.steps, start=1):
+            if not step.strip():
+                raise WorldPackError(f"主线节点 '{node.id}' 的 steps 第 {i} 条为空")
+            if len(step) > 40:
+                raise WorldPackError(
+                    f"主线节点 '{node.id}' 的 steps 第 {i} 条超过 40 字（{len(step)} 字）"
+                )
 
 
 def load_worldpack(root: str | Path) -> WorldPack:

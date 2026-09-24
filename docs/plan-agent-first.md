@@ -26,7 +26,7 @@
 | 1 | **query_world 只读查询工具** | 仅 turn 工具 schema + ENGINE_RULES | 无基线（turn 侧无冻结基线） | ✅ 已落地（2026-09-24，§3） |
 | 2 | 内轮自校正（关键节点 Reflexion） | 仅 turn 运行时 | 无基线 | ✅ 已落地（2026-09-24，§3.5） |
 | 3 | 语义检索替换 bigram | memory `rank_facts` + context 消费 | judge 语料基线（材料内容变）+ 工厂材料复验 | ✅ 已落地（2026-09-24，§3.6；E1 重测见 §3.6.3） |
-| 4 | 规划层 plan-and-execute | status_text + compress 摘要契约 | judge 基线 + compress 评测集 | 待做 |
+| 4 | 规划层 plan-and-execute | status_text + compress 摘要契约 | judge 基线 + compress 评测集 | ✅ 已落地（2026-09-24，§3.7；设计 `docs/design-planning.md`） |
 | 5 | 事实图 Judge | judge 内部（语料尺子不动） | E1 门禁三包重跑 | 待做 |
 | 6 | canary 注入门禁 | 系统提示 + 新评测 | 新增门禁（纯增量） | 待做 |
 
@@ -126,6 +126,38 @@
   `reports/judge_sensitivity_20260924-150148.json`（ancient_jianghu，flash，¥0.214）：
   **ooc 20/20 · setting 22/22 · confab 20/20 = 100% · normal 误报 3/48 = 6% ✓ 门禁通过**，
   与改动前同口径无退化（其余两包待后续真机批次一并补跑）。
+
+### 3.7 执行记录 · 第 4 件：规划层 plan-and-execute ✅（2026-09-24）
+
+**设计**：`docs/design-planning.md`（子步骤来源 / 进度维护 / 卡壳保护边界三问）。
+实现要点：
+
+- `NodeSpec.steps`（作者手写，0~4 条 × ≤40 字，check-worldpack 校验）；
+- 兜底 `game._ensure_plan`：进节点一次侧信道调用（purpose="plan"，temp=0，预算 500，
+  输入只含 goal/briefing/场景、**不含 flags**），失败/空/非法 → 无计划 = 现状行为；
+- 进度**真值驱动**：`storyline._advance_plan` 按 flag 增量推进指针（+1、一步一进、
+  上限 len−1），**推进后快照刷新**（对照基线跟指针走——初版漏刷新导致同一翻转每回合
+  重复触发，守卫测试当场抓住并修正）；
+- 状态栏 `<plan>` 块（[x]/[→]/[ ]）+ query_world 同步步骤；
+- 卡壳保护 30/60 阈值与阶段机**一字未动**（软引导与硬兜底各司其职，守卫钉住）；
+- 存档兼容：计划三字段带缺省回退，老档可读，version 不动；
+- cli/web/冒烟均开 `plan_node=True`（冒烟镜像生产配置，顺带把第 2 件的开关也补进冒烟）。
+
+**守卫**：`tests/test_planning.py` **16 条**。全量回归：**617 → 633 passed**。
+
+**验证**：
+
+- 离线：全量 633 passed（含卡壳保护既有测试不回归）；
+- 真机：`worldpack_smoke`（ancient_jianghu，生产同款配置含 plan+critique）——
+  **退出码 0 · 审计零偏差（15 条变更）· 禁表零泄漏 · 总成本 ¥0.104**；
+  `plan` 侧信道调用 **2 次**（n1/n2 各一次，¥0.001），轨迹实测计划块生成合理
+  （n1：前往沈府门前→遇纠缠→出手解围→结识，[→] 指向第一步）；
+  内轮自校正 **0 次触发**（flash 首稿全过，无重生成——符合"判劣才重写"的预期）；
+- E1 与场景卡工厂**免重测**：语料与工厂材料均不带 node_plan → 材料零变化
+  （理由见 design §6，此为第 3 件之后第二次"材料不变"论证）。
+
+**待观察**：长局卡壳 stage 1 触发率是否下降；计划生成质量抽查；计划一次侧信道调用
+的成本（usage 自动记账）。
 
 ---
 

@@ -130,6 +130,11 @@ class StorylineEngine:
                 state.scene = node.on_enter.scene
                 state.present_npcs = list(node.on_enter.present)
                 state.resolved_choices = []
+                # agent-first 第 4 件：计划生命周期——进节点重置（作者手写 steps 优先，
+                # 空 = 引擎侧信道兜底，见 game._ensure_plan；快照 = 推进判据）
+                state.node_plan = list(node.steps)
+                state.node_plan_step = 0
+                state.node_flags_snapshot = dict(state.flags)
                 state.pending_choice = (
                     node.critical_choices[0].id if node.critical_choices else None
                 )
@@ -188,6 +193,7 @@ class StorylineEngine:
         node = self.active_node(state)
         if node is not None:
             state.node_turns += 1
+            self._advance_plan(state)  # agent-first 第 4 件：flag 增量推进计划指针
             # 完成判定：代码复核 completion 条件；plot_signal 只是模型自报，不作为依据
             if evaluate(node.completion, state):
                 outcome.node_completed = node
@@ -199,6 +205,10 @@ class StorylineEngine:
                 state.stuck_stage = 0
                 state.scene = self.pack.world.start_scene
                 state.present_npcs = []
+                # agent-first 第 4 件：节点完成 → 计划字段随其余节点状态一并清空
+                state.node_plan = []
+                state.node_plan_step = 0
+                state.node_flags_snapshot = {}
                 outcome.messages.append(
                     {
                         "role": "user",
@@ -211,6 +221,29 @@ class StorylineEngine:
 
         outcome.ending = self.check_ending(state)
         return outcome
+
+    # ------------------------------------------------------------------
+    # agent-first 第 4 件：计划指针推进（真值驱动）
+    # ------------------------------------------------------------------
+
+    def _advance_plan(self, state: GameState) -> None:
+        """flag 增量 → 计划指针 +1（上限 len−1），推进后以当前 flags 重新起算。
+
+        真值驱动：flag 只能由代码路径写入（关键选择/事件/日程效果），flag 翻转 =
+        剧情真实前进了一步；指针是 flag 的投影，**不采信模型自报**。
+        一次翻转只推一步（步骤是"节拍"不是"计数"）；**推进后快照刷新**——否则
+        同一个翻转会每回合重复触发（对照基线必须跟着指针走）。
+        纯好感型节点全程无 flag 翻转 → 指针不动（无害：计划块仍全量展示，
+        卡壳保护照常兜底）。
+        """
+        if not state.node_plan or state.node_plan_step >= len(state.node_plan) - 1:
+            return
+        delta = any(
+            state.flags.get(k) != v for k, v in state.node_flags_snapshot.items()
+        ) or any(k not in state.node_flags_snapshot for k in state.flags)
+        if delta:
+            state.node_plan_step += 1
+            state.node_flags_snapshot = dict(state.flags)  # 重新起算：新基线 = 当前状态
 
     def _stuck_messages(self, state: GameState, node: NodeSpec) -> list[dict]:
         """卡壳保护（design.md §6.2）：先推进提示，再命运事件，各只注入一次。"""

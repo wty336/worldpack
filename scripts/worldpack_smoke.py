@@ -162,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         pack, state, llm, rng=random.Random(args.seed),
         extract_every=2, compress_threshold=args.compress_threshold,
         judge_every=5, reflect_every=10, keep_turns=args.keep_turns,
+        critique_on_critical=True,  # agent-first 第 2 件（冒烟镜像生产配置）
+        plan_node=True,  # agent-first 第 4 件（冒烟镜像生产配置）
     )
 
     transcript: list[str] = []

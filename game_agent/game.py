@@ -47,6 +47,7 @@ from .memory import (
     parse_insights,
     rank_facts,
 )
+from .planning import PLAN_MAX_TOKENS, PLAN_SYSTEM, parse_steps
 from .save import save_game
 from .schedule import ScheduleSystem
 from .state import GameState, InsightEntry
@@ -88,6 +89,7 @@ class Game:
         judge_every: int = 0,  # M2b：>0 时每 N 回合做一次语义校验（0=关闭）
         reflect_every: int = 0,  # A3（P1）：>0 时每 N 回合做关系洞察反思（0=关闭）
         critique_on_critical: bool = False,  # agent-first 第 2 件：关键节点内轮自校正
+        plan_node: bool = False,  # agent-first 第 4 件：节点目标拆子步骤（plan-and-execute）
     ):
         self.pack = pack
         self.state = state
@@ -111,6 +113,7 @@ class Game:
         self.judge_every = judge_every  # M2b 语义校验间隔（0=关闭）
         self.reflect_every = reflect_every  # A3 反思间隔（0=关闭）
         self.critique_on_critical = critique_on_critical  # agent-first 第 2 件
+        self.plan_node = plan_node  # agent-first 第 4 件
         self.judge = JudgeSystem(llm)  # M2b
 
     # ------------------------------------------------------------------
@@ -187,6 +190,8 @@ class Game:
     def _narrate(self, prompt: str | None = None) -> TurnView:
         node, node_msgs = self.story.begin_turn(self.state)
         self.history.extend(node_msgs)
+        if node is not None and self.plan_node:
+            self._ensure_plan(node)  # agent-first 第 4 件：新节点进入 → 生成子步骤计划
         choice = self.story.pending_choice(self.state)
         if choice is not None:
             # 关键抉择前把节点剧情背景带给玩家（修复"上来就是选项"体验问题）
@@ -335,6 +340,13 @@ class Game:
         lines.append(
             f"主线目标：{node.goal if node is not None else '自由探索，等待主线事件'}"
         )
+        if node is not None and self.state.node_plan:
+            for i, step in enumerate(self.state.node_plan):
+                mark = (
+                    "已完成" if i < self.state.node_plan_step
+                    else "进行中" if i == self.state.node_plan_step else "待做"
+                )
+                lines.append(f"步骤（{mark}）：{i + 1}. {step}")
         # 检索区：与查询相关的事实/记忆/lore（输出上限收紧：工具结果直接进模型上下文）
         if self.state.player_facts:
             facts = rank_facts(
@@ -425,6 +437,41 @@ class Game:
             m for m in second.messages[marker + 1:] if m.get("role") != "system"
         ]
         return second
+
+    # ------------------------------------------------------------------
+    # agent-first 第 4 件：规划层（plan-and-execute）
+    # ------------------------------------------------------------------
+
+    def _ensure_plan(self, node) -> None:
+        """节点进入且作者未手写 steps 时，用侧信道把 goal 拆成 2~4 子步骤。
+
+        失败/空/非法 → 无计划（静默降级 = 现状行为）。步骤是"引导"不是"真值"：
+        完成判定仍只认 completion 条件；指针推进由 storyline._advance_plan 按
+        flag 增量执行（不采信自报）。输入不含 flags（引擎真值纪律）。
+        """
+        if self.state.node_plan or not node.goal.strip():
+            return
+        try:
+            output = complete_with_empty_retry(
+                self.llm,
+                [
+                    {"role": "system", "content": PLAN_SYSTEM},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"<目标>\n{node.goal}\n</目标>\n\n"
+                            f"<简报>\n{node.on_enter.briefing}\n</简报>\n\n"
+                            f"<场景>\n{node.on_enter.scene}\n</场景>"
+                        ),
+                    },
+                ],
+                purpose="plan",
+                max_tokens=PLAN_MAX_TOKENS,
+                temperature=0.0,
+            )
+        except Exception:  # noqa: BLE001
+            return  # 计划生成失败静默：不影响主线
+        self.state.node_plan = parse_steps(output)
 
     # ------------------------------------------------------------------
     # A3（P1）：反思层——零散记忆 → 关系洞察

@@ -89,6 +89,9 @@ class GameState:
     player_facts: list[MemoryEntry] = field(default_factory=list)  # 玩家长期关键事实（状态栏检索注入）
     npc_memories: dict[str, list[MemoryEntry]] = field(default_factory=dict)  # NPC 对玩家的记忆
     npc_insights: dict[str, list[InsightEntry]] = field(default_factory=dict)  # A3：NPC 关系洞察
+    node_plan: list[str] = field(default_factory=list)  # agent-first 第 4 件：当前节点子步骤计划
+    node_plan_step: int = 0  # 计划指针（0 起，上限 len-1；代码按 flag 增量推进，不采信自报）
+    node_flags_snapshot: dict[str, bool] = field(default_factory=dict)  # 进节点时的 flags 快照
 
     # ---- 构造 ----
 
@@ -140,6 +143,10 @@ class GameState:
             "npc_insights": {
                 k: [vars(i) for i in v] for k, v in self.npc_insights.items()
             },
+            # agent-first 第 4 件：计划字段（老档缺省回退，version 不动）
+            "node_plan": list(self.node_plan),
+            "node_plan_step": self.node_plan_step,
+            "node_flags_snapshot": dict(self.node_flags_snapshot),
         }
 
     @classmethod
@@ -181,4 +188,7 @@ class GameState:
                 ]
                 for k, v in d.get("npc_insights", {}).items()
             },
+            node_plan=list(d.get("node_plan", [])),  # agent-first 第 4 件：老档缺省空计划
+            node_plan_step=int(d.get("node_plan_step", 0)),
+            node_flags_snapshot=dict(d.get("node_flags_snapshot", {})),
         )

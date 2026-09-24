@@ -178,6 +178,18 @@ class ContextBuilder:
         else:
             lines.append("剧情进度：日常阶段")
             lines.append("当前主线目标：自由探索，等待主线事件发生")
+        # agent-first 第 4 件：计划块——软引导（[x] 已完成 / [→] 当前 / [ ] 待做）
+        # 指针由代码按 flag 增量推进（storyline._advance_plan），此处只负责展示
+        if node is not None and state.node_plan:
+            lines.append("<plan>")
+            for i, step in enumerate(state.node_plan):
+                if i < state.node_plan_step:
+                    lines.append(f"[x] {i + 1}. {step}")
+                elif i == state.node_plan_step:
+                    lines.append(f"[→] {i + 1}. {step}")
+                else:
+                    lines.append(f"[ ] {i + 1}. {step}")
+            lines.append("</plan>")
         # 玩家长期关键事实（A1：常驻区 top-importance + 检索区三因子 top-K，非全量）
         context = " ".join(filter(None, [state.scene, node.goal if node else "", recent]))
         if state.player_facts:
