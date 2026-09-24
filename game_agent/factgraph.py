@@ -80,10 +80,10 @@ def build_graph(pack, state) -> FactGraph:
     """从世界包 + 状态构建事实图（与 status_text 材料同源；不含 flags）。"""
     facts: list[str] = []
     if state.player_facts:
-        facts += [m.fact for m in state.player_facts]
+        facts += [m.fact for m in state.player_facts if not m.superseded]  # A5：取代者才接地
     for npc_id in state.present_npcs:
         if npc_id in state.npc_memories:
-            facts += [m.fact for m in state.npc_memories[npc_id]]
+            facts += [m.fact for m in state.npc_memories[npc_id] if not m.superseded]
     if getattr(pack.world, "lore", None):
         facts += [e.text for e in pack.world.lore]
     for npc_id in state.present_npcs:

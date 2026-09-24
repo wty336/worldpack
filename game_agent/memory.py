@@ -7,6 +7,8 @@
   - NPC 记忆（npc_memories）在该 NPC 出场时按检索注入角色卡区块；
 - 淘汰（A2，P1）：满额按 (importance, round) 加权——低重要性先淘汰，同重要性按时间衰减；
 - 冲突：v1 允许新旧事实共存（append-only，Mem0 v3 思路），由时间淘汰与语义校验兜底；
+  **A5（runtime 平台化 ①）**：写入时做时序冲突判定——"取代"则旧条目打 superseded
+  （不注入/不接地/淘汰优先），不再靠兜底慢慢漂；
 - 去重（A4，P1）：包含关系 + bigram 预筛 + 轻量模型语义判定（见 _is_duplicate）。
 """
 
@@ -17,6 +19,7 @@ import re
 from typing import TYPE_CHECKING, Callable
 
 from .budgets import (
+    CONFLICT_MAX_TOKENS,
     DEDUP_MAX_TOKENS,
     REFLECT_MAX_TOKENS,
     complete_with_empty_retry,
@@ -43,6 +46,64 @@ DEDUP_SYSTEM = (
     "你是记忆去重判定器。判断「候选事实」是否与「既有事实」中的某一条语义重复"
     "（含义相同，仅措辞不同）。只输出：重复 或 不重复。"
 )
+
+# A5（runtime 平台化 ①）时序冲突判定提示词
+CONFLICT_SYSTEM = (
+    "你是记忆冲突判定器。给定编号的「既有事实」与一条「新事实」，判断新事实与"
+    "既有事实的关系：\n"
+    "① 无冲突：新事实与既有事实互不矛盾（不同对象/不同维度/不同事件）；\n"
+    "② 并存：同一对象但描述不同维度，可同时成立（如『A 欠你钱』与『A 送过你礼物』）；\n"
+    "③ 取代：新事实在**时序上覆盖**某条既有事实（如旧『A 恨 B』、新『A 已原谅 B』——"
+    "原谅之后，恨不再成立）。取代只对**同一对象同一维度、且时序明确**的条目判定。\n"
+    "只输出一个结论：`无冲突` / `并存` / `取代：<编号>`（多个编号用逗号分隔）。"
+)
+
+
+def judge_conflict(llm, existing: list[MemoryEntry], fact: str) -> tuple[str, list[int]]:
+    """冲突判定纯函数：对既有事实列表与一条新事实做三态判定。
+
+    返回 (kind, supersede_indices)；kind ∈ none / coexist / supersede。
+    调用失败/空 → ('none', [])（判不出来就不取代，绝不误杀）。
+    ``conflict_gate.py`` 直接复用本函数做三态评测（写路径行为由守卫测试覆盖）。
+    """
+    numbered = "\n".join(f"{i + 1}. {m.fact}" for i, m in enumerate(existing))
+    try:
+        output = complete_with_empty_retry(
+            llm,
+            [
+                {"role": "system", "content": CONFLICT_SYSTEM},
+                {
+                    "role": "user",
+                    "content": f"<既有事实>\n{numbered}\n</既有事实>\n\n"
+                    f"<新事实>\n{fact}\n</新事实>",
+                },
+            ],
+            purpose="conflict",
+            max_tokens=CONFLICT_MAX_TOKENS,
+            temperature=0.0,
+        )
+    except Exception:  # noqa: BLE001
+        return "none", []
+    return parse_conflict(output)
+
+
+def parse_conflict(output: str) -> tuple[str, list[int]]:
+    """解析冲突判定：返回 (kind, supersede_indices)。
+
+    kind ∈ none / coexist / supersede；空输出/无法识别 → ('none', [])（失败静默口径：
+    判不出来就不取代，绝不误杀）。"""
+    text = (output or "").strip()
+    if not text:
+        return "none", []
+    head = text[:12].replace(" ", "")
+    if head.startswith("无冲突"):
+        return "none", []
+    if head.startswith("并存"):
+        return "coexist", []
+    if head.startswith("取代"):
+        nums = [int(x) for x in re.findall(r"\d+", text)]
+        return "supersede", nums
+    return "none", []
 # 预算常量见 .budgets（单一真源）：DEDUP_MAX_TOKENS / REFLECT_MAX_TOKENS 由该模块导入
 
 # 确定性提取兜底（M2a 迭代 4）：不依赖模型主动 remember，引擎强制提炼
@@ -184,13 +245,16 @@ class MemorySystem:
         if self._is_semantic_duplicate(bucket, fact):
             return "[记忆跳过] 与既有记忆语义重复"
 
+        # A5（runtime 平台化 ①）：写入时时序冲突判定——"取代"→ 旧条目打 superseded
+        self._resolve_conflict(bucket, fact)
+
         entry = MemoryEntry(fact=fact, day=state.day, round=state.turn_count,
                             importance=importance)
         bucket.append(entry)
 
-        # 满额淘汰（A2）：低重要性先淘汰，同重要性按时间衰减（保留最新 limit 条）
+        # 满额淘汰（A2）：superseded 优先淘汰（死权重最轻）→ 低重要性 → 同重要性按时间
         if len(bucket) > limit:
-            bucket.sort(key=lambda m: (m.importance, m.round))
+            bucket.sort(key=lambda m: (0 if m.superseded else 1, m.importance, m.round))
             removed_count = len(bucket) - limit
             del bucket[:removed_count]
             return (
@@ -198,6 +262,33 @@ class MemorySystem:
                 f"（满额，按重要性+时间淘汰 {removed_count} 条旧记忆）"
             )
         return f"[记忆已写入] {label}：{fact}（重要性 {importance:g}）"
+
+    # ------------------------------------------------------------------
+    # A5（runtime 平台化 ①）：时序冲突消解
+    # ------------------------------------------------------------------
+
+    def _resolve_conflict(self, bucket: list[MemoryEntry], fact: str) -> None:
+        """写入时判定时序冲突：判定"取代"→ 把被覆盖的旧条目标 superseded。
+
+        判定放**写入时**（低频），读取路径只做布尔排除（rank_facts / factgraph.build_graph
+        跳过 superseded）——零读取成本。候选 = bigram 预筛短名单（与去重同款零成本前置）；
+        失败/空/未知 → 无冲突（判不出来就不取代，绝不误杀，不阻塞写入）。
+        """
+        if self.llm is None or not bucket:
+            return
+        candidate = _bigrams(fact)
+        related = [
+            (i, m) for i, m in enumerate(bucket)
+            if not m.superseded and _bigrams(m.fact) & candidate
+        ]
+        if not related:
+            return
+        kind, nums = judge_conflict(self.llm, [m for _, m in related], fact)
+        if kind != "supersede":
+            return
+        for n in nums:
+            if 1 <= n <= len(related):
+                related[n - 1][1].superseded = True
 
     # ------------------------------------------------------------------
     # A4：语义去重
@@ -330,6 +421,9 @@ def rank_facts(
       ``relevance_fn`` 是可插拔接缝——embedding ranker 同签名接入即换语义检索。
     返回顺序：常驻区在前（按重要性降序），检索区在后（按分数降序）。
     """
+    if not entries:
+        return []
+    entries = [m for m in entries if not m.superseded]  # A5：被时序取代的旧事实不注入
     if not entries:
         return []
     now = max(now_round, 0)

@@ -1,0 +1,290 @@
+{
+  "generated_at": "2026-09-24T21:42:30",
+  "model": "deepseek-v4-flash",
+  "rounds": 3,
+  "content_version": "conflict-v1-20260924",
+  "note": "基线期：无硬门阈值；判定失败与无冲突同落 none 口径，失败率经 usage 另行对账",
+  "summary": {
+    "取代": {
+      "n": 8,
+      "correct": 8,
+      "accuracy": 1.0
+    },
+    "并存": {
+      "n": 8,
+      "correct": 3,
+      "accuracy": 0.375
+    },
+    "无冲突": {
+      "n": 8,
+      "correct": 8,
+      "accuracy": 1.0
+    }
+  },
+  "cases": [
+    {
+      "id": "sup_01",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_02",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_03",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_04",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_05",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_06",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_07",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "sup_08",
+      "expect": "取代",
+      "majority": "取代",
+      "hit": true,
+      "rounds": [
+        "取代",
+        "取代",
+        "取代"
+      ]
+    },
+    {
+      "id": "co_01",
+      "expect": "并存",
+      "majority": "并存",
+      "hit": true,
+      "rounds": [
+        "并存",
+        "并存",
+        "并存"
+      ]
+    },
+    {
+      "id": "co_02",
+      "expect": "并存",
+      "majority": "并存",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "并存",
+        "并存"
+      ]
+    },
+    {
+      "id": "co_03",
+      "expect": "并存",
+      "majority": "无冲突",
+      "hit": false,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "co_04",
+      "expect": "并存",
+      "majority": "并存",
+      "hit": true,
+      "rounds": [
+        "并存",
+        "并存",
+        "并存"
+      ]
+    },
+    {
+      "id": "co_05",
+      "expect": "并存",
+      "majority": "无冲突",
+      "hit": false,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "co_06",
+      "expect": "并存",
+      "majority": "无冲突",
+      "hit": false,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "co_07",
+      "expect": "并存",
+      "majority": "无冲突",
+      "hit": false,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "co_08",
+      "expect": "并存",
+      "majority": "无冲突",
+      "hit": false,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_01",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_02",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_03",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_04",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_05",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_06",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_07",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    },
+    {
+      "id": "non_08",
+      "expect": "无冲突",
+      "majority": "无冲突",
+      "hit": true,
+      "rounds": [
+        "无冲突",
+        "无冲突",
+        "无冲突"
+      ]
+    }
+  ]
+}

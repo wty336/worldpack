@@ -28,6 +28,7 @@ JUDGE_MAX_TOKENS = 500  # 判定：通过 / 问题类型：描述
 EXTRACT_MAX_TOKENS = 500  # 事实提炼：行式「重要性|事实」，≤5 条
 DEDUP_MAX_TOKENS = 500  # 二值判定：重复 / 不重复（正文仅 2 字，预算留给思考链）
 REFLECT_MAX_TOKENS = 500  # 洞察合成：≤2 行「洞察|来源编号」
+CONFLICT_MAX_TOKENS = 500  # A5（runtime 平台化 ①）：冲突判定「无冲突 / 并存 / 取代：编号」
 
 # 空响应升级下限：小任务（基础预算 ≤1000）够用；大任务按 2× 走 retry_tokens_for()
 EMPTY_RETRY_TOKENS = 2000

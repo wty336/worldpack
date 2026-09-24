@@ -539,7 +539,9 @@ class Game:
         recent = self._recent_text()
         if not recent.strip():
             return
-        existing = "；".join(m.fact for m in self.state.player_facts)
+        existing = "；".join(
+            m.fact for m in self.state.player_facts if not m.superseded
+        )  # A5：被时序取代的旧事实不进"已有事实"（防误导提炼器）
         user_content = f"已有事实：{existing}\n\n<回合内容>\n{recent}\n</回合内容>"
         try:
             output = complete_with_empty_retry(

@@ -1,0 +1,32 @@
+# A5（runtime 平台化 ①）：记忆冲突判定语料（三态：取代 / 并存 / 无冲突）
+# 取代：同一对象同一维度 + 时序明确覆盖；并存：同一对象不同维度；无冲突：不同对象/互不矛盾。
+# 门禁脚本：scripts/conflict_gate.py；判定函数：game_agent/memory.py judge_conflict。
+content_version: conflict-v1-20260924
+cases:
+  # ---- 取代（时序覆盖，8 条）----
+  - {id: sup_01, existing: ["沈清秋对你冷淡疏远"], new: "沈清秋如今对你亲近信任", expect: 取代}
+  - {id: sup_02, existing: ["玩家欠老樵夫柴钱五十两"], new: "玩家已还清欠老樵夫的柴钱", expect: 取代}
+  - {id: sup_03, existing: ["顾长歌与你有旧怨"], new: "顾长歌已与你冰释前嫌", expect: 取代}
+  - {id: sup_04, existing: ["沈清秋住在沈府后院"], new: "沈清秋已搬去城郊别院居住", expect: 取代}
+  - {id: sup_05, existing: ["玩家的剑名是听雨"], new: "玩家已把佩剑改名为惊鸿", expect: 取代}
+  - {id: sup_06, existing: ["玩家不认识顾长歌"], new: "玩家已与顾长歌结识", expect: 取代}
+  - {id: sup_07, existing: ["沈清秋不愿与你谈论私事"], new: "沈清秋如今愿与你倾诉心事", expect: 取代}
+  - {id: sup_08, existing: ["玩家的武功平平"], new: "玩家闭关后武功大进", expect: 取代}
+  # ---- 并存（同一对象不同维度，8 条）----
+  - {id: co_01, existing: ["沈清秋欠你一个人情"], new: "沈清秋送你一方手帕", expect: 并存}
+  - {id: co_02, existing: ["玩家的剑名是听雨"], new: "玩家的佩剑是师门所传", expect: 并存}
+  - {id: co_03, existing: ["沈清秋才名满京华"], new: "沈清秋爱喝桂花酿", expect: 并存}
+  - {id: co_04, existing: ["玩家欠老樵夫柴钱五十两"], new: "老樵夫请玩家喝茶", expect: 并存}
+  - {id: co_05, existing: ["沈清秋是沈家嫡女"], new: "沈清秋有一手好字", expect: 并存}
+  - {id: co_06, existing: ["玩家身负师门旧事"], new: "玩家剑法出自师门", expect: 并存}
+  - {id: co_07, existing: ["顾长歌与你有旧怨"], new: "顾长歌武艺高强", expect: 并存}
+  - {id: co_08, existing: ["玩家初入长安"], new: "玩家在长安租了间小屋", expect: 并存}
+  # ---- 无冲突（不同对象/互不矛盾，8 条）----
+  - {id: non_01, existing: ["玩家的剑名是听雨"], new: "沈清秋爱喝桂花酿", expect: 无冲突}
+  - {id: non_02, existing: ["沈清秋才名满京华"], new: "玩家欠老樵夫柴钱五十两", expect: 无冲突}
+  - {id: non_03, existing: ["长安的雨季漫长"], new: "玩家的剑名是听雨", expect: 无冲突}
+  - {id: non_04, existing: ["沈清秋是沈家嫡女"], new: "东市胡商云集", expect: 无冲突}
+  - {id: non_05, existing: ["玩家身负师门旧事"], new: "沈清秋的字清秀工整", expect: 无冲突}
+  - {id: non_06, existing: ["顾长歌与你有旧怨"], new: "沈清秋爱喝桂花酿", expect: 无冲突}
+  - {id: non_07, existing: ["沈清秋住在沈府后院"], new: "玩家的银两不多", expect: 无冲突}
+  - {id: non_08, existing: ["玩家欠老樵夫柴钱五十两"], new: "曲江池每逢七夕办诗会", expect: 无冲突}

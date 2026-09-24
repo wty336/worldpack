@@ -39,18 +39,22 @@ class StatChangeRecord:
     after: float
 
 
-@dataclass(frozen=True)
+@dataclass
 class MemoryEntry:
     """一条显式记忆（M2a）：事实 + 植入时间（来源追踪 + 时间衰减淘汰依据）。
 
     A2（P1）：importance 1~10（缺省 5）——淘汰与检索均以重要性加权，
     存档 to_dict/from_dict 兼容旧档（缺字段回退 5）。
+    superseded（A5，runtime 平台化 ①）：True = 已被更新的时序事实取代
+    （旧「A 恨 B」被新「A 已原谅 B」覆盖）——不注入、不给事实图接地、
+    淘汰时优先；存储保留（溯源可查）。旧档缺字段回退 False。
     """
 
     fact: str
     day: int
     round: int  # 植入时的叙事回合序号
     importance: float = 5.0
+    superseded: bool = False
 
 
 @dataclass(frozen=True)
