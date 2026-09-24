@@ -16,10 +16,10 @@
 | B | B1 factcheck 常开 / B2 反馈复查闭环 | 校验从开环变闭环、确定性层与 LLM 层分层 | game / judge | ✅ 已落地 |
 | C | ToolRegistry + MCP 暴露 | 工具层硬编码 → 声明式注册表；接入生态 | llm / 新 registry / 新 mcp | ✅ 已落地 |
 | D | 地点一等公民 | scene 自由字符串 → 声明式地点表 + 受校验的 change_scene | worldpack / llm / context / lore | ✅ 已落地 |
-| E | 机制层表达力（counters / items） | flags 只有 bool → 计数器与持有物入真值 | worldpack / conditions / stats / state | 待排期 |
-| F | 小项：token 校准闭环 / 复盘回写 | 预算估算用实测 usage 校准 | usage / compression | 待排期 |
+| E | 机制层表达力（counters / items） | flags 只有 bool → 计数器与持有物入真值 | worldpack / conditions / stats / state | ✅ 已落地 |
+| F | 小项：token 校准闭环 / 复盘回写 | 预算估算用实测 usage 校准 | usage / compression | ✅ 已落地 |
 
-执行顺序 A → B → C → D → E（F 随时可插队）。A/B/C/D 已落地。C/D/E 动 worldpack schema，
+执行顺序 A → B → C → D → E → F。**全部六批已落地**。C/D/E 动 worldpack schema，
 按守则同步更新 `docs/worldpack-manual.md` 与 `check-worldpack` 交叉校验。
 
 ---
@@ -348,3 +348,75 @@ MCP 层薄封装不碰状态（复用 query_world 的只读纪律测试模式）
 - 全量 `uv run pytest`：**739 passed**（698 → 727（C）→ 739（D），零回退）；
 - 现有六个世界包均未声明 locations/tools → 行为零变化，无需改动即过校验；
 - worldpack-manual 同步新增 §3.2-tools 与 §3.7（地点表）章节。
+
+---
+
+## 11. 批次 E/F 落地记录（2026-09-25）
+
+### 批次 E：机制层表达力——counters / items（commit 2f6d014）
+
+- **schema**：`schedule.yaml` 可选 `counters: {名: {label, initial, min, max}}` 与
+  `items: [{id, label, initial}]`；效果字典新增 `counters`（增减）与
+  `items: {gain: [...], lose: [...]}` 两键——行动/事件/关键选择/自定义工具四条
+  代码路径均可写入；LLM 不可写（与 flags 同纪律）；
+- **条件 DSL**：`{counter: {名: {gte: 3}}}`（同 stat 语法）与
+  `{item: {id: true/false}}`（同 flags 语法）；when/completion/结局/requires 通用；
+- **结算**（stats.apply_effects）：计数器增减 + 边界**饱和** + 审计入 stat_log
+  （stat 记 `counter:<名>`，不变量 after == before + delta 恒成立）；物品集合
+  语义（重复获得幂等、失去未持有幂等），持有状态本身可审计故不入 stat_log；
+- **感知三处**：状态栏"计数/持有"行、query_world 同口径、事实图接地
+  （叙事引用计数与物品不算编造）；
+- **可达性扩展**：completion 引用的计数器必须有增减路径、物品必须可得/可失
+  （复用 flag 可达性模式，加载期拒绝）；
+- **验收场景**（plan §5 原文两条，均为离线守卫）：
+  ① 三次赠礼触发支线——事件 `when: {counter: {flower_gifts: {gte: 3}}}` 触发并结算好感；
+  ② 当剑后不可再修炼——行动 `requires: {item: {sword: true}}`，效果失去物品后
+  行动不可选且执行兜底拒绝；
+- **守卫**：test_counters_items 21 项。
+- 过程记录：首版实现抓到一个边界 bug——钳制 delta 后未重算 after，
+  "notes 说 +10、状态写 99"；被饱和守卫测试当场拦截。教训与审计不变量同源：
+  **写入值必须由钳制后的 delta 重新推导，不得复用钳制前的中间量**。
+
+### 批次 F：token 估算校准闭环（commit 498f6da）
+
+- **TokenCalibrator**（usage.py）：`actual/estimated` 按用途 EMA（alpha 0.2，
+  钳位 [0.5, 3.0]），未校准 = 1.0（即原行为）；
+- **LLMClient 接线**：`_estimate_input_tokens` 与 compression.est_tokens 同口径
+  （1 字 ≈ 1 token）；每次调用的真实 `prompt_tokens` 回填对应用途桶
+  （turn/侧信道各自独立）；trace 的 call 事件新增 `tok_factor` 观测；
+  `from_settings` 默认创建校准器（离线直构 LLMClient 不受影响）；
+- **压缩触发线校准**：`history_tokens × token_factor("turn") > threshold`——
+  估算漏算 tool schema/system 开销（实测 prompt 恒高于估算），阈值语义不变，
+  只修精度；
+- **守卫**：test_token_calibration 10 项（EMA 数学/钳位/分桶/无 usage 不回填/
+  触发判定对照/trace 观测）。
+
+### 回归与真机
+
+- 全量 `uv run pytest`：**770 passed**（739 → 760（E）→ 770（F），零回退）；
+- 真机冒烟（E/F 合并复核）：见 reports 与 saves/smoke-ancient_jianghu 更新
+  （数值零偏差 + 禁表零泄漏 + 无熔断，校准因子在 trace 中可见）。
+
+---
+
+## 12. 子代理全量代码审查与修复（2026-09-25）
+
+按项目惯例（review-fix-plan 同法）对设计加固全部六个 commit（501468a..498f6da）
+做子代理只读全量审查：通读改动 + 关键发现实测复现 + golden 对拍（schema 与
+迁移前逐字段 identical 复核确认）。发现 **1 Critical / 2 Major / 10 Minor**，
+修复情况：
+
+| 级别 | 发现 | 修复 |
+| --- | --- | --- |
+| C-1 | **审计×counters 冲突**：counter 记录（stat=`counter:<名>`）被 audit_stats 判"未声明属性"——任何用 counters 的包跑冒烟/矩阵即审计失败 | audit.py 识别 `counter:` 前缀按声明表回放 + 计数器三方对账（含篡改检测） |
+| M-1a | 事件效果 / 关键选择选项效果里的 counters/items 引用**不校验**（条件键单数、效果键复数，flag 因同键而幸免）→ 运行期裸穿崩回合 | 效果侧引用纳入加载期声明比对（复数键 + gain/lose 收集器提为模块级） |
+| M-1b | 行动/自定义工具 requires 的 item 引用不校验 → 行动静默永久不可用 | 两处 requires 补 item 收集与比对 |
+| M-2 | MCP 处理器抛出 TOOL_ERRORS 之外的异常（畸形参数 TypeError）→ serve 进程死 | handler 异常统一转 isError 结果（友好异常给 str，其余给类型名） |
+| Minor | ①级联轮熔断文案进反重复窗口/last_narration ②MCP actions 空列表兜底是死代码（优先级）③自定义工具先扣行动点后结算 ④A4 重规划覆盖作者手写 steps ⑥find_turn_cut 的【启发式被 [ 方括号元消息误判 ⑦老档+新增 counters 求值误报"未声明" ⑧通知形态 initialize/ping 回包 ⑨Windows 管道非 UTF-8 | ①narrate 内 meltdown_seen 跨轮累计 ②先算列表再判空 ③结算成功才扣点（与 execute_action 同序）+ counters 效果值加载期数值校验 ④手写 steps 优先回落 ⑤find_turn_cut 改 A-2 口径（无 name 标记的 user） ⑦Game 装配时按包声明补初始值（items 不回填：无法区分"从未有/已失去"） ⑧rid 为空不回包 ⑨stdio reconfigure(utf-8) |
+| Minor | ⑤change_scene 不动 present_npcs、无审计日志 ⑩MCP 版本协商原样回显 | ⑤**有意设计**：在场由节点/行动管理，移动自动重置会抹掉跟随 NPC；审计从场景字段本身可查——限制记录在案 ⑩最小实现可接受，记录在案 |
+
+- 守卫：test_review_fixes 14 项逐条钉住 C-1/M-1/M-2 与 Minor ①②③④⑥⑦⑧；
+- 全量回归：**784 passed**（770 → 784，零回退）；
+- 教训归档：E 批首版的"钳制后未重算 after"与 C-1 同根——**新记录类型进
+  stat_log 时，所有下游消费者（审计/回放/对账）必须同步扩展**；审计类守卫
+  测试要打穿到真实审计函数，不能只断言记录内部不变量。

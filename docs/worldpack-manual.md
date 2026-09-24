@@ -115,6 +115,12 @@ affections:                   # 好感：每个 key 必须对应 npcs/<key>.yaml
 flags:                        # 剧情旗标：全部在此声明初始值，正文只引用不新增
   deal_made: false            # 已达成还债协议（节点完成信号）
 
+counters:                     # 计数器（批次 E，可选）：计数型机制状态
+  flower_gifts: {label: 赠礼次数, initial: 0, min: 0, max: 99}
+
+items:                        # 物品（批次 E，可选）：持有/失去型机制状态
+  - {id: sword, label: 听雨剑, initial: true}   # initial: 开局是否已持有
+
 actions:                      # 日程行动
   - id: scavenge
     label: 接单拾荒
@@ -161,6 +167,21 @@ tools:
 - 拒绝场景（门槛不满足/行动点不足/once 已用）以结构化错误回传给模型，
   模型按叙事处理"做不到"，不会崩回合；
 - 自定义工具的效果也是**节点 completion 的合法 flag 写入路径**（可达性校验认它）。
+
+#### counters / items —— 计数器与物品（可选，批次 E）
+
+flags 只能表达"是/否"，counters 与 items 补上"多少次"与"有没有"：
+
+- **counters**（计数器）：`effects` 里写 `{counters: {flower_gifts: 1}}` 增减
+  （边界饱和，审计入 stat_log）；条件 DSL 引用 `{counter: {flower_gifts: {gte: 3}}}`
+  ——典型用法：**事件 when 引用计数器**（"三次赠礼触发支线"）；
+- **items**（物品）：`effects` 里写 `{items: {gain: [sword], lose: [jade]}}`；
+  条件 DSL 引用 `{item: {sword: true}}`（已持有）/ `{item: {sword: false}}`（已失去）
+  ——典型用法：**行动/自定义工具 requires 引用物品**（"当剑后不可再修炼剑法"）；
+- 两者都**只能由代码路径写入**（LLM 不可写，与 flags 同纪律）；状态栏展示
+  "计数/持有"两行，事实图接地（叙事引用不算编造）；
+- 节点 completion 也可以引用 counter/item 条件——可达性校验同样覆盖：
+  计数器必须有增减路径、物品必须可得/可失，否则加载失败。
 
 ### 3.3 mainline.yaml —— 主线节点链（最重要的文件）
 

@@ -46,13 +46,15 @@ def history_tokens(history: list[dict]) -> int:
 def find_turn_cut(history: list[dict], keep_turns: int) -> int:
     """返回压缩切点：切点之前进摘要，之后保留近窗。
 
-    回合起点 = 非引擎元消息（不以【开头）的 user 消息；切点取倒数第 keep_turns 个起点。
+    回合起点 = **无 name 标记的 user 消息**（A-2 口径：引擎元消息统一带
+    name="engine"，玩家动作消息不带）。批次审查修复：原"不以【开头"启发式
+    会被批次 A 新增的 [反重复提示]/[引擎熔断]（方括号开头）误判为玩家回合。
     返回 0 表示无需压缩（回合数不足）。
     """
     user_idx = [
         i
         for i, m in enumerate(history)
-        if m.get("role") == "user" and not str(m.get("content") or "").startswith("【")
+        if m.get("role") == "user" and not m.get("name")
     ]
     if len(user_idx) <= keep_turns:
         return 0

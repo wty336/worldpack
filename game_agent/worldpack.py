@@ -391,6 +391,24 @@ def _collect_refs(node: Any, key_name: str, out: set[str]) -> None:
             _collect_refs(item, key_name, out)
 
 
+def _collect_item_effect_refs(node: Any, gain: set[str], lose: set[str]) -> None:
+    """收集效果字典里 items 效果的 gain/lose 物品 id（批次 E）。
+
+    效果键为复数 "items"（{"gain": [...], "lose": [...]}），与条件键单数
+    "item" 不重叠——两套收集互不干扰。
+    """
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == "items" and isinstance(v, dict):
+                gain.update(v.get("gain") or [])
+                lose.update(v.get("lose") or [])
+            else:
+                _collect_item_effect_refs(v, gain, lose)
+    elif isinstance(node, list):
+        for x in node:
+            _collect_item_effect_refs(x, gain, lose)
+
+
 def _validate_effect_values(action_id: str, label: str, effects: ActionEffects) -> None:
     """校验收益曲线参数（spread/decay 非负）。"""
     for where, values in (("stats", effects.stats), ("affections", effects.affections)):
@@ -493,12 +511,19 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     stat_refs: set[str] = set()
     counter_refs: set[str] = set()  # 批次 E：条件里引用的计数器
     item_refs: set[str] = set()  # 批次 E：条件里引用的物品
+    effect_counter_refs: set[str] = set()  # 批次 E：效果里引用的计数器（事件/关键选择）
+    effect_gain_items: set[str] = set()
+    effect_lose_items: set[str] = set()
     for node in mainline.nodes:
         dumped = node.model_dump()
         _collect_refs(dumped, "flags", flag_refs)
         _collect_refs(dumped, "stat", stat_refs)
         _collect_refs(dumped, "counter", counter_refs)
         _collect_refs(dumped, "item", item_refs)
+        for choice in node.critical_choices:  # 批次 E：选项效果的 counters/items 引用
+            for opt in choice.options:
+                _collect_refs(opt.effects, "counters", effect_counter_refs)
+                _collect_item_effect_refs(opt.effects, effect_gain_items, effect_lose_items)
         _check_cond(node.when, f"主线节点 '{node.id}' 的 when")
         _check_cond(node.completion, f"主线节点 '{node.id}' 的 completion")
         missing_npcs = set(node.on_enter.present) - set(npcs)
@@ -515,6 +540,8 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         _collect_refs(dumped, "stat", stat_refs)
         _collect_refs(dumped, "counter", counter_refs)
         _collect_refs(dumped, "item", item_refs)
+        _collect_refs(dumped, "counters", effect_counter_refs)  # 批次 E
+        _collect_item_effect_refs(dumped, effect_gain_items, effect_lose_items)
         if ev.trigger.when is not None:
             _check_cond(ev.trigger.when, f"事件 '{ev.id}' 的 trigger.when")
     for ending in endings.endings:
@@ -554,6 +581,19 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         raise WorldPackError(
             f"引用了未声明的物品: {sorted(missing_items)}——请在 schedule.yaml 的 items 中声明"
         )
+    # 批次 E：事件/关键选择**效果**侧的 counters/items 引用（效果键复数，与条件侧分开校验）
+    bad_effect_counters = effect_counter_refs - set(schedule.counters)
+    if bad_effect_counters:
+        raise WorldPackError(
+            f"效果引用了未声明的计数器: {sorted(bad_effect_counters)}——"
+            f"请在 schedule.yaml 的 counters 中声明"
+        )
+    bad_effect_items = (effect_gain_items | effect_lose_items) - set(item_ids)
+    if bad_effect_items:
+        raise WorldPackError(
+            f"效果引用了未声明的物品: {sorted(bad_effect_items)}——"
+            f"请在 schedule.yaml 的 items 中声明"
+        )
     for aff_id in declared_affections:
         if aff_id not in npcs:
             raise WorldPackError(
@@ -573,10 +613,12 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 raise WorldPackError(str(e)) from e
             req_flags, req_stats, req_affs = set(), set(), set()
             req_counters: set[str] = set()  # 批次 E
+            req_items: set[str] = set()  # 批次 E
             _collect_refs(action.requires, "flags", req_flags)
             _collect_refs(action.requires, "stat", req_stats)
             _collect_refs(action.requires, "affection", req_affs)
             _collect_refs(action.requires, "counter", req_counters)
+            _collect_refs(action.requires, "item", req_items)
             if req_flags - declared_flags:
                 raise WorldPackError(
                     f"行动 '{action.id}' 的 requires 引用了未声明的 flag: "
@@ -586,6 +628,11 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 raise WorldPackError(
                     f"行动 '{action.id}' 的 requires 引用了未声明的计数器: "
                     f"{sorted(req_counters - set(schedule.counters))}"
+                )
+            if req_items - set(item_ids):
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 requires 引用了未声明的物品: "
+                    f"{sorted(req_items - set(item_ids))}"
                 )
             if req_stats - declared_stats:
                 raise WorldPackError(
@@ -657,10 +704,12 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 raise WorldPackError(str(e)) from e
             req_flags, req_stats, req_affs = set(), set(), set()
             req_counters: set[str] = set()  # 批次 E
+            req_items: set[str] = set()  # 批次 E
             _collect_refs(tool.requires, "flags", req_flags)
             _collect_refs(tool.requires, "stat", req_stats)
             _collect_refs(tool.requires, "affection", req_affs)
             _collect_refs(tool.requires, "counter", req_counters)
+            _collect_refs(tool.requires, "item", req_items)
             if req_flags - declared_flags:
                 raise WorldPackError(
                     f"自定义工具 '{tool.id}' 的 requires 引用了未声明的 flag: "
@@ -670,6 +719,11 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 raise WorldPackError(
                     f"自定义工具 '{tool.id}' 的 requires 引用了未声明的计数器: "
                     f"{sorted(req_counters - set(schedule.counters))}"
+                )
+            if req_items - set(item_ids):
+                raise WorldPackError(
+                    f"自定义工具 '{tool.id}' 的 requires 引用了未声明的物品: "
+                    f"{sorted(req_items - set(item_ids))}"
                 )
             if req_stats - declared_stats:
                 raise WorldPackError(
@@ -720,6 +774,12 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"自定义工具 '{tool.id}' 的 effects 引用了未声明的计数器: "
                 f"{sorted(bad_tool_counters)}"
             )
+        for cname, cval in (tool.effects.get("counters") or {}).items():  # 批次 E：值必须可加
+            if isinstance(cval, bool) or not isinstance(cval, (int, float)):
+                raise WorldPackError(
+                    f"自定义工具 '{tool.id}' 的 effects.counters.{cname} 必须是数字，"
+                    f"当前为 {cval!r}"
+                )
         tool_item_refs: set[str] = set()
         tool_items = tool.effects.get("items") or {}
         tool_item_refs |= set(tool_items.get("gain") or []) | set(tool_items.get("lose") or [])
@@ -775,19 +835,6 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         _collect_refs(tool.effects, "flags", writable_flags)
 
     # 5.5) 批次 E：counters/items 的可达性（复用 flag 可达性同一模式）
-    def _collect_item_effects(node: Any, gain: set[str], lose: set[str]) -> None:
-        """收集效果字典里 items 效果的 gain/lose 物品 id。"""
-        if isinstance(node, dict):
-            for k, v in node.items():
-                if k == "items" and isinstance(v, dict):
-                    gain.update(v.get("gain") or [])
-                    lose.update(v.get("lose") or [])
-                else:
-                    _collect_item_effects(v, gain, lose)
-        elif isinstance(node, list):
-            for x in node:
-                _collect_item_effects(x, gain, lose)
-
     def _collect_item_conditions(node: Any, out: dict[str, bool]) -> None:
         """收集条件字典里 item 条件的 (物品id → want)。"""
         if isinstance(node, dict):
@@ -808,13 +855,13 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         for choice in node.critical_choices:
             for opt in choice.options:
                 _collect_refs(opt.effects, "counters", writable_counters)
-                _collect_item_effects(opt.effects, gainable_items, losable_items)
+                _collect_item_effect_refs(opt.effects, gainable_items, losable_items)
     for ev in events.events:
         _collect_refs(ev.effects, "counters", writable_counters)
-        _collect_item_effects(ev.effects, gainable_items, losable_items)
+        _collect_item_effect_refs(ev.effects, gainable_items, losable_items)
     for tool in schedule.tools:
         _collect_refs(tool.effects, "counters", writable_counters)
-        _collect_item_effects(tool.effects, gainable_items, losable_items)
+        _collect_item_effect_refs(tool.effects, gainable_items, losable_items)
     for action in schedule.actions:
         for effects in (
             action.effects,

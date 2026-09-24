@@ -18,12 +18,20 @@ def audit_stats(pack: WorldPack, state: GameState) -> list[str]:
 
     expected_stats = {k: float(v.initial) for k, v in pack.schedule.stats.items()}
     expected_aff = {k: float(v.initial) for k, v in pack.schedule.affections.items()}
+    # 批次 E：计数器记录的 stat 形如 "counter:<名>"，与属性/好感同法回放对账
+    expected_counters = {k: float(v.initial) for k, v in pack.schedule.counters.items()}
 
     for r in state.stat_log:
         if r.after != r.before + r.delta:
             deviations.append(f"日志记录内部不一致: {r}")
             continue
-        if r.target == "player":
+        if r.stat.startswith("counter:"):
+            counter_name = r.stat[len("counter:"):]
+            if counter_name not in expected_counters:
+                deviations.append(f"日志引用了未声明计数器 '{counter_name}': {r}")
+            else:
+                expected_counters[counter_name] = r.after
+        elif r.target == "player":
             if r.stat not in expected_stats:
                 deviations.append(f"日志引用了未声明属性 '{r.stat}': {r}")
             else:
@@ -38,5 +46,8 @@ def audit_stats(pack: WorldPack, state: GameState) -> list[str]:
         deviations.append(f"属性零偏差失败: 回放结果 {expected_stats} != 实际 {state.stats}")
     if expected_aff != state.affections:
         deviations.append(f"好感零偏差失败: 回放结果 {expected_aff} != 实际 {state.affections}")
-
+    if expected_counters != {k: float(v) for k, v in state.counters.items()}:
+        deviations.append(
+            f"计数器零偏差失败: 回放结果 {expected_counters} != 实际 {state.counters}"
+        )
     return deviations

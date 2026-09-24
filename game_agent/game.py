@@ -118,6 +118,10 @@ class Game:
             self.registry.bind_handler(tool.id, lambda args, t=tool: self._run_custom_tool(t, args))
         if pack.world.locations:  # 批次 D：地点表声明时启用 change_scene
             self.registry.bind_handler("change_scene", self._change_scene)
+        # 批次审查修复：老档 + 新增 counters 的包升级路径——缺键按包声明补初始值
+        # （否则 DSL 求值会误报"未声明的计数器"）。items 不回填（无法区分"从未有"与"已失去"）。
+        for key, spec in pack.schedule.counters.items():
+            self.state.counters.setdefault(key, float(spec.initial))
         self.history: list[dict] = []
         self.ending: EndingSpec | None = None
         self.last_choices: list[str] = []
@@ -229,9 +233,11 @@ class Game:
             self.history.append({"role": "user", "content": prompt})
 
         views: list[TurnView] = []
+        meltdown_seen = False  # 批次审查修复：任一级联轮熔断 → 汇总文案不进反重复窗口
         for _ in range(3):  # 1 个主回合 + 最多 2 个条件事件级联
             view = self._llm_round()
             views.append(view)
+            meltdown_seen = meltdown_seen or self._meltdown_round
             if view.ending is not None:
                 break
             ev = self.events.check_condition_events(self.state)
@@ -243,7 +249,7 @@ class Game:
         last = views[-1]
         self.ending = last.ending
         self.last_choices = last.choices
-        if narration and not self._meltdown_round:  # A5：熔断兜底文案不进反重复窗口
+        if narration and not meltdown_seen:  # A5：熔断兜底文案不进反重复窗口/last_narration
             self._check_repetition(narration)
         return TurnView(
             narration=narration or None,
@@ -395,8 +401,9 @@ class Game:
     def _maybe_replan(self, messages: list[dict]) -> None:
         """A4：卡壳保护注入推进提示的回合重规划——旧计划可能已偏离实际剧情。
 
-        清空计划复用 _ensure_plan 的侧信道生成（失败静默 = 无计划，与首生成同口径）。
-        快照刷新到当前 flags、指针归零（新计划新基线）。
+        批次审查修复：作者手写 steps 的节点回落手写步骤（与 storyline
+        "作者手写优先"口径一致），仅无手写步骤才走侧信道生成。
+        失败静默降级 = 无计划（与首生成同口径）。快照刷新到当前 flags、指针归零。
         """
         if not self.plan_node:
             return
@@ -405,9 +412,12 @@ class Game:
         node = self.story.active_node(self.state)
         if node is None:
             return
-        self.state.node_plan = []
         self.state.node_plan_step = 0
         self.state.node_flags_snapshot = dict(self.state.flags)
+        if node.steps:
+            self.state.node_plan = list(node.steps)
+            return
+        self.state.node_plan = []
         self._ensure_plan(node)
 
     def _apply_change(self, args: dict) -> str:
@@ -511,23 +521,23 @@ class Game:
     def _run_custom_tool(self, tool, args: dict) -> str:
         """批次 C：世界包自定义效果型工具（schedule.tools）的执行器。
 
-        纪律与 change_stat 同构：门槛（requires）→ 代价（行动点）→ 引擎结算效果
-        （apply_effects，饱和语义）→ 返回结果文本供叙事引用。once 工具记入
-        state.used_custom_tools（存档追踪）；拒绝走 ValueError → 结构化回传。
+        纪律与 change_stat 同构：门槛（requires）→ 引擎结算效果（apply_effects，
+        饱和语义）→ 扣行动点（审查修复：结算成功才扣，效果拒绝不白扣）→
+        once 记账。返回结果文本供叙事引用；拒绝走 ValueError → 结构化回传。
         """
         state = self.state
         if tool.once and tool.id in state.used_custom_tools:
             raise ValueError(f"{tool.label} 已经用过，不能再使用")
         if tool.requires is not None and not evaluate(tool.requires, state):
             raise ValueError(f"当前条件不满足，无法执行「{tool.label}」")
-        if tool.cost > 0:
-            if state.action_points_left < tool.cost:
-                raise ValueError(
-                    f"行动点不足：「{tool.label}」需要 {tool.cost} 点，"
-                    f"今日剩余 {state.action_points_left} 点"
-                )
-            state.action_points_left -= tool.cost
+        if tool.cost > 0 and state.action_points_left < tool.cost:
+            raise ValueError(
+                f"行动点不足：「{tool.label}」需要 {tool.cost} 点，"
+                f"今日剩余 {state.action_points_left} 点"
+            )
         notes = self.stats.apply_effects(state, tool.effects, rng=self.rng)
+        if tool.cost > 0:
+            state.action_points_left -= tool.cost
         if tool.once:
             state.used_custom_tools.append(tool.id)
         note_str = "；".join(notes) if notes else "无实际数值变化"

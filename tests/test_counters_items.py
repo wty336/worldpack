@@ -287,8 +287,8 @@ def test_cross_check_completion_counter_reachable_accepted():
     ev = parts["events"].events[0].model_dump()
     ev["effects"] = {"counters": {"flower_gifts": 1}}
     parts["events"] = EventsSpec(
-        events=[EventSpec(**ev), *parts["events"].events[1:]]
-    ) if False else EventsSpec(events=[EventSpec(**ev)] + parts["events"].events[1:])
+        events=[EventSpec(**ev)] + parts["events"].events[1:]
+    )
     _cross_check(parts)  # 不抛即通过
 
 

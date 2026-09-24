@@ -22,7 +22,7 @@
 - [第二个世界包验证报告](docs/world2-report.md)——M3「换包即玩」：《问道长生》仙侠包 + 通用性三级验证（已完成）
 - [第三个世界包验证报告](docs/world3-report.md)——forbidden 表反转与文风注入的近现代世界观验证：《霓虹深处》赛博都市包（已完成）
 - [世界包作者手册](docs/worldpack-manual.md)——写给内容作者的完整手册：schema/守则/陷阱/语料规范/验收单（写新世界包从这里开始）
-- [设计加固计划](docs/plan-design-hardening.md)——证据面收口（事实图纳入摘要/选择日志、判官连贯性材料）/ 校验闭环（复查 + 分层常开）/ ToolRegistry+MCP / 地点一等公民 / counters+items 路线图（批次 A~D 已落地，739 测试全绿）
+- [设计加固计划](docs/plan-design-hardening.md)——证据面收口（事实图纳入摘要/选择日志、判官连贯性材料）/ 校验闭环（复查 + 分层常开）/ ToolRegistry+MCP / 地点一等公民 / counters+items / token 校准（**六批全部落地**，770 测试全绿）
 
 ## 目录结构
 

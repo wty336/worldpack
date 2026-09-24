@@ -32,6 +32,17 @@ SERVER_INFO = {"name": "game-agent", "version": "1.0"}
 TOOL_ERRORS = (GameError, StorylineError, ScheduleError, ValueError, LLMTurnError)
 
 
+def _actions_text(game: Game) -> str:
+    """批次审查修复：先算列表再判空（原表达式因优先级成为死代码）。"""
+    actions = game.actions_available()
+    if not actions:
+        return f"剩余行动点 {game.state.action_points_left}（无可用行动，可用 end_day 进入下一天）"
+    return (
+        f"剩余行动点 {game.state.action_points_left}：\n"
+        + "\n".join(f"- {a.id}: {a.label}（{a.cost} 行动点）" for a in actions)
+    )
+
+
 def _view_text(view) -> str:
     """TurnView → 给外部客户端的文本（叙述 + 选项 / 关键抉择 / 结局）。"""
     parts: list[str] = []
@@ -72,11 +83,7 @@ def build_player_registry(game: Game) -> ToolRegistry:
     )
     _spec(
         "actions", "列出今日可选日程行动与剩余行动点", no_args,
-        lambda args: (
-            f"剩余行动点 {game.state.action_points_left}：\n"
-            + "\n".join(f"- {a.id}: {a.label}（{a.cost} 行动点）" for a in game.actions_available())
-            or "（无可用行动，可用 end_day 进入下一天）"
-        ),
+        lambda args: _actions_text(game),
     )
     _spec(
         "say", "推进剧情：提交玩家的话（自由输入或日常选项的文本）",
@@ -133,6 +140,8 @@ def handle_request(registry: ToolRegistry, request: dict) -> dict | None:
 
     if method == "initialize":
         requested = str(params.get("protocolVersion") or PROTOCOL_VERSION)
+        if rid is None:  # 批次审查修复：通知形态的 initialize 不回包
+            return None
         return _result(
             rid,
             {
@@ -144,7 +153,7 @@ def handle_request(registry: ToolRegistry, request: dict) -> dict | None:
     if method.startswith("notifications/"):
         return None
     if method == "ping":
-        return _result(rid, {})
+        return _result(rid, {}) if rid is not None else None
     if method == "tools/list":
         tools = []
         for name in registry.names():
@@ -171,6 +180,14 @@ def handle_request(registry: ToolRegistry, request: dict) -> dict | None:
             return _result(
                 rid, {"content": [{"type": "text", "text": str(e)}], "isError": True}
             )
+        except Exception as e:  # noqa: BLE001 — 批次审查修复：畸形参数不得杀死 serve 循环
+            return _result(
+                rid,
+                {
+                    "content": [{"type": "text", "text": f"内部错误: {type(e).__name__}"}],
+                    "isError": True,
+                },
+            )
         return _result(rid, {"content": [{"type": "text", "text": text}]})
     if rid is not None:
         return _error(rid, -32601, f"未知方法: {method}")
@@ -181,6 +198,13 @@ def serve(game: Game, stdin=None, stdout=None) -> None:
     """stdio 主循环：逐行读 JSON-RPC 请求，回包（通知不回）。"""
     inp = stdin if stdin is not None else sys.stdin
     out = stdout if stdout is not None else sys.stdout
+    # 批次审查修复：Windows 控制台管道默认 ANSI 代码页，中文会乱码——显式钉 UTF-8
+    for stream in (inp, out):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except (OSError, ValueError):
+                pass  # 已重定向/不可重配的流保持原样
     registry = build_player_registry(game)
     for line in inp:
         line = line.strip()
