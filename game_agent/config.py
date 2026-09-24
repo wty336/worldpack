@@ -2,6 +2,8 @@
 
 C1（P1）模型分层：主生成 / Judge / 压缩可各配一个模型，
 judge_model / compress_model 为空时回退主模型（design.md §14.2）。
+B3（Track B）：extract / reflect / dedup 三个侧信道同样支持专属模型路由
+（plan-local-14b §8.2 的前置：混跑本地小模型只差环境变量）。
 """
 
 from __future__ import annotations
@@ -25,19 +27,26 @@ class Settings:
     model: str
     judge_model: str = ""  # C1：Judge 用模型（空 = 回退主模型）
     compress_model: str = ""  # C1：压缩/摘要用模型（空 = 回退主模型）
+    extract_model: str = ""  # B3（Track B）：事实提取用模型（空 = 回退主模型）
+    reflect_model: str = ""  # B3（Track B）：关系洞察用模型（空 = 回退主模型）
+    dedup_model: str = ""  # B3（Track B）：语义去重用模型（空 = 回退主模型）
     no_thinking_side_channel: bool = False  # 侧信道关思考（DEEPSEEK_DISABLE_THINKING=1）
+    trace_path: str = ""  # B1（Track B）：LLM 调用 trace 落盘路径（空 = 关闭）
 
     @property
     def has_api_key(self) -> bool:
         return bool(self.api_key)
 
     def model_for(self, purpose: str) -> str:
-        """按用途取有效模型：judge/compress 有专属配置则用之，否则主模型。"""
-        if purpose == "judge" and self.judge_model:
-            return self.judge_model
-        if purpose == "compress" and self.compress_model:
-            return self.compress_model
-        return self.model
+        """按用途取有效模型：各 purpose 有专属配置则用之，否则主模型。"""
+        dedicated = {
+            "judge": self.judge_model,
+            "compress": self.compress_model,
+            "extract": self.extract_model,
+            "reflect": self.reflect_model,
+            "dedup": self.dedup_model,
+        }.get(purpose)
+        return dedicated or self.model
 
 
 def load_settings(env_path: str | Path | None = None) -> Settings:
@@ -51,14 +60,22 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     model = os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL).strip()
     judge_model = os.environ.get("DEEPSEEK_JUDGE_MODEL", "").strip()
     compress_model = os.environ.get("DEEPSEEK_COMPRESS_MODEL", "").strip()
+    extract_model = os.environ.get("DEEPSEEK_EXTRACT_MODEL", "").strip()
+    reflect_model = os.environ.get("DEEPSEEK_REFLECT_MODEL", "").strip()
+    dedup_model = os.environ.get("DEEPSEEK_DEDUP_MODEL", "").strip()
     no_thinking = os.environ.get("DEEPSEEK_DISABLE_THINKING", "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+    trace_path = os.environ.get("GAME_AGENT_TRACE", "").strip()
     return Settings(
         api_key=api_key,
         base_url=base_url,
         model=model,
         judge_model=judge_model,
         compress_model=compress_model,
+        extract_model=extract_model,
+        reflect_model=reflect_model,
+        dedup_model=dedup_model,
         no_thinking_side_channel=no_thinking,
+        trace_path=trace_path,
     )

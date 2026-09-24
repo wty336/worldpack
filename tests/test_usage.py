@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from fakes import tool_call
 
-from game_agent.config import Settings
+from game_agent.config import Settings, load_settings
 from game_agent.llm import LLMClient, build_tools
 from game_agent.usage import UsageTracker, usage_fields
 from game_agent.worldpack import load_worldpack
@@ -273,3 +273,45 @@ def test_from_settings_wires_models_and_tracker(tmp_path):
     assert llm.model_for("judge") == "j"
     assert llm.model_for("compress") == "main"  # 空 → 回退主模型
     assert llm.tracker is tracker
+
+
+# ---------------------------------------------------------------------------
+# B3（Track B）：extract / reflect / dedup 侧信道模型路由
+# ---------------------------------------------------------------------------
+
+
+def test_settings_model_for_sidechannel_routes():
+    s = Settings(api_key="k", base_url="b", model="main",
+                 extract_model="ex", reflect_model="re", dedup_model="de")
+    assert s.model_for("extract") == "ex"
+    assert s.model_for("reflect") == "re"
+    assert s.model_for("dedup") == "de"
+    assert s.model_for("turn") == "main" and s.model_for("aux") == "main"
+
+
+def test_settings_model_for_sidechannel_falls_back():
+    s = Settings(api_key="k", base_url="b", model="main")
+    for purpose in ("extract", "reflect", "dedup"):
+        assert s.model_for(purpose) == "main"
+
+
+def test_from_settings_wires_sidechannel_models():
+    s = Settings(api_key="k", base_url="https://x", model="main",
+                 extract_model="ex", reflect_model="re", dedup_model="de")
+    llm = LLMClient.from_settings(s, [])
+    assert llm.model_for("extract") == "ex"
+    assert llm.model_for("reflect") == "re"
+    assert llm.model_for("dedup") == "de"
+    assert llm.model_for("compress") == "main"
+
+
+def test_load_settings_reads_sidechannel_env(monkeypatch):
+    for var in ("DEEPSEEK_EXTRACT_MODEL", "DEEPSEEK_REFLECT_MODEL", "DEEPSEEK_DEDUP_MODEL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("DEEPSEEK_EXTRACT_MODEL", "ex")
+    monkeypatch.setenv("DEEPSEEK_REFLECT_MODEL", "re")
+    monkeypatch.setenv("DEEPSEEK_DEDUP_MODEL", "de")
+    s = load_settings()
+    assert s.extract_model == "ex"
+    assert s.reflect_model == "re"
+    assert s.dedup_model == "de"

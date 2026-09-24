@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -24,6 +25,7 @@ from .budgets import TURN_MAX_TOKENS as MAX_OUTPUT_TOKENS
 from .config import Settings
 from .memory import MemoryError
 from .stats import StatChangeError
+from .trace import TraceRecorder
 from .usage import UsageTracker, usage_fields
 from .worldpack import ScheduleSpec
 
@@ -255,6 +257,7 @@ class LLMClient:
         models: dict[str, str] | None = None,  # C1：purpose → 模型名
         tracker: UsageTracker | None = None,  # C2：usage 落盘
         no_thinking_side_channel: bool = False,  # 侧信道关思考（见 complete_with_meta）
+        tracer: TraceRecorder | None = None,  # B1（Track B）：trace 落盘（None = 关闭）
     ):
         self._client = client
         self.model = model
@@ -262,6 +265,8 @@ class LLMClient:
         self.models = models or {}
         self.tracker = tracker
         self.no_thinking_side_channel = no_thinking_side_channel
+        self.tracer = tracer
+        self._turn_seq = 0  # B1：本进程内的叙事回合序号（trace 关联键）
 
     @classmethod
     def from_settings(
@@ -270,21 +275,30 @@ class LLMClient:
         tools: list[dict],
         tracker: UsageTracker | None = None,
     ) -> "LLMClient":
-        """按 Settings 构造：主模型 + judge/compress 专属模型路由（C1）。"""
+        """按 Settings 构造：主模型 + 侧信道专属模型路由（C1 + B3/Track B）。"""
+        tracer = None
+        if settings.trace_path:  # B1：GAME_AGENT_TRACE 非空才开 trace（默认零开销）
+            tracer = TraceRecorder(settings.trace_path)
         return cls(
             make_client(settings),
             settings.model,
             tools,
             models={
-                "judge": settings.model_for("judge"),
-                "compress": settings.model_for("compress"),
+                purpose: settings.model_for(purpose)
+                for purpose in ("judge", "compress", "extract", "reflect", "dedup")
             },
             tracker=tracker,
             no_thinking_side_channel=settings.no_thinking_side_channel,
+            tracer=tracer,
         )
 
     def model_for(self, purpose: str) -> str:
         return self.models.get(purpose) or self.model
+
+    def _trace(self, event: str, **fields: Any) -> None:
+        """B1：tracer 为 None 时零开销 no-op；落盘失败由 recorder 内部静默。"""
+        if self.tracer is not None:
+            self.tracer.record(event, **fields)
 
     def _record_usage(self, model: str, purpose: str, resp: Any) -> None:
         if self.tracker is not None:
@@ -331,12 +345,28 @@ class LLMClient:
         use_no_thinking = self.no_thinking_side_channel if no_thinking is None else no_thinking
         if use_no_thinking:
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
-        resp = self._client.chat.completions.create(**kwargs)
+        t0 = time.monotonic()
+        try:
+            resp = self._client.chat.completions.create(**kwargs)
+        except Exception as e:  # noqa: BLE001
+            self._trace(
+                "call", purpose=purpose, model=model, max_tokens=max_tokens,
+                latency_ms=round((time.monotonic() - t0) * 1000),
+                error=type(e).__name__,
+            )
+            raise
+        latency_ms = round((time.monotonic() - t0) * 1000)
         self._record_usage(model, purpose, resp)
         choice = resp.choices[0]
+        finish_reason = getattr(choice, "finish_reason", None)
+        self._trace(
+            "call", purpose=purpose, model=model, max_tokens=max_tokens,
+            latency_ms=latency_ms, finish_reason=finish_reason,
+            usage=usage_fields(resp),
+        )
         return CompletionResult(
             text=choice.message.content or "",
-            finish_reason=getattr(choice, "finish_reason", None),
+            finish_reason=finish_reason,
         )
 
     def run_turn(
@@ -360,6 +390,12 @@ class LLMClient:
         memories: list[dict] = []
 
         model = self.model_for("turn")
+        self._turn_seq += 1  # B1：回合序号（trace 关联键）
+        turn_seq = self._turn_seq
+        self._trace(
+            "turn_begin", turn_seq=turn_seq, model=model,
+            messages=len(msgs), max_iters=max_iters,
+        )
         for i in range(1, max_iters + 1):
             kwargs: dict[str, Any] = dict(
                 model=model,
@@ -369,6 +405,7 @@ class LLMClient:
                 max_tokens=MAX_OUTPUT_TOKENS,
             )
             stream_usage = None  # C2：流式时 usage 在末尾 chunk（stream_options 开启后）
+            t0 = time.monotonic()  # B1：本轮 API 调用时延（流式/非流式同源计时）
             if on_text is not None:
                 # openai SDK v3 的流式对象不聚合，需手动累积各 delta
                 stream = self._client.chat.completions.create(
@@ -438,7 +475,14 @@ class LLMClient:
                 )
             else:
                 resp = self._client.chat.completions.create(**kwargs, stream=False)
+            latency_ms = round((time.monotonic() - t0) * 1000)
             self._record_usage(model, "turn", resp)
+            self._trace(
+                "call", turn_seq=turn_seq, purpose="turn", model=model,
+                max_tokens=MAX_OUTPUT_TOKENS, latency_ms=latency_ms,
+                finish_reason=getattr(resp.choices[0], "finish_reason", None),
+                usage=usage_fields(resp),
+            )
             msg = resp.choices[0].message
             finish = getattr(resp.choices[0], "finish_reason", None)
             msgs.append(_assistant_to_dict(msg))
@@ -473,41 +517,68 @@ class LLMClient:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError as e:
                     msgs.append(_tool_result(tc.id, f"[协议错误] 工具参数不是合法 JSON：{e}"))
+                    self._trace("tool", turn_seq=turn_seq, name=name, status="bad_json",
+                                detail=str(e)[:80])
                     continue
 
                 if name == "change_stat":
                     try:
                         result_msg = apply_change(args)
+                        status = "ok"
                     except StatChangeError as e:
                         result_msg = f"[引擎拒绝] {e}"
+                        status = "rejected"
                     msgs.append(_tool_result(tc.id, result_msg))
                     stat_changes.append({**args, "result": result_msg})
+                    self._trace("tool", turn_seq=turn_seq, name=name, status=status,
+                                detail=result_msg[:80])
                 elif name == "remember":
                     if remember is None:
-                        msgs.append(_tool_result(tc.id, "[协议错误] 引擎未启用记忆功能"))
+                        result_msg = "[协议错误] 引擎未启用记忆功能"
+                        msgs.append(_tool_result(tc.id, result_msg))
+                        self._trace("tool", turn_seq=turn_seq, name=name,
+                                    status="protocol_error", detail=result_msg)
                     else:
                         try:
                             result_msg = remember(args)
+                            status = "ok"
                         except MemoryError as e:
                             result_msg = f"[引擎拒绝] {e}"
+                            status = "rejected"
                         msgs.append(_tool_result(tc.id, result_msg))
                         memories.append({**args, "result": result_msg})
+                        self._trace("tool", turn_seq=turn_seq, name=name, status=status,
+                                    detail=result_msg[:80])
                 elif name == "submit_narration":
                     err = _validate_narration(args)
                     if err is not None:
                         msgs.append(_tool_result(tc.id, f"[协议错误] {err}"))
+                        self._trace("tool", turn_seq=turn_seq, name=name,
+                                    status="protocol_error", detail=err[:80])
                     else:
                         # 必须回配对的 tool 结果（否则带 tool_calls 的 assistant 消息
                         # 缺配对结果，下一次请求会被 API 拒绝）
                         msgs.append(_tool_result(tc.id, "已接收本轮叙事。"))
+                        self._trace("tool", turn_seq=turn_seq, name=name, status="ok",
+                                    detail="已接收本轮叙事。")
                         if narration_args is None:
                             narration_args = args
                 else:
                     msgs.append(_tool_result(tc.id, f"[协议错误] 未知工具 '{name}'"))
+                    self._trace("tool", turn_seq=turn_seq, name=name, status="unknown",
+                                detail=f"[协议错误] 未知工具 '{name}'")
 
             if narration_args is not None:
+                narration = clean_narration(narration_args["narration"])
+                self._trace(
+                    "turn_end", turn_seq=turn_seq, outcome="completed", iterations=i,
+                    narration_chars=len(narration),
+                    choices=len(narration_args["choices"]),
+                    plot_signal=narration_args["plot_signal"],
+                    stat_changes=len(stat_changes), memories=len(memories),
+                )
                 return TurnResult(
-                    narration=clean_narration(narration_args["narration"]),
+                    narration=narration,
                     choices=list(narration_args["choices"]),
                     plot_signal=narration_args["plot_signal"],
                     stat_changes=stat_changes,
@@ -516,4 +587,5 @@ class LLMClient:
                     messages=msgs,
                 )
 
+        self._trace("turn_end", turn_seq=turn_seq, outcome="meltdown", iterations=max_iters)
         raise LLMTurnError(f"连续 {max_iters} 次未能产出合法协议输出（熔断）")
