@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import traceback
 from pathlib import Path
 
@@ -88,6 +89,31 @@ def _cmd_play(args: argparse.Namespace) -> int:
     if tracker.entries:
         print("\n" + tracker.cost_report())  # 退出时输出成本报告（C2）
     return code
+
+
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    """批次 C：MCP server（stdio）——把游戏暴露为 MCP 工具，外部客户端可玩。"""
+    from .mcp_server import serve
+
+    settings = load_settings()
+    if not settings.has_api_key:
+        print("[✗] 未配置 DEEPSEEK_API_KEY：请复制 .env.example 为 .env 并填入 key", file=sys.stderr)
+        return 1
+    try:
+        pack = load_worldpack(args.path or DEFAULT_WORLDPACK)
+    except WorldPackError as e:
+        print(f"[✗] 世界包加载失败: {e}", file=sys.stderr)
+        return 1
+    state = GameState.from_pack(pack)
+    tracker = UsageTracker("saves/usage-mcp.jsonl")
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
+    game = Game(
+        pack, state, llm,
+        extract_every=2, compress_threshold=30000, judge_every=5,
+        reflect_every=10, critique_on_critical=True, plan_node=True, factcheck_every=1,
+    )
+    serve(game)
+    return 0
 
 
 def _make_stream_display(game: Game):
@@ -366,6 +392,9 @@ def main(argv: list[str] | None = None) -> int:
         help=f"世界包路径（默认 {DEFAULT_WORLDPACK}）",
     )
 
+    p_mcp = sub.add_parser("mcp", help="MCP server（stdio，批次 C；需 API Key）")
+    p_mcp.add_argument("path", nargs="?", default=DEFAULT_WORLDPACK)
+
     args = parser.parse_args(argv)
     if args.command == "check-worldpack":
         return _cmd_check_worldpack(args)
@@ -375,5 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_init_worldpack(args)
     if args.command == "web":
         return _cmd_web(args)
+    if args.command == "mcp":
+        return _cmd_mcp(args)
     parser.print_help()
     return 0

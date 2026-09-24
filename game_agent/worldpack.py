@@ -24,6 +24,10 @@ class WorldPackError(Exception):
     """世界包加载/校验错误（面向世界包作者的友好报错）。"""
 
 
+# 引擎内置工具名（批次 C）：自定义工具不得与之重名（registry 与交叉校验共用此清单）
+ENGINE_TOOL_NAMES = ("change_stat", "submit_narration", "remember", "query_world")
+
+
 # ---------------------------------------------------------------------------
 # world.yaml
 # ---------------------------------------------------------------------------
@@ -40,6 +44,7 @@ class WorldSpec(BaseModel):
     forbidden: list[str] = Field(default_factory=list)
     opening: str = ""
     lore: list["LoreSpec"] = Field(default_factory=list)  # B1（P3）：Lorebook 条目（按需注入）
+    locations: list["LocationSpec"] = Field(default_factory=list)  # 批次 D：地点表（声明后 scene 受校验）
 
 
 class LoreSpec(BaseModel):
@@ -52,6 +57,22 @@ class LoreSpec(BaseModel):
     id: str
     keys: list[str]
     text: str
+
+
+class LocationSpec(BaseModel):
+    """批次 D：地点表条目——把场景从自由字符串升级为一等公民。
+
+    - id：引擎与 change_scene 工具使用的标识（世界包内唯一）；
+    - name：状态栏/场景卡的显示名（写入 state.scene）；
+    - keys：该地点的 lore 触发关键词（在场时恒参与 lore 命中）；
+    - description：给 change_scene 提议参考的地点说明（不注入状态栏）。
+    未声明 locations 时引擎行为与旧版完全一致（scene 为自由字符串）。
+    """
+
+    id: str
+    name: str
+    keys: list[str] = Field(default_factory=list)
+    description: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -125,12 +146,36 @@ class ActionSpec(BaseModel):
     present: list[str] = Field(default_factory=list)  # 行动时在场的 NPC id
 
 
+class CustomToolSpec(BaseModel):
+    """批次 C：世界包自定义效果型工具（LLM 在叙事中提议，引擎校验结算）。
+
+    - id：工具名（不得与引擎四件套重名，世界包内唯一）；
+    - label / description：给模型的名称与用途说明；
+    - parameters / required：可选参数的 JSON schema properties（缺省无参）；
+    - requires：执行门槛（复用条件 DSL，如「已结识 + 银两 ≥20」）；
+    - cost：消耗行动点（缺省 0 = 纯叙事动作）；
+    - effects：结算效果（stats/affections/flags，同事件效果形状；支持收益曲线）；
+    - once：整局只能成功执行一次（消耗型剧情动作，如「打开暗门」）。
+    """
+
+    id: str
+    label: str
+    description: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    required: list[str] = Field(default_factory=list)
+    requires: dict[str, Any] | None = None
+    cost: int = 0
+    effects: dict[str, Any] = Field(default_factory=dict)
+    once: bool = False
+
+
 class ScheduleSpec(BaseModel):
     day_action_points: int = 1
     stats: dict[str, StatSpec]
     affections: dict[str, AffectionSpec]
     flags: dict[str, bool] = Field(default_factory=dict)
     actions: list[ActionSpec] = Field(default_factory=list)
+    tools: list[CustomToolSpec] = Field(default_factory=list)  # 批次 C：自定义效果型工具
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +490,81 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 f"行动 '{action.id}' 的 present 引用了不存在的 NPC: {sorted(bad_npcs)}"
             )
 
+    # 3.5) 自定义工具（批次 C）：重名 / 参数 / 门槛 / 效果引用
+    tool_ids = [t.id for t in schedule.tools]
+    if len(tool_ids) != len(set(tool_ids)):
+        raise WorldPackError(f"自定义工具 id 重复: {tool_ids}")
+    for tool in schedule.tools:
+        if tool.id in ENGINE_TOOL_NAMES:
+            raise WorldPackError(f"自定义工具 '{tool.id}' 与引擎内置工具重名")
+        if not tool.description.strip():
+            raise WorldPackError(f"自定义工具 '{tool.id}' 的 description 不能为空")
+        if tool.cost < 0:
+            raise WorldPackError(f"自定义工具 '{tool.id}' 的 cost 不能为负")
+        missing_params = set(tool.required) - set(tool.parameters)
+        if missing_params:
+            raise WorldPackError(
+                f"自定义工具 '{tool.id}' 的 required 引用了未声明的参数: "
+                f"{sorted(missing_params)}"
+            )
+        if tool.requires is not None:
+            try:
+                validate_condition(tool.requires, f"自定义工具 '{tool.id}' 的 requires")
+            except ConditionError as e:
+                raise WorldPackError(str(e)) from e
+            req_flags, req_stats, req_affs = set(), set(), set()
+            _collect_refs(tool.requires, "flags", req_flags)
+            _collect_refs(tool.requires, "stat", req_stats)
+            _collect_refs(tool.requires, "affection", req_affs)
+            if req_flags - declared_flags:
+                raise WorldPackError(
+                    f"自定义工具 '{tool.id}' 的 requires 引用了未声明的 flag: "
+                    f"{sorted(req_flags - declared_flags)}"
+                )
+            if req_stats - declared_stats:
+                raise WorldPackError(
+                    f"自定义工具 '{tool.id}' 的 requires 引用了未声明的属性: "
+                    f"{sorted(req_stats - declared_stats)}"
+                )
+            if req_affs - declared_affections:
+                raise WorldPackError(
+                    f"自定义工具 '{tool.id}' 的 requires 引用了未声明的好感对象: "
+                    f"{sorted(req_affs - declared_affections)}"
+                )
+        for key in ("stats", "affections"):
+            for name, value in (tool.effects.get(key) or {}).items():
+                if isinstance(value, dict):
+                    try:
+                        curve = EffectSpec(**value)
+                    except Exception as e:  # noqa: BLE001
+                        raise WorldPackError(
+                            f"自定义工具 '{tool.id}' 的 effects.{key}.{name} "
+                            f"不是合法的收益曲线: {e}"
+                        ) from e
+                    for field_name in ("spread", "decay_every", "decay_step"):
+                        if getattr(curve, field_name) < 0:
+                            raise WorldPackError(
+                                f"自定义工具 '{tool.id}' 的 effects.{key}.{name} 的 "
+                                f"'{field_name}' 不能为负"
+                            )
+        bad_tool_stats = set(tool.effects.get("stats") or {}) - declared_stats
+        if bad_tool_stats:
+            raise WorldPackError(
+                f"自定义工具 '{tool.id}' 的 effects 引用了未声明的属性: {sorted(bad_tool_stats)}"
+            )
+        bad_tool_affs = set(tool.effects.get("affections") or {}) - declared_affections
+        if bad_tool_affs:
+            raise WorldPackError(
+                f"自定义工具 '{tool.id}' 的 effects 引用了未声明的好感对象: "
+                f"{sorted(bad_tool_affs)}"
+            )
+        bad_tool_flags = set(tool.effects.get("flags") or {}) - declared_flags
+        if bad_tool_flags:
+            raise WorldPackError(
+                f"自定义工具 '{tool.id}' 的 effects 引用了未声明的 flag: "
+                f"{sorted(bad_tool_flags)}"
+            )
+
     # 4) 事件触发校验：condition/time 必须有 when；schedule 必须有 action 且存在于行动表
     for ev in events.events:
         if ev.trigger.kind == "condition" and ev.trigger.when is None:
@@ -487,6 +607,8 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         ):
             if effects is not None:
                 _collect_refs(effects.model_dump(), "flags", writable_flags)
+    for tool in schedule.tools:  # 批次 C：自定义工具效果也是合法的 flag 写入路径
+        _collect_refs(tool.effects, "flags", writable_flags)
     for node in mainline.nodes:
         completion_flags: set[str] = set()
         _collect_refs(node.completion, "flags", completion_flags)

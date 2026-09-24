@@ -32,6 +32,7 @@ from .compression import (
     locate_summary,
     rebuild_history,
 )
+from .conditions import evaluate
 from .context import ContextBuilder, select_lore
 from .events import EventSystem
 from .factgraph import build_graph, check_graph  # 设计加固 B1：缺席检查常开轮
@@ -50,6 +51,7 @@ from .memory import (
     rank_facts,
 )
 from .planning import PLAN_MAX_TOKENS, PLAN_SYSTEM, parse_steps
+from .registry import ToolRegistry, build_registry
 from .save import save_game
 from .schedule import ScheduleSystem
 from .state import GameState, InsightEntry
@@ -100,12 +102,20 @@ class Game:
         self.pack = pack
         self.state = state
         self.llm = llm
+        self.rng = rng if rng is not None else random.Random()  # 批次 C：自定义工具结算共用
         self.stats = StatsSystem(pack.schedule)
         self.story = StorylineEngine(pack, self.stats)
         self.events = EventSystem(pack, self.stats, rng)
         self.schedule = ScheduleSystem(pack, self.stats, rng)  # D 系列：检定/收益曲线共用 rng
         self.memory = MemorySystem(pack, llm)  # M2a 记忆显式化 + A4 语义去重（P1）
         self.builder = ContextBuilder.from_pack(pack)
+        # 批次 C：工具注册表——引擎四件套绑定处理器 + 世界包自定义工具
+        self.registry = build_registry(pack)
+        self.registry.bind_handler("change_stat", self._apply_change)
+        self.registry.bind_handler("remember", self._remember)
+        self.registry.bind_handler("query_world", self._query_world)
+        for tool in pack.schedule.tools:
+            self.registry.bind_handler(tool.id, lambda args, t=tool: self._run_custom_tool(t, args))
         self.history: list[dict] = []
         self.ending: EndingSpec | None = None
         self.last_choices: list[str] = []
@@ -480,6 +490,31 @@ class Game:
             )
         return "\n".join(lines)
 
+    def _run_custom_tool(self, tool, args: dict) -> str:
+        """批次 C：世界包自定义效果型工具（schedule.tools）的执行器。
+
+        纪律与 change_stat 同构：门槛（requires）→ 代价（行动点）→ 引擎结算效果
+        （apply_effects，饱和语义）→ 返回结果文本供叙事引用。once 工具记入
+        state.used_custom_tools（存档追踪）；拒绝走 ValueError → 结构化回传。
+        """
+        state = self.state
+        if tool.once and tool.id in state.used_custom_tools:
+            raise ValueError(f"{tool.label} 已经用过，不能再使用")
+        if tool.requires is not None and not evaluate(tool.requires, state):
+            raise ValueError(f"当前条件不满足，无法执行「{tool.label}」")
+        if tool.cost > 0:
+            if state.action_points_left < tool.cost:
+                raise ValueError(
+                    f"行动点不足：「{tool.label}」需要 {tool.cost} 点，"
+                    f"今日剩余 {state.action_points_left} 点"
+                )
+            state.action_points_left -= tool.cost
+        notes = self.stats.apply_effects(state, tool.effects, rng=self.rng)
+        if tool.once:
+            state.used_custom_tools.append(tool.id)
+        note_str = "；".join(notes) if notes else "无实际数值变化"
+        return f"（{tool.label}：{note_str}）"
+
     # ------------------------------------------------------------------
     # agent-first 第 2 件：关键节点内轮自校正（Reflexion）
     # ------------------------------------------------------------------
@@ -495,10 +530,9 @@ class Game:
             self.state, self.history, self.story.active_node(self.state)
         )
         result = self.llm.run_turn(
-            messages, self._apply_change,
+            messages,
+            registry=self.registry,  # 批次 C：声明式注册表派发（含世界包自定义工具）
             on_text=self.on_text if stream else None,
-            remember=self._remember,
-            query_world=self._query_world,
         )
         # run_turn 返回的消息含 system 前缀；历史只保留对话部分，
         # 否则下轮 build_messages 会把 system 重复注入（压缩测试抓到的潜伏 bug）

@@ -23,8 +23,7 @@ from openai import OpenAI
 
 from .budgets import TURN_MAX_TOKENS as MAX_OUTPUT_TOKENS
 from .config import Settings
-from .memory import MemoryError
-from .stats import StatChangeError
+from .registry import ToolRegistry, from_callbacks, from_schedule
 from .trace import TraceRecorder
 from .usage import UsageTracker, usage_fields
 from .worldpack import ScheduleSpec
@@ -61,129 +60,11 @@ class TurnResult:
 
 
 def build_tools(schedule: ScheduleSpec) -> list[dict]:
-    """按世界包动态构建工具 schema：枚举值注入，参数精确（章 4 ACI）。"""
-    player_stats = sorted(schedule.stats)
-    npc_ids = sorted(schedule.affections)
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "change_stat",
-                "description": (
-                    "提议一次数值变化，由引擎校验后执行。玩家属性单次变化幅度 ≤±10，"
-                    "好感单次变化幅度 ≤±5；reason 必须说明剧情原因。引擎拒绝时按返回的错误修正或放弃。"
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "target": {
-                            "type": "string",
-                            "enum": ["player", *npc_ids],
-                            "description": "变化对象：player 或 NPC id",
-                        },
-                        "stat": {
-                            "type": "string",
-                            "enum": [*player_stats, "affection"],
-                            "description": "玩家属性名；对 NPC 恒为 'affection'",
-                        },
-                        "delta": {"type": "number", "description": "变化量，可正可负"},
-                        "reason": {"type": "string", "description": "这次变化的剧情原因"},
-                    },
-                    "required": ["target", "stat", "delta", "reason"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "submit_narration",
-                "description": "提交本轮叙事输出。每一轮必须以它结束。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "narration": {
-                            "type": "string",
-                            "description": "面向玩家的旁白与 NPC 对话（Markdown）",
-                        },
-                        "choices": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 3,
-                            "maxItems": 5,
-                            "description": "3~5 个玩家可选行动（自然衔接剧情，不含世界观外元素）",
-                        },
-                        "plot_signal": {
-                            "type": "string",
-                            "enum": ["normal", "node_complete"],
-                            "description": (
-                                "node_complete 表示你认为当前主线节点目标已达成"
-                                "（引擎会复核 flag，不采信自报）"
-                            ),
-                        },
-                    },
-                    "required": ["narration", "choices", "plot_signal"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "remember",
-                "description": (
-                    "记录一条值得长期记住的关键事实（可选，只在出现重要事实时调用）。"
-                    "玩家的长期信息（身世/剑名/师承/喜好/承诺/约定等）记到 target='player'；"
-                    "某个 NPC 对玩家的关键记忆记到 target=该 NPC 的 id。"
-                    "例：『玩家的剑名是听雨』『玩家答应帮老樵夫送柴』"
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "target": {
-                            "type": "string",
-                            "enum": ["player", *npc_ids],
-                            "description": "记忆归属：player 或 NPC id",
-                        },
-                        "fact": {
-                            "type": "string",
-                            "description": "一句话事实，≤120 字，如「玩家承诺中秋前备齐聘银五十两」",
-                        },
-                        "importance": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 10,
-                            "description": (
-                                "重要性 1~10（缺省 5）：8-10 身份身世/生死承诺/命运级；"
-                                "5-7 重要关系进展与关键事件；1-4 日常喜好琐事"
-                            ),
-                        },
-                    },
-                    "required": ["target", "fact"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "query_world",
-                "description": (
-                    "只读查询当前世界状态：地点/时间/在场人物、属性与好感、主线目标、"
-                    "与查询相关的长期记忆与世界观设定、当前可选行动。"
-                    "对状态不确定时**先查询再叙事**，查不到的不得编造；"
-                    "查询结果只作叙事依据，不得原样复述给玩家，也不得泄露引擎机制。"
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "想查的问题或关键词，如「沈清秋喜欢什么」「现在在哪」",
-                        },
-                    },
-                    "required": ["query"],
-                },
-            },
-        },
-    ]
+    """按世界包动态构建工具 schema（批次 C：声明式注册表实现，输出与迁移前一致）。
+
+    schema 单点真源在 registry.py（含世界包自定义工具）；本函数是兼容入口。
+    """
+    return from_schedule(schedule).schemas()
 
 
 def make_client(settings: Settings) -> OpenAI:
@@ -242,24 +123,6 @@ def clean_narration(text: str) -> str:
     text = re.sub(r"<invoke\b[^>]*>.*?</invoke>", "", text, flags=re.DOTALL)
     text = re.sub(r"^\s*</?[a-zA-Z_][\w-]*(\s[^>]*)?/?>\s*$", "", text, flags=re.MULTILINE)
     return text.strip()
-
-
-def _validate_narration(args: Any) -> str | None:
-    """校验 submit_narration 参数。合法返回 None，否则返回错误描述。"""
-    if not isinstance(args, dict):
-        return "submit_narration 参数必须是 JSON 对象"
-    narration = args.get("narration")
-    if not isinstance(narration, str) or not narration.strip():
-        return "narration 必须是非空字符串"
-    choices = args.get("choices")
-    if not isinstance(choices, list) or not (3 <= len(choices) <= 5):
-        return f"choices 必须是 3~5 个选项的列表，当前 {choices!r}"
-    if not all(isinstance(c, str) and c.strip() for c in choices):
-        return "choices 中每个选项必须是非空字符串"
-    plot = args.get("plot_signal")
-    if plot not in ("normal", "node_complete"):
-        return f"plot_signal 必须是 'normal' 或 'node_complete'，当前 {plot!r}"
-    return None
 
 
 class LLMClient:
@@ -394,25 +257,33 @@ class LLMClient:
     def run_turn(
         self,
         messages: list[dict],
-        apply_change: Callable[[dict], str],
+        apply_change: Callable[[dict], str] | None = None,
         max_iters: int = MAX_TURN_ITERATIONS,
         on_text: Callable[[str], None] | None = None,
         remember: Callable[[dict], str] | None = None,
         query_world: Callable[[dict], str] | None = None,
+        registry: ToolRegistry | None = None,
     ) -> TurnResult:
         """执行一轮：组装 → 生成 → 执行工具 → 校验 → 返回 TurnResult。
 
-        apply_change(args) 由引擎注入：内部走 StatsSystem 契约；抛 StatChangeError
-        时这里转为结构化 tool 错误回传。
-        remember(args) 由引擎注入（M2a 记忆显式化）：内部走 MemorySystem 契约；
-        抛 MemoryError 时转为结构化 tool 错误回传。
-        query_world(args) 由引擎注入（agent-first 第一件）：**只读**查询世界状态；
-        抛 ValueError 时转为结构化 tool 错误回传。
+        批次 C：工具派发统一走 ToolRegistry（声明式注册表，registry.py）。两种传法：
+        - registry=：完整注册表（Game 装配，含世界包自定义工具）——推荐路径；
+        - 旧签名 apply_change/remember/query_world 回调：兼容路径，内部转即席注册表
+          （from_callbacks），派发代码同一条；API 的 tools= 仍用 self.tools（保住枚举）。
+        registry 路径的 API tools= 用 registry.schemas()（含世界包自定义工具）。
+
+        apply_change(args)：内部走 StatsSystem 契约，抛 StatChangeError → 结构化拒绝；
+        remember(args)：内部走 MemorySystem 契约，抛 MemoryError → 结构化拒绝；
+        query_world(args)：**只读**查询世界状态，抛 ValueError → 结构化拒绝。
         on_text：提供时启用流式输出，内容增量实时回调（玩家边等边看）。
         """
         msgs = [dict(m) for m in messages]
-        stat_changes: list[dict] = []
-        memories: list[dict] = []
+        if registry is None:
+            registry = from_callbacks(apply_change, remember, query_world)
+            tools_schema = self.tools
+        else:
+            tools_schema = registry.schemas()
+        buckets: dict[str, list[dict]] = {}  # tag → 调用记录（stat_changes / memories）
 
         model = self.model_for("turn")
         self._turn_seq += 1  # B1：回合序号（trace 关联键）
@@ -425,7 +296,7 @@ class LLMClient:
             kwargs: dict[str, Any] = dict(
                 model=model,
                 messages=msgs,
-                tools=self.tools,
+                tools=tools_schema,
                 tool_choice="auto",
                 max_tokens=MAX_OUTPUT_TOKENS,
             )
@@ -546,68 +417,37 @@ class LLMClient:
                                 detail=str(e)[:80])
                     continue
 
-                if name == "change_stat":
-                    try:
-                        result_msg = apply_change(args)
-                        status = "ok"
-                    except StatChangeError as e:
-                        result_msg = f"[引擎拒绝] {e}"
-                        status = "rejected"
+                spec = registry.get(name)
+                if spec is None:
+                    result_msg = f"[协议错误] 未知工具 '{name}'"
                     msgs.append(_tool_result(tc.id, result_msg))
-                    stat_changes.append({**args, "result": result_msg})
-                    self._trace("tool", turn_seq=turn_seq, name=name, status=status,
+                    self._trace("tool", turn_seq=turn_seq, name=name, status="unknown",
                                 detail=result_msg[:80])
-                elif name == "remember":
-                    if remember is None:
-                        result_msg = "[协议错误] 引擎未启用记忆功能"
-                        msgs.append(_tool_result(tc.id, result_msg))
-                        self._trace("tool", turn_seq=turn_seq, name=name,
-                                    status="protocol_error", detail=result_msg)
-                    else:
-                        try:
-                            result_msg = remember(args)
-                            status = "ok"
-                        except MemoryError as e:
-                            result_msg = f"[引擎拒绝] {e}"
-                            status = "rejected"
-                        msgs.append(_tool_result(tc.id, result_msg))
-                        memories.append({**args, "result": result_msg})
-                        self._trace("tool", turn_seq=turn_seq, name=name, status=status,
-                                    detail=result_msg[:80])
-                elif name == "query_world":
-                    if query_world is None:
-                        result_msg = "[协议错误] 引擎未启用世界查询功能"
-                        msgs.append(_tool_result(tc.id, result_msg))
-                        self._trace("tool", turn_seq=turn_seq, name=name,
-                                    status="protocol_error", detail=result_msg)
-                    else:
-                        try:
-                            result_msg = query_world(args)
-                            status = "ok"
-                        except ValueError as e:
-                            result_msg = f"[引擎拒绝] {e}"
-                            status = "rejected"
-                        msgs.append(_tool_result(tc.id, result_msg))
-                        self._trace("tool", turn_seq=turn_seq, name=name, status=status,
-                                    detail=result_msg[:80])
-                elif name == "submit_narration":
-                    err = _validate_narration(args)
+                    continue
+                if spec.terminator:
+                    # submit_narration：协议收尾工具——校验后终止本轮，不走 handler
+                    err = spec.validator(args) if spec.validator is not None else None
                     if err is not None:
-                        msgs.append(_tool_result(tc.id, f"[协议错误] {err}"))
-                        self._trace("tool", turn_seq=turn_seq, name=name,
-                                    status="protocol_error", detail=err[:80])
+                        result_msg = f"[协议错误] {err}"
+                        status = "protocol_error"
                     else:
                         # 必须回配对的 tool 结果（否则带 tool_calls 的 assistant 消息
                         # 缺配对结果，下一次请求会被 API 拒绝）
-                        msgs.append(_tool_result(tc.id, "已接收本轮叙事。"))
-                        self._trace("tool", turn_seq=turn_seq, name=name, status="ok",
-                                    detail="已接收本轮叙事。")
+                        result_msg = "已接收本轮叙事。"
+                        status = "ok"
                         if narration_args is None:
                             narration_args = args
-                else:
-                    msgs.append(_tool_result(tc.id, f"[协议错误] 未知工具 '{name}'"))
-                    self._trace("tool", turn_seq=turn_seq, name=name, status="unknown",
-                                detail=f"[协议错误] 未知工具 '{name}'")
+                    msgs.append(_tool_result(tc.id, result_msg))
+                    self._trace("tool", turn_seq=turn_seq, name=name, status=status,
+                                detail=result_msg[:80])
+                    continue
+
+                dr = registry.dispatch(name, args)
+                msgs.append(_tool_result(tc.id, dr.message))
+                if spec.tag is not None and dr.status in ("ok", "rejected"):
+                    buckets.setdefault(spec.tag, []).append({**args, "result": dr.message})
+                self._trace("tool", turn_seq=turn_seq, name=name, status=dr.status,
+                            detail=dr.message[:80])
 
             if narration_args is not None:
                 narration = clean_narration(narration_args["narration"])
@@ -616,14 +456,15 @@ class LLMClient:
                     narration_chars=len(narration),
                     choices=len(narration_args["choices"]),
                     plot_signal=narration_args["plot_signal"],
-                    stat_changes=len(stat_changes), memories=len(memories),
+                    stat_changes=len(buckets.get("stat_changes", [])),
+                    memories=len(buckets.get("memories", [])),
                 )
                 return TurnResult(
                     narration=narration,
                     choices=list(narration_args["choices"]),
                     plot_signal=narration_args["plot_signal"],
-                    stat_changes=stat_changes,
-                    memories=memories,
+                    stat_changes=buckets.get("stat_changes", []),
+                    memories=buckets.get("memories", []),
                     iterations=i,
                     messages=msgs,
                 )
