@@ -317,8 +317,14 @@ class Game:
         return {compact[i : i + n] for i in range(len(compact) - n + 1)}
 
     def _llm_round(self) -> TurnView:
-        # M2b 压缩：接近阈值时批量压缩（只碰历史，不碰静态前缀与事实区块）
-        if self.compress_threshold > 0 and history_tokens(self.history) > self.compress_threshold:
+        # M2b 压缩：接近阈值时批量压缩（只碰历史，不碰静态前缀与事实区块）。
+        # 批次 F：估算乘以真实 usage 校准出的因子（未校准 = 1.0，行为不变）——
+        # "1 字 ≈ 1 token" 漏算 tool schema/system 开销，实测 prompt 恒高于估算。
+        if (
+            self.compress_threshold > 0
+            and history_tokens(self.history) * self.llm.token_factor("turn")
+            > self.compress_threshold
+        ):
             self._compress_history()
         # 记忆来源追踪（M2a）：每**玩家可见回合**计一次——内轮自校正的重生成不另计
         self.state.turn_count += 1

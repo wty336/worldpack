@@ -182,3 +182,34 @@ class UsageTracker:
         )
         lines.append("  注：价格快照 2026-09（峰谷分时），以 DeepSeek 最新公告为准。")
         return "\n".join(lines)
+
+
+class TokenCalibrator:
+    """批次 F：估算 → 实际 token 的 EMA 校正因子（按用途分桶）。
+
+    压缩触发线的估算用"1 字 ≈ 1 token"（``compression.est_tokens``）——保守上界，
+    且漏算 tool schema / system 前缀等 messages 之外的固定开销，实际
+    ``prompt_tokens`` 通常高于估算。本类按用途维护 ``actual/estimated`` 的 EMA：
+
+    - ``update``：每次真实调用回填（估算输入字符数，实际 prompt_tokens）；
+    - ``factor``：当前校正因子（未校准 = 1.0，即原行为）；压缩触发判定乘以
+      turn 因子——阈值语义不变，只修估算精度（观测同时进 trace）。
+    """
+
+    def __init__(self, alpha: float = 0.2, clamp: tuple[float, float] = (0.5, 3.0)):
+        self.alpha = alpha
+        self.clamp = clamp
+        self._factors: dict[str, float] = {}
+
+    def update(self, purpose: str, estimated: float, actual: int) -> float | None:
+        """回填一次观测量，返回更新后的因子；非法观测（≤0）忽略。"""
+        if estimated <= 0 or actual <= 0:
+            return None
+        lo, hi = self.clamp
+        ratio = min(max(actual / estimated, lo), hi)
+        prev = self._factors.get(purpose, 1.0)
+        self._factors[purpose] = prev + self.alpha * (ratio - prev)
+        return self._factors[purpose]
+
+    def factor(self, purpose: str) -> float:
+        return self._factors.get(purpose, 1.0)

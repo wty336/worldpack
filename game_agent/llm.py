@@ -25,7 +25,7 @@ from .budgets import TURN_MAX_TOKENS as MAX_OUTPUT_TOKENS
 from .config import Settings
 from .registry import ToolRegistry, from_callbacks, from_schedule
 from .trace import TraceRecorder
-from .usage import UsageTracker, usage_fields
+from .usage import TokenCalibrator, UsageTracker, usage_fields
 from .worldpack import ScheduleSpec
 
 MAX_TURN_ITERATIONS = 3  # 初始 1 次 + 协议失败重试 2 次（design.md §10.1 C6）
@@ -115,6 +115,17 @@ def _protocol_fail(reason: str) -> dict:
     }
 
 
+def _estimate_input_tokens(messages: list[dict]) -> int:
+    """估算一次调用的输入 token（与 compression.est_tokens 同口径：1 字 ≈ 1 token）。"""
+    est = 0
+    for m in messages:
+        est += len(str(m.get("content") or ""))
+        calls = m.get("tool_calls") or []
+        if calls:
+            est += len(json.dumps(calls, ensure_ascii=False))
+    return est
+
+
 def clean_narration(text: str) -> str:
     """兜底清洗：模型偶尔会把工具调用格式文本写进 narration（玩家会看到脏文本）。
 
@@ -143,6 +154,7 @@ class LLMClient:
         tracker: UsageTracker | None = None,  # C2：usage 落盘
         no_thinking_side_channel: bool = False,  # 侧信道关思考（见 complete_with_meta）
         tracer: TraceRecorder | None = None,  # B1（Track B）：trace 落盘（None = 关闭）
+        calibrator: TokenCalibrator | None = None,  # 批次 F：token 估算校正（None = 不校准）
     ):
         self._client = client
         self.model = model
@@ -151,6 +163,7 @@ class LLMClient:
         self.tracker = tracker
         self.no_thinking_side_channel = no_thinking_side_channel
         self.tracer = tracer
+        self.calibrator = calibrator
         self._turn_seq = 0  # B1：本进程内的叙事回合序号（trace 关联键）
 
     @classmethod
@@ -175,10 +188,15 @@ class LLMClient:
             tracker=tracker,
             no_thinking_side_channel=settings.no_thinking_side_channel,
             tracer=tracer,
+            calibrator=TokenCalibrator(),  # 批次 F：真实运行默认开启校准
         )
 
     def model_for(self, purpose: str) -> str:
         return self.models.get(purpose) or self.model
+
+    def token_factor(self, purpose: str) -> float:
+        """批次 F：该用途的估算校正因子（未校准 = 1.0，即原行为）。"""
+        return self.calibrator.factor(purpose) if self.calibrator is not None else 1.0
 
     def _trace(self, event: str, **fields: Any) -> None:
         """B1：tracer 为 None 时零开销 no-op；落盘失败由 recorder 内部静默。"""
@@ -188,6 +206,13 @@ class LLMClient:
     def _record_usage(self, model: str, purpose: str, resp: Any) -> None:
         if self.tracker is not None:
             self.tracker.record(model, purpose, usage_fields(resp))
+
+    def _calibrate(self, purpose: str, est_input: int, resp: Any) -> None:
+        """批次 F：用真实 prompt_tokens 回填估算校正因子（无 usage/校准器则跳过）。"""
+        if self.calibrator is None:
+            return
+        usage = usage_fields(resp) or {}
+        self.calibrator.update(purpose, est_input, usage.get("prompt_tokens", 0))
 
     def complete(
         self,
@@ -230,6 +255,7 @@ class LLMClient:
         use_no_thinking = self.no_thinking_side_channel if no_thinking is None else no_thinking
         if use_no_thinking:
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        est_input = _estimate_input_tokens(messages)  # 批次 F：校准观测量
         t0 = time.monotonic()
         try:
             resp = self._client.chat.completions.create(**kwargs)
@@ -242,11 +268,13 @@ class LLMClient:
             raise
         latency_ms = round((time.monotonic() - t0) * 1000)
         self._record_usage(model, purpose, resp)
+        self._calibrate(purpose, est_input, resp)
         choice = resp.choices[0]
         finish_reason = getattr(choice, "finish_reason", None)
         self._trace(
             "call", purpose=purpose, model=model, max_tokens=max_tokens,
             latency_ms=latency_ms, finish_reason=finish_reason,
+            tok_factor=round(self.token_factor(purpose), 3),
             usage=usage_fields(resp),
         )
         return CompletionResult(
@@ -301,6 +329,7 @@ class LLMClient:
                 max_tokens=MAX_OUTPUT_TOKENS,
             )
             stream_usage = None  # C2：流式时 usage 在末尾 chunk（stream_options 开启后）
+            est_input = _estimate_input_tokens(msgs)  # 批次 F：校准观测量（按本次请求计）
             t0 = time.monotonic()  # B1：本轮 API 调用时延（流式/非流式同源计时）
             if on_text is not None:
                 # openai SDK v3 的流式对象不聚合，需手动累积各 delta
@@ -373,10 +402,12 @@ class LLMClient:
                 resp = self._client.chat.completions.create(**kwargs, stream=False)
             latency_ms = round((time.monotonic() - t0) * 1000)
             self._record_usage(model, "turn", resp)
+            self._calibrate("turn", est_input, resp)  # 批次 F
             self._trace(
                 "call", turn_seq=turn_seq, purpose="turn", model=model,
                 max_tokens=MAX_OUTPUT_TOKENS, latency_ms=latency_ms,
                 finish_reason=getattr(resp.choices[0], "finish_reason", None),
+                tok_factor=round(self.token_factor("turn"), 3),
                 usage=usage_fields(resp),
             )
             msg = resp.choices[0].message
