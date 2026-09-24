@@ -188,6 +188,29 @@ CONFLICT_SYSTEM（本期不追）。真机冒烟通过（exit 0，¥0.096）。
 **守卫**：`tests/test_memory_conflict.py` **9 条** + `tests/test_conflict_gate.py` **3 条**。
 全量回归：**653 → 665 passed**。
 
+### 5.2 ② Run checkpoint + Replay ✅（2026-09-24）
+
+**落地**：
+
+- `game_agent/runlog.py`：`RunRecorder`（runlog.jsonl + checkpoints/<turn>.json，
+  checkpoint(0) = 开局前锚点；state 序列化复用中立格式）；`apply_prompt_patch`
+  （每条 old 恰好出现一次，0/2 次报错防静默改错位）；`rebuild_game`（state/history 原位还原）；
+- `scripts/record_run.py`（自动驾驶 + 每回合记录）、`scripts/replay.py`
+  （--turn N 重放 + diff / --prompt-patch 文本补丁 / --model 换模型 / --resume 继续交互）；
+- 引擎主循环**零改动**（recorder 由驱动调用）；`runs/` 已在 .gitignore（实验产物不入库）。
+
+**真机演示（ancient_jianghu，4 天 12 回合，¥0.039）**：
+
+- 记录 run_id `20260924-214810-b51935`（266 KB / 12 checkpoint，长局成本口径验证：
+  12 回合仅 266KB → 300 回合估 ≈ 6~10MB，与 plan §2.2 预估一致）；
+- 重放第 11 回合（同一 checkpoint + 同一玩家输入）：
+  - **原样重放可复现**（守卫已证：同响应 → 叙事与状态完全一致）；
+  - **prompt 补丁实验**（叙事要求加"多用短句白描"）→ 叙事相似度 **9.5%**，
+    同状态同输入、仅改提示词 → 完全不同的创作走向（`reports/replay_*_t011.json`）；
+  - 重放成本透明：prompt 10,323 tokens / completion 503。
+
+**守卫**：`tests/test_runlog.py` **6 条**。全量回归：**665 → 671 passed**（待回填）。
+
 ## 6. 与既有文档的关系
 
 - 评审原文：`docs/Agent Runtime 工程化.md`（本计划是对其 8 条的取舍结论）；
