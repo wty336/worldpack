@@ -22,7 +22,9 @@ Track B 的选型判据：**不改变任何 LLM 调用的输入/输出契约**�
 - 不触发"换尺子重测"——冻结的 `eval-sets/`、五包语料基线、场景卡工厂的
   材料装配器（逐字复用 `status_text`）全部继续有效；
 - 不需要重跑 flash / 14B 任何一侧的基线；
-- 与正在进行的 Phase 1 训练（`plan-phase1-train.md`）零冲突。
+- 与 Phase 1 训练主线零冲突：**截至 2026-09-24 正式训练尚未完成**（数据已就绪
+  `data/training/` 9 个 jsonl、100 步试跑已过，见 `reports/train-debug-20260919.md`），
+  Track B 只做观测与调度，不参与训练数据与配方。
 
 | 项 | 改动面 | 契约影响 |
 | --- | --- | --- |
@@ -119,7 +121,17 @@ l1-check 1.4s ✓ · l1-pytest 29.9s ✓ · 报告 `reports/qa_gate_20260924-142
 
 - **A7（Gate 1 后）**：purpose → (base_url, model) 完整路由 + Game 长局参数 env 化
   ——届时 trace 可直接观测"哪些调用落在本地、哪些落在云端"；
-- **训练/评测期用法**：`GAME_AGENT_TRACE=reports/trace.jsonl` 打开后，Gate 1 的三方对照
-  （Qwen3-14B / +LoRA / flash）自动留下逐调用轨迹，失败回放不再靠猜；
+- **训练完成后的用法**（正式训练尚未完成，截至 2026-09-24）：训练跑完、adapter 落盘后，
+  `GAME_AGENT_TRACE=reports/trace.jsonl` 打开，Gate 1 的三方对照（Qwen3-14B 基座 / +LoRA / flash）
+  即可自动留下逐调用轨迹，失败回放不再靠猜；qa_gate 已把验收命令收敛为一条；
 - **Track C（第二冻结窗口）**：语义检索 / 规划层 / 事实图 Judge 等契约变更类改进，
   仍按原纪律等 Gate 1 之后、Phase 2 数据采集之前打包进入。
+
+---
+
+## 7. 更正记录
+
+- **2026-09-24**：初稿两处表述"与正在进行的 Phase 1 训练零冲突"与"Gate 1 三方对照（含 +LoRA）"
+  暗示正式训练已在进行/已完成——**与事实不符**。核实本地仓库：`data/training/` 数据就绪、
+  仅 100 步试跑报告（`train-debug-20260919.md`），**无 `runs/` 产物、无正式训练完成报告**。
+  已改为"正式训练尚未完成（截至 2026-09-24）"，后续训练完成时更新本报告。
