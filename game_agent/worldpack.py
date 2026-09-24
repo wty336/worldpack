@@ -75,6 +75,33 @@ class LocationSpec(BaseModel):
     description: str = ""
 
 
+def resolve_scene(world: "WorldSpec", scene: str) -> tuple[str, str]:
+    """把 scene 字段解析为 (显示名, 地点 id)（批次 D）。
+
+    - 匹配 location id → (location.name, location.id)；
+    - 匹配 location name → (location.name, location.id)；
+    - 都不匹配（或未声明地点表）→ 原样透传 (scene, "")——未声明地点表的世界包
+      行为与旧版完全一致。
+    """
+    if not scene:
+        return scene, ""
+    for loc in world.locations:
+        if scene == loc.id:
+            return loc.name, loc.id
+    for loc in world.locations:
+        if scene == loc.name:
+            return loc.name, loc.id
+    return scene, ""
+
+
+def find_location(world: "WorldSpec", loc_id: str):
+    """按 id 查地点表条目；未命中返回 None（change_scene 白名单校验用）。"""
+    for loc in world.locations:
+        if loc.id == loc_id:
+            return loc
+    return None
+
+
 # ---------------------------------------------------------------------------
 # schedule.yaml
 # ---------------------------------------------------------------------------
@@ -375,6 +402,41 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
             raise WorldPackError(f"lore '{lore.id}' 的 keys 不能为空且每项非空")
         if not lore.text.strip():
             raise WorldPackError(f"lore '{lore.id}' 的 text 不能为空")
+
+    # 0.5) 地点表校验（批次 D）：id/name 唯一；声明后 scene 引用必须落在表内
+    locations = pack_parts["world"].locations
+    if locations:
+        loc_ids = [l.id for l in locations]
+        if len(loc_ids) != len(set(loc_ids)):
+            raise WorldPackError(f"地点 id 重复: {loc_ids}")
+        loc_names = [l.name for l in locations]
+        if len(loc_names) != len(set(loc_names)):
+            raise WorldPackError(f"地点显示名重复: {loc_names}")
+        for loc in locations:
+            if not loc.name.strip():
+                raise WorldPackError(f"地点 '{loc.id}' 的 name 不能为空")
+            if any(not k.strip() for k in loc.keys):
+                raise WorldPackError(f"地点 '{loc.id}' 的 keys 每项必须非空")
+        loc_refs = set(loc_ids) | set(loc_names)
+        for node in mainline.nodes:
+            scene = node.on_enter.scene
+            if scene and scene not in loc_refs:
+                raise WorldPackError(
+                    f"主线节点 '{node.id}' 的 on_enter.scene '{scene}' 不在地点表中"
+                    f"（可用 id/名称: {sorted(loc_refs)}）"
+                )
+        for action in schedule.actions:
+            if action.scene and action.scene not in loc_refs:
+                raise WorldPackError(
+                    f"行动 '{action.id}' 的 scene '{action.scene}' 不在地点表中"
+                    f"（可用 id/名称: {sorted(loc_refs)}）"
+                )
+        start_scene = pack_parts["world"].start_scene
+        if start_scene and start_scene not in loc_refs:
+            raise WorldPackError(
+                f"world.yaml 的 start_scene '{start_scene}' 不在地点表中"
+                f"（可用 id/名称: {sorted(loc_refs)}）"
+            )
 
     # 1) 收集全部引用 + 校验条件结构（when/completion 语法错误在加载期暴露）
     def _check_cond(cond: dict[str, Any], where: str) -> None:

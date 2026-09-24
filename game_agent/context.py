@@ -196,7 +196,7 @@ class ContextBuilder:
                     lines.append(f"[ ] {i + 1}. {step}")
             lines.append("</plan>")
         # 玩家长期关键事实（A1：常驻区 top-importance + 检索区三因子 top-K，非全量）
-        context = " ".join(filter(None, [state.scene, node.goal if node else "", recent]))
+        context = self._retrieval_context(state, node, recent)
         if state.player_facts:
             facts = rank_facts(state.player_facts, context, state.turn_count)
             lines.append(
@@ -217,7 +217,7 @@ class ContextBuilder:
             lines.append("</在场角色>")
 
         # B1（P3）：Lorebook 按需注入（命中关键词 + 字符预算，追加在动态区末尾）
-        lore_context = " ".join(filter(None, [state.scene, node.goal if node else "", recent]))
+        lore_context = self._retrieval_context(state, node, recent)
         matched = select_lore(self.pack.world.lore, lore_context)
         if matched:
             lines.append("<lore>")
@@ -225,6 +225,20 @@ class ContextBuilder:
                 lines.append(f"- 【{entry.id}】{entry.text}")
             lines.append("</lore>")
         return "\n".join(lines)
+
+    def _retrieval_context(self, state: GameState, node: NodeSpec | None, recent: str) -> str:
+        """检索相关性上下文（批次 D）：场景 + 主线目标 + 近对话 + **当前地点 keys**。
+
+        地点表声明时，所在地点的 keys 恒参与命中——走到「铸剑谷」，
+        关于铸剑谷的 lore 无需玩家恰好提到这三个字。
+        """
+        parts = [state.scene, node.goal if node else "", recent]
+        if state.scene_id:
+            for loc in self.pack.world.locations:
+                if loc.id == state.scene_id:
+                    parts.extend(loc.keys)
+                    break
+        return " ".join(p for p in parts if p)
 
     def _npc_memories(self, npc_id: str, state: GameState, context: str = "") -> str:
         """该 NPC 对玩家的显式记忆（M2a 出场才注入 + A1 检索式注入）+ A3 关系洞察。"""

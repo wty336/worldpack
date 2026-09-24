@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from .conditions import ConditionError, evaluate
 from .state import GameState
 from .stats import StatsSystem
-from .worldpack import ActionEffects, ActionSpec, WorldPack
+from .worldpack import ActionEffects, ActionSpec, WorldPack, resolve_scene
 
 TIER_CN = {"critical": "大成功", "success": "成功", "failure": "失败"}
 
@@ -114,8 +114,8 @@ class ScheduleSystem:
         notes = self.stats.apply_effects(state, _dump_effects(effects), rng=self.rng)
 
         state.action_points_left -= action.cost
-        if action.scene:
-            state.scene = action.scene
+        if action.scene:  # 批次 D：地点表声明时解析为 (显示名, 地点 id)
+            state.scene, state.scene_id = resolve_scene(self.pack.world, action.scene)
         state.present_npcs = list(action.present)
         return ActionOutcome(action=action, check=check, notes=notes)
 

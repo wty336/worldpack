@@ -79,6 +79,7 @@ class GameState:
     affections: dict[str, float] = field(default_factory=dict)
     flags: dict[str, bool] = field(default_factory=dict)
     scene: str = ""
+    scene_id: str = ""  # 批次 D：当前地点表 id（未声明地点表恒为 ""）
     current_node: str | None = None
     present_npcs: list[str] = field(default_factory=list)  # 当前场景在场的 NPC id
     completed_nodes: list[str] = field(default_factory=list)  # 已完成的主线节点
@@ -103,14 +104,18 @@ class GameState:
     @classmethod
     def from_pack(cls, pack: "WorldPack") -> "GameState":
         """从世界包 schedule 定义初始化（所有初始值来自世界包，引擎不含内容）。"""
+        from .worldpack import resolve_scene  # 局部导入避免模块级环
+
         s = pack.schedule
+        scene, scene_id = resolve_scene(pack.world, pack.world.start_scene)
         return cls(
             pack_name=pack.world.name,
             action_points_left=pack.schedule.day_action_points,
             stats={k: float(v.initial) for k, v in s.stats.items()},
             affections={k: float(v.initial) for k, v in s.affections.items()},
             flags=dict(s.flags),
-            scene=pack.world.start_scene,
+            scene=scene,
+            scene_id=scene_id,
         )
 
     # ---- 快照（W7 回滚用） ----
@@ -130,6 +135,7 @@ class GameState:
             "affections": dict(self.affections),
             "flags": dict(self.flags),
             "scene": self.scene,
+            "scene_id": self.scene_id,
             "current_node": self.current_node,
             "present_npcs": list(self.present_npcs),
             "completed_nodes": list(self.completed_nodes),
@@ -168,6 +174,7 @@ class GameState:
             affections=dict(d["affections"]),
             flags=dict(d["flags"]),
             scene=d.get("scene", ""),
+            scene_id=d.get("scene_id", ""),  # 老档缺省空
             current_node=d.get("current_node"),
             present_npcs=list(d.get("present_npcs", [])),
             completed_nodes=list(d.get("completed_nodes", [])),

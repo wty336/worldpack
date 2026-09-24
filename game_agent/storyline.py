@@ -16,7 +16,14 @@ from dataclasses import dataclass, field
 from .conditions import evaluate
 from .state import ChoiceRecord, GameState
 from .stats import StatsSystem
-from .worldpack import CriticalChoice, EndingSpec, NodeSpec, WorldPack, WorldSpec
+from .worldpack import (
+    CriticalChoice,
+    EndingSpec,
+    NodeSpec,
+    WorldPack,
+    WorldSpec,
+    resolve_scene,
+)
 
 FREE_INPUT_OPTION = "（自己说些什么…）"
 
@@ -127,7 +134,8 @@ class StorylineEngine:
                 state.current_node = node.id
                 state.node_turns = 0
                 state.stuck_stage = 0
-                state.scene = node.on_enter.scene
+                # 批次 D：地点表声明时把 scene 字段解析为 (显示名, 地点 id)
+                state.scene, state.scene_id = resolve_scene(self.pack.world, node.on_enter.scene)
                 state.present_npcs = list(node.on_enter.present)
                 state.resolved_choices = []
                 # agent-first 第 4 件：计划生命周期——进节点重置（作者手写 steps 优先，
@@ -203,7 +211,9 @@ class StorylineEngine:
                 state.resolved_choices = []
                 state.node_turns = 0
                 state.stuck_stage = 0
-                state.scene = self.pack.world.start_scene
+                state.scene, state.scene_id = resolve_scene(
+                    self.pack.world, self.pack.world.start_scene
+                )
                 state.present_npcs = []
                 # agent-first 第 4 件：节点完成 → 计划字段随其余节点状态一并清空
                 state.node_plan = []

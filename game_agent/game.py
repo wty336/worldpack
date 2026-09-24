@@ -57,7 +57,7 @@ from .schedule import ScheduleSystem
 from .state import GameState, InsightEntry
 from .stats import StatChangeError, StatsSystem
 from .storyline import FREE_INPUT_OPTION, StorylineEngine, filter_choices
-from .worldpack import ActionSpec, CriticalChoice, EndingSpec, WorldPack
+from .worldpack import ActionSpec, CriticalChoice, EndingSpec, WorldPack, find_location
 
 
 class GameError(Exception):
@@ -116,6 +116,8 @@ class Game:
         self.registry.bind_handler("query_world", self._query_world)
         for tool in pack.schedule.tools:
             self.registry.bind_handler(tool.id, lambda args, t=tool: self._run_custom_tool(t, args))
+        if pack.world.locations:  # 批次 D：地点表声明时启用 change_scene
+            self.registry.bind_handler("change_scene", self._change_scene)
         self.history: list[dict] = []
         self.ending: EndingSpec | None = None
         self.last_choices: list[str] = []
@@ -514,6 +516,27 @@ class Game:
             state.used_custom_tools.append(tool.id)
         note_str = "；".join(notes) if notes else "无实际数值变化"
         return f"（{tool.label}：{note_str}）"
+
+    def _change_scene(self, args: dict) -> str:
+        """批次 D：场景移动提议——LLM 只能选地点表内的 id，引擎校验后写入真值。
+
+        与 change_stat 同构：reason 强制填（checklist）、白名单（未声明地点拒绝）、
+        关键抉择期间锁定（场景由节点接管）。显示名与地点 id 一并写入状态，
+        lore 触发与场景卡随之生效。
+        """
+        loc_id = str(args.get("location", "")).strip()
+        reason = str(args.get("reason", "")).strip()
+        if not reason:
+            raise ValueError("reason 不能为空：必须说明移动的剧情原因")
+        if self.story.choice_locked(self.state):
+            raise ValueError("关键抉择期间不能改变场景")
+        loc = find_location(self.pack.world, loc_id)
+        if loc is None:
+            declared = [l.id for l in self.pack.world.locations]
+            raise ValueError(f"未声明的地点 '{loc_id}'——只能移动到地点表中的位置: {declared}")
+        self.state.scene_id = loc.id
+        self.state.scene = loc.name
+        return f"（场景已变更：{loc.name}；原因：{reason}）"
 
     # ------------------------------------------------------------------
     # agent-first 第 2 件：关键节点内轮自校正（Reflexion）
