@@ -3,7 +3,7 @@
 契约：
 - 只读：调用前后 state 逐字段相等（state.copy() 对拍）；
 - 不泄 flags：剧情旗标是引擎内部真值，查询结果不得出现 flag 键名/原值；
-- 检索同口径：复用 rank_facts / select_lore（v1 词面 bigram）；
+- 检索同口径：复用 rank_facts / select_lore（A1 v2 BM25）；
 - 协议：query_world 结果回传 tool 消息；非法参数 → [引擎拒绝]；未接线 → 协议错误。
 """
 

@@ -304,7 +304,7 @@ class Game:
         - 绝不写入任何状态（守卫测试用 state.copy() 前后对拍钉住）；
         - 不返回 flags 原值——剧情旗标是引擎内部真值，泄漏即破坏"玩家只能靠剧情
           感知"的边界（状态栏本来也不带 flags，此处同口径）；
-        - 检索复用 rank_facts / select_lore（与状态栏注入同口径，v1 词面 bigram）。
+        - 检索复用 rank_facts / select_lore（与状态栏注入同口径；A1 v2 起为 BM25）。
         """
         query = str(args.get("query", "")).strip()
         if not query:

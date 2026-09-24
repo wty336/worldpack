@@ -12,8 +12,9 @@
 
 from __future__ import annotations
 
+import math
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .budgets import (
     DEDUP_MAX_TOKENS,
@@ -245,6 +246,70 @@ def _bigrams(text: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# A1 v2（agent-first 第 3 件）：BM25 词面检索——替换 v1 字符 bigram 重叠
+# ---------------------------------------------------------------------------
+
+BM25_K1 = 1.5  # 词频饱和参数（标准取值）
+BM25_B = 0.75  # 文档长度归一化参数（标准取值）
+
+
+def _terms(text: str) -> list[str]:
+    """BM25 词项 = 单字 + 二元组（中文零依赖切词：单字扛召回、二元组扛区分）。
+
+    例「听雨」→ ['听', '雨', '听雨']：查询「我的剑叫什么」与事实「剑名是听雨」
+    共享单字「剑」——v1 的纯二元组口径在这里是零命中（"剑叫"vs"剑名"不重叠），
+    这正是 v1 换不出的那部分召回。
+    """
+    text = re.sub(r"\s+", "", text)
+    terms = list(text)
+    terms += [text[i : i + 2] for i in range(len(text) - 1)]
+    return terms
+
+
+def bm25_scores(query: str, docs: list[str]) -> list[float]:
+    """对 docs 逐条算 BM25 分（**桶内局部 IDF**；零依赖、确定性、纯 Python）。
+
+    - 稀有词（听雨/桂花糕）权重高，常用词（玩家/的/了）被 IDF 压制；
+    - 长度归一化：短事实不被长事实挤掉；
+    - 返回长度恒 = len(docs)；无词项命中的文档得 0。
+
+    **可插拔接缝**：embedding ranker 只需同签名 (query, docs) -> scores，
+    接入 rank_facts 的 ``relevance_fn`` 参数即可（v2 换 embedding 的预留口）。
+    """
+    n = len(docs)
+    if n == 0:
+        return []
+    q_terms = _terms(query)
+    if not q_terms:
+        return [0.0] * n
+    tf: list[dict[str, int]] = []
+    df: dict[str, int] = {}
+    doc_lens: list[int] = []
+    for doc in docs:
+        counter: dict[str, int] = {}
+        for t in _terms(doc):
+            counter[t] = counter.get(t, 0) + 1
+        tf.append(counter)
+        for t in counter:
+            df[t] = df.get(t, 0) + 1
+        doc_lens.append(sum(counter.values()) or 1)
+    avgdl = sum(doc_lens) / n
+    scores: list[float] = []
+    for i in range(n):
+        score = 0.0
+        for t in set(q_terms):
+            f = tf[i].get(t, 0)
+            if f == 0:
+                continue
+            idf = math.log(1.0 + (n - df[t] + 0.5) / (df[t] + 0.5))
+            score += idf * (f * (BM25_K1 + 1)) / (
+                f + BM25_K1 * (1 - BM25_B + BM25_B * doc_lens[i] / avgdl)
+            )
+        scores.append(score)
+    return scores
+
+
 def rank_facts(
     entries: list[MemoryEntry],
     context: str,
@@ -254,25 +319,27 @@ def rank_facts(
     alpha: float = RETRIEVAL_ALPHA,
     beta: float = RETRIEVAL_BETA,
     gamma: float = RETRIEVAL_GAMMA,
+    relevance_fn: Callable[[str, list[str]], list[float]] = bm25_scores,
 ) -> list[MemoryEntry]:
     """检索式注入（A1）：常驻区（top importance）+ 检索区（三因子打分 top-K）。
 
     score = α·recency + β·importance + γ·relevance
     - recency：1 / (1 + 回合龄)，新近事实得分高；
     - importance：1~10 归一化到 0~1；
-    - relevance：与上下文字符二元组重叠率（v1 关键词近似，v2 换 embedding）。
+    - relevance：A1 v2 起默认 BM25（桶内归一化到 0~1，与 γ 语义同阶）；
+      ``relevance_fn`` 是可插拔接缝——embedding ranker 同签名接入即换语义检索。
     返回顺序：常驻区在前（按重要性降序），检索区在后（按分数降序）。
     """
     if not entries:
         return []
-    ctx_bigrams = _bigrams(context) if context else set()
     now = max(now_round, 0)
+    rel = relevance_fn(context or "", [m.fact for m in entries])
+    max_rel = max(rel) if rel else 0.0
+    rel_by_id = {id(m): r for m, r in zip(entries, rel)}
 
     def relevance(m: MemoryEntry) -> float:
-        mb = _bigrams(m.fact)
-        if not ctx_bigrams or not mb:
-            return 0.0
-        return len(mb & ctx_bigrams) / len(mb)
+        r = rel_by_id[id(m)]
+        return r / max_rel if max_rel > 0 else 0.0
 
     def score(m: MemoryEntry) -> float:
         recency = 1.0 / (1.0 + max(0, now - m.round))

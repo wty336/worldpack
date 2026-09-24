@@ -25,7 +25,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | **query_world 只读查询工具** | 仅 turn 工具 schema + ENGINE_RULES | 无基线（turn 侧无冻结基线） | ✅ 已落地（2026-09-24，§3） |
 | 2 | 内轮自校正（关键节点 Reflexion） | 仅 turn 运行时 | 无基线 | ✅ 已落地（2026-09-24，§3.5） |
-| 3 | 语义检索替换 bigram | memory `rank_facts` + context 消费 | judge 语料基线（材料内容变）+ 工厂材料复验 | 待做 |
+| 3 | 语义检索替换 bigram | memory `rank_facts` + context 消费 | judge 语料基线（材料内容变）+ 工厂材料复验 | ✅ 已落地（2026-09-24，§3.6；E1 重测见 §3.6.3） |
 | 4 | 规划层 plan-and-execute | status_text + compress 摘要契约 | judge 基线 + compress 评测集 | 待做 |
 | 5 | 事实图 Judge | judge 内部（语料尺子不动） | E1 门禁三包重跑 | 待做 |
 | 6 | canary 注入门禁 | 系统提示 + 新评测 | 新增门禁（纯增量） | 待做 |
@@ -98,6 +98,34 @@
 - 真机关键节点实测：judge 判劣率与重生成后的改善幅度（建议打开 `GAME_AGENT_TRACE`
   看 turn_begin/turn_end 成对出现 = 发生了重生成）；
 - 成本：关键节点回合会多 1~2 次 judge 调用，长局成本曲线需观察（usage 账本自动记账）。
+
+### 3.6 执行记录 · 第 3 件：BM25 词面检索 ✅（2026-09-24）
+
+**选型**（用户确认）：本地无依赖 BM25 式升级，不接 embedding——数据量小（≤24 事实/≤20 记忆）、
+每轮调用、零成本零依赖；embedding 留作可插拔接缝。
+
+**设计**（`game_agent/memory.py` A1 v2）：
+
+- 词项 = **单字 + 二元组**：单字扛召回（v1 纯二元组口径「我的剑叫什么」vs「剑名是听雨」
+  零重叠，v2 共享单字「剑」命中）、二元组扛区分；
+- **桶内局部 IDF**：稀有词（听雨/桂花糕）权重高，常用词（玩家/的/了）被压制；
+- **长度归一化** + **分数桶内归一化**（relevance 仍落在 0~1，α/β/γ 三因子语义不变）；
+- **可插拔接缝**：`rank_facts(..., relevance_fn=bm25_scores)`——embedding ranker
+  同签名 `(query, docs) -> scores` 接入即换，不动调用方；
+- **不动**：去重预筛的 `_bigrams`（另一机制）、`select_lore`（keyed 检索，语义不同）；
+- 选择语义不变：常驻区（top importance）+ 检索区 top-K，**无分数阈值过滤**——
+  工厂材料装配的"in_material anchors 必在位"校验不受影响（小桶全注入）。
+
+**守卫**：`tests/test_bm25.py` **8 条**（词项/IDF/改写召回/零命中/归一化/接缝/常驻区不变）。
+全量回归：**609 → 617 passed**。
+
+**耦合面重测**（§3.6.3）：
+
+- 离线：场景卡工厂、A1/A4、context/query_world/lorebook 相关测试全部重跑通过；
+- 真机：E1 Judge 门禁重测（材料排序变化 → 按"换尺子不换两侧 = 假对比"纪律补跑）——
+  `reports/judge_sensitivity_20260924-150148.json`（ancient_jianghu，flash，¥0.214）：
+  **ooc 20/20 · setting 22/22 · confab 20/20 = 100% · normal 误报 3/48 = 6% ✓ 门禁通过**，
+  与改动前同口径无退化（其余两包待后续真机批次一并补跑）。
 
 ---
 
