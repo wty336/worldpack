@@ -1,0 +1,340 @@
+{
+  "generated_at": "2026-09-24T21:56:16",
+  "gates": {
+    "judge_sensitivity": {
+      "pack": "江湖旧梦",
+      "report": "judge_sensitivity_20260924-155404.json",
+      "summary": {
+        "ooc": {
+          "n": 20,
+          "intercepted": 20,
+          "rate": 1.0,
+          "ci95_lo": 0.839,
+          "ci95_hi": 1.0,
+          "conclusive": true,
+          "pass": true,
+          "unknown": 0
+        },
+        "setting": {
+          "n": 22,
+          "intercepted": 22,
+          "rate": 1.0,
+          "ci95_lo": 0.851,
+          "ci95_hi": 1.0,
+          "conclusive": true,
+          "pass": true,
+          "unknown": 0
+        },
+        "confab": {
+          "n": 20,
+          "intercepted": 20,
+          "rate": 1.0,
+          "ci95_lo": 0.839,
+          "ci95_hi": 1.0,
+          "conclusive": true,
+          "pass": true,
+          "unknown": 0
+        },
+        "normal": {
+          "n": 48,
+          "false_positives": 5,
+          "rate": 0.104,
+          "ci95_lo": 0.045,
+          "ci95_hi": 0.222,
+          "conclusive": false,
+          "pass": false,
+          "unknown": 0
+        }
+      }
+    },
+    "injection_gate": {
+      "report": "injection_gate_20260924-174937.json",
+      "canary_leaks": 0,
+      "mechanism_leaks": 0,
+      "confessions": 0,
+      "cases_total": 16,
+      "passed": true
+    },
+    "conflict_gate": {
+      "report": "conflict_gate_20260924-214230.json",
+      "summary": {
+        "取代": {
+          "n": 8,
+          "correct": 8,
+          "accuracy": 1.0
+        },
+        "并存": {
+          "n": 8,
+          "correct": 3,
+          "accuracy": 0.375
+        },
+        "无冲突": {
+          "n": 8,
+          "correct": 8,
+          "accuracy": 1.0
+        }
+      },
+      "note": "基线期：无硬门阈值；判定失败与无冲突同落 none 口径，失败率经 usage 另行对账"
+    },
+    "qa_gate": {
+      "report": "qa_gate_20260924-142427.json",
+      "passed_all": true,
+      "executed": 2,
+      "skipped": 0
+    }
+  },
+  "replay_reports": 1,
+  "usage": {
+    "by_key": {
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|conflict": {
+        "calls": 72,
+        "prompt": 15135,
+        "completion": 160,
+        "cache_hit": 0,
+        "cache_miss": 15135,
+        "cost": 0.023422499999999995
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|dedup": {
+        "calls": 714,
+        "prompt": 141428,
+        "completion": 38244,
+        "cache_hit": 33408,
+        "cache_miss": 108020,
+        "cost": 0.3357984000000001
+      },
+      "其他·未分类（认不出的标签）|local-14b|dedup": {
+        "calls": 25,
+        "prompt": 2917,
+        "completion": 62,
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cost": 0.0
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|extract": {
+        "calls": 1003,
+        "prompt": 364028,
+        "completion": 159641,
+        "cache_hit": 141824,
+        "cache_miss": 222204,
+        "cost": 1.0587817000000028
+      },
+      "其他·未分类（认不出的标签）|local-14b|extract": {
+        "calls": 261,
+        "prompt": 90724,
+        "completion": 8381,
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cost": 0.0
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|turn": {
+        "calls": 693,
+        "prompt": 13115829,
+        "completion": 562709,
+        "cache_hit": 12746624,
+        "cache_miss": 369205,
+        "cost": 3.723329200000002
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|judge": {
+        "calls": 5802,
+        "prompt": 2952231,
+        "completion": 1918002,
+        "cache_hit": 1706833,
+        "cache_miss": 1245398,
+        "cost": 10.584447650000008
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-pro|judge": {
+        "calls": 90,
+        "prompt": 42435,
+        "completion": 34096,
+        "cache_hit": 30848,
+        "cache_miss": 11587,
+        "cost": 0.5170646999999999
+      },
+      "其他·未分类（认不出的标签）|local-14b|judge": {
+        "calls": 1714,
+        "prompt": 808449,
+        "completion": 98968,
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cost": 0.0
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|factcheck": {
+        "calls": 844,
+        "prompt": 200077,
+        "completion": 5736,
+        "cache_hit": 27332,
+        "cache_miss": 172745,
+        "cost": 0.2862960999999996
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|label_check": {
+        "calls": 11814,
+        "prompt": 17458370,
+        "completion": 560568,
+        "cache_hit": 2355875,
+        "cache_miss": 15102495,
+        "cost": 25.294092249999995
+      },
+      "其他·未分类（认不出的标签）|local-14b|turn": {
+        "calls": 19,
+        "prompt": 155599,
+        "completion": 10101,
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cost": 0.0
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|normal_rewrite": {
+        "calls": 184,
+        "prompt": 106989,
+        "completion": 24828,
+        "cache_hit": 14080,
+        "cache_miss": 92909,
+        "cost": 0.2517935000000001
+      },
+      "摘要生成（compress 侧信道，含拒绝采样候选）|deepseek-v4-flash|compress": {
+        "calls": 2703,
+        "prompt": 11125176,
+        "completion": 1924356,
+        "cache_hit": 7330330,
+        "cache_miss": 3794846,
+        "cost": 14.718387499999965
+      },
+      "摘要生成（compress 侧信道，含拒绝采样候选）|local-14b|compress": {
+        "calls": 5,
+        "prompt": 32116,
+        "completion": 2550,
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cost": 0.0
+      },
+      "其他·未分类（认不出的标签）|deepseek-v4-flash|reflect": {
+        "calls": 27,
+        "prompt": 13018,
+        "completion": 13569,
+        "cache_hit": 5248,
+        "cache_miss": 7770,
+        "cost": 0.0729779
+      },
+      "其他·未分类（认不出的标签）|local-14b|reflect": {
+        "calls": 3,
+        "prompt": 1823,
+        "completion": 49,
+        "cache_hit": 0,
+        "cache_miss": 0,
+        "cost": 0.0
+      },
+      "其他·未分类（早期标签：演绎/质检混记）|deepseek-v4-flash|aux": {
+        "calls": 20,
+        "prompt": 10074,
+        "completion": 17105,
+        "cache_hit": 512,
+        "cache_miss": 9562,
+        "cost": 0.09134110000000001
+      },
+      "演绎·compress|deepseek-v4-flash|verbalize_compress": {
+        "calls": 2449,
+        "prompt": 1577673,
+        "completion": 3480938,
+        "cache_hit": 591089,
+        "cache_miss": 986584,
+        "cost": 17.173651450000037
+      },
+      "拒绝采样选优|deepseek-v4-flash|rubric_select": {
+        "calls": 194,
+        "prompt": 484352,
+        "completion": 4850,
+        "cache_hit": 216832,
+        "cache_miss": 267520,
+        "cost": 0.4339466000000002
+      },
+      "演绎·extract|deepseek-v4-flash|verbalize_extract": {
+        "calls": 3912,
+        "prompt": 1833126,
+        "completion": 3714490,
+        "cache_hit": 137600,
+        "cache_miss": 1695526,
+        "cost": 19.26537400000002
+      },
+      "演绎·judge|deepseek-v4-flash|verbalize_judge": {
+        "calls": 9060,
+        "prompt": 7055123,
+        "completion": 6802575,
+        "cache_hit": 1437171,
+        "cache_miss": 5617952,
+        "cost": 39.110374050000026
+      },
+      "质检员抽检|deepseek-v4-flash|rubric_quality": {
+        "calls": 1821,
+        "prompt": 2194941,
+        "completion": 12747,
+        "cache_hit": 0,
+        "cache_miss": 2194941,
+        "cost": 3.3497729999999937
+      },
+      "决策 16 人读清单 LLM 预分诊|deepseek-v4-flash|confab_triage": {
+        "calls": 1508,
+        "prompt": 1888851,
+        "completion": 102673,
+        "cache_hit": 254080,
+        "cache_miss": 1634771,
+        "cost": 2.926889000000001
+      },
+      "轨道 2 评委打分|deepseek-v4-flash|rubric_score": {
+        "calls": 191,
+        "prompt": 403982,
+        "completion": 4775,
+        "cache_hit": 113152,
+        "cache_miss": 290830,
+        "cost": 0.4633901
+      }
+    },
+    "total": {
+      "calls": 45128,
+      "prompt": 62074466,
+      "completion": 19502173,
+      "cache_hit": 27142838,
+      "cache_miss": 33840000,
+      "cost": 139.6811
+    }
+  },
+  "trace": {
+    "turns": 10,
+    "failures": {
+      "meltdown": [],
+      "tool_issues": [
+        {
+          "turn_seq": 8,
+          "statuses": {
+            "ok": 5,
+            "rejected": 1
+          }
+        }
+      ]
+    },
+    "side_calls": {
+      "plan": {
+        "calls": 2,
+        "latency_ms": 2624
+      },
+      "judge": {
+        "calls": 4,
+        "latency_ms": 2453
+      },
+      "factcheck": {
+        "calls": 4,
+        "latency_ms": 2375
+      },
+      "extract": {
+        "calls": 4,
+        "latency_ms": 4047
+      },
+      "dedup": {
+        "calls": 17,
+        "latency_ms": 9718
+      },
+      "conflict": {
+        "calls": 15,
+        "latency_ms": 9299
+      }
+    }
+  }
+}

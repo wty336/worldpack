@@ -1,0 +1,39 @@
+{
+  "runs": [
+    {
+      "seed": 1,
+      "exit_code": 0,
+      "audit_pass": true,
+      "forbidden_pass": true,
+      "ending": "未达成",
+      "cost": 0.0786
+    },
+    {
+      "seed": 2,
+      "exit_code": 1,
+      "audit_pass": null,
+      "forbidden_pass": null,
+      "ending": "",
+      "cost": 0.0786
+    },
+    {
+      "seed": 3,
+      "exit_code": 0,
+      "audit_pass": true,
+      "forbidden_pass": true,
+      "ending": "未达成",
+      "cost": 0.0786
+    }
+  ],
+  "summary": {
+    "n": 3,
+    "exit0_rate": 0.667,
+    "audit_pass_rate": 0.667,
+    "forbidden_pass_rate": 0.667,
+    "endings": [
+      "未达成"
+    ],
+    "mean_cost": 0.0786,
+    "cost_std": 0.0
+  }
+}

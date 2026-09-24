@@ -209,7 +209,41 @@ CONFLICT_SYSTEM（本期不追）。真机冒烟通过（exit 0，¥0.096）。
     同状态同输入、仅改提示词 → 完全不同的创作走向（`reports/replay_*_t011.json`）；
   - 重放成本透明：prompt 10,323 tokens / completion 503。
 
-**守卫**：`tests/test_runlog.py` **6 条**。全量回归：**665 → 671 passed**（待回填）。
+**守卫**：`tests/test_runlog.py` **6 条**。全量回归：**665 → 671 passed**。
+
+### 5.3 ③ Trace 查看器 + 统一评估报告 ✅（2026-09-24）
+
+**落地**（纯 scripts 层，零引擎改动）：
+
+- `scripts/trace_report.py`：trace JSONL → 回合聚合视图（iterations/时延/tokens/
+  工具状态/结局）+ `--turn N` 完整事件链 + 故障清单（熔断/工具异常）+ 成本分用途
+  （复用 route_a_cost 同源口径）；
+- `scripts/eval_report.py`：聚合 reports/ 各门禁最新报告 + 累计 usage 总账 +
+  （可选）trace 汇总 → **Agent 报告卡**（判读口径继承 evalmeta，不粉饰）；
+- `scripts/run_matrix.py`：worldpack_smoke × seed 扫描 → 退出码/审计/禁表/结局/成本
+  均值与方差；成本护栏（--max-cost 超出即停）。
+
+**真机验证**：
+
+- 开 `GAME_AGENT_TRACE` 的冒烟（¥0.116）→ trace_report 回合视图 + 成本明细全通；
+  工具异常检测抓到了 1 次 rejected（turn 8），熔断检测就位；
+- **第一张 Agent 报告卡**：`reports/agent-card-20260924.json`（E1 各家族 + 注入门禁 +
+  冲突判定 + qa_gate + replay 计数 + 累计成本 ¥139.68 + trace 回合观测）；
+  报告卡如实呈现"E1 第三轮待补"的口径（数字取自最新报告，不粉饰）；
+- run_matrix 3 次跑：退出码 0 率 0.667（seed 2 首跑熔断，**单独重跑通过 = 偶发**，
+  非新 bug；这正是"同任务 N 次跑"要暴露的方差）、单次成本 ¥0.079±0。
+
+**守卫**：`tests/test_runtime_reports.py` **6 条**。全量回归：**671 → 677 passed**。
+
+### 5.4 平台化三期收官总览（2026-09-24）
+
+| # | 件 | 关键数字 |
+| --- | --- | --- |
+| ① | 记忆时序冲突消解 | 行为轴 24/24 = 100%、零误杀；取代 8/8 |
+| ② | Run checkpoint + Replay | 12 回合记录 266KB；prompt 补丁重放相似度 9.5% |
+| ③ | 观测与评估聚合 | 第一张 Agent 报告卡 + trace 回合视图 + 3 次跑方差 |
+
+至此评审 8 条中采纳的 3 条全部落地；训练恢复衔接不变（plan-agent-first §4）。
 
 ## 6. 与既有文档的关系
 

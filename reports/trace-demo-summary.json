@@ -1,0 +1,183 @@
+{
+  "turns": [
+    {
+      "turn_seq": 1,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 8765,
+      "prompt_tokens": 5282,
+      "completion_tokens": 1556,
+      "tool_statuses": {
+        "ok": 3
+      },
+      "plot_signal": "normal",
+      "narration_chars": 646
+    },
+    {
+      "turn_seq": 2,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 7312,
+      "prompt_tokens": 9152,
+      "completion_tokens": 1144,
+      "tool_statuses": {
+        "ok": 2
+      },
+      "plot_signal": "normal",
+      "narration_chars": 346
+    },
+    {
+      "turn_seq": 3,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 7687,
+      "prompt_tokens": 12254,
+      "completion_tokens": 1320,
+      "tool_statuses": {
+        "ok": 2
+      },
+      "plot_signal": "normal",
+      "narration_chars": 444
+    },
+    {
+      "turn_seq": 4,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 16563,
+      "prompt_tokens": 17290,
+      "completion_tokens": 2520,
+      "tool_statuses": {
+        "ok": 1
+      },
+      "plot_signal": "normal",
+      "narration_chars": 220
+    },
+    {
+      "turn_seq": 5,
+      "model": "deepseek-v4-flash",
+      "iterations": 1,
+      "outcome": "completed",
+      "latency_ms": 5109,
+      "prompt_tokens": 10631,
+      "completion_tokens": 748,
+      "tool_statuses": {
+        "ok": 1
+      },
+      "plot_signal": "normal",
+      "narration_chars": 241
+    },
+    {
+      "turn_seq": 6,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 7312,
+      "prompt_tokens": 24266,
+      "completion_tokens": 1085,
+      "tool_statuses": {
+        "ok": 2
+      },
+      "plot_signal": "normal",
+      "narration_chars": 267
+    },
+    {
+      "turn_seq": 7,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 12172,
+      "prompt_tokens": 28310,
+      "completion_tokens": 2021,
+      "tool_statuses": {
+        "ok": 3
+      },
+      "plot_signal": "normal",
+      "narration_chars": 438
+    },
+    {
+      "turn_seq": 8,
+      "model": "deepseek-v4-flash",
+      "iterations": 2,
+      "outcome": "completed",
+      "latency_ms": 17171,
+      "prompt_tokens": 35470,
+      "completion_tokens": 2792,
+      "tool_statuses": {
+        "ok": 5,
+        "rejected": 1
+      },
+      "plot_signal": "node_complete",
+      "narration_chars": 806
+    },
+    {
+      "turn_seq": 9,
+      "model": "deepseek-v4-flash",
+      "iterations": 1,
+      "outcome": "completed",
+      "latency_ms": 6843,
+      "prompt_tokens": 20383,
+      "completion_tokens": 1059,
+      "tool_statuses": {
+        "ok": 1
+      },
+      "plot_signal": "normal",
+      "narration_chars": 354
+    },
+    {
+      "turn_seq": 10,
+      "model": "deepseek-v4-flash",
+      "iterations": 1,
+      "outcome": "completed",
+      "latency_ms": 6203,
+      "prompt_tokens": 22088,
+      "completion_tokens": 986,
+      "tool_statuses": {
+        "ok": 2
+      },
+      "plot_signal": "normal",
+      "narration_chars": 360
+    }
+  ],
+  "side_calls": {
+    "plan": {
+      "calls": 2,
+      "latency_ms": 2624
+    },
+    "judge": {
+      "calls": 4,
+      "latency_ms": 2453
+    },
+    "factcheck": {
+      "calls": 4,
+      "latency_ms": 2375
+    },
+    "extract": {
+      "calls": 4,
+      "latency_ms": 4047
+    },
+    "dedup": {
+      "calls": 17,
+      "latency_ms": 9718
+    },
+    "conflict": {
+      "calls": 15,
+      "latency_ms": 9299
+    }
+  },
+  "failures": {
+    "meltdown": [],
+    "tool_issues": [
+      {
+        "turn_seq": 8,
+        "statuses": {
+          "ok": 5,
+          "rejected": 1
+        }
+      }
+    ]
+  }
+}
