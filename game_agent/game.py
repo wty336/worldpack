@@ -31,7 +31,7 @@ from .compression import (
     locate_summary,
     rebuild_history,
 )
-from .context import ContextBuilder
+from .context import ContextBuilder, select_lore
 from .events import EventSystem
 from .judge import JudgeSystem
 from .llm import LLMClient
@@ -45,6 +45,7 @@ from .memory import (
     MemorySystem,
     parse_facts,
     parse_insights,
+    rank_facts,
 )
 from .save import save_game
 from .schedule import ScheduleSystem
@@ -249,7 +250,8 @@ class Game:
         )
         self.state.turn_count += 1  # 记忆来源追踪（M2a）
         result = self.llm.run_turn(
-            messages, self._apply_change, on_text=self.on_text, remember=self._remember
+            messages, self._apply_change, on_text=self.on_text, remember=self._remember,
+            query_world=self._query_world,
         )
         # run_turn 返回的消息含 system 前缀；历史只保留对话部分，
         # 否则下轮 build_messages 会把 system 重复注入（压缩测试抓到的潜伏 bug）
@@ -293,6 +295,67 @@ class Game:
         return self.memory.add(
             self.state, args["target"], args["fact"], args.get("importance")
         )
+
+    def _query_world(self, args: dict) -> str:
+        """query_world 工具回调（agent-first 第一件）：**只读**查询当前世界状态。
+
+        纪律：
+        - 绝不写入任何状态（守卫测试用 state.copy() 前后对拍钉住）；
+        - 不返回 flags 原值——剧情旗标是引擎内部真值，泄漏即破坏"玩家只能靠剧情
+          感知"的边界（状态栏本来也不带 flags，此处同口径）；
+        - 检索复用 rank_facts / select_lore（与状态栏注入同口径，v1 词面 bigram）。
+        """
+        query = str(args.get("query", "")).strip()
+        if not query:
+            raise ValueError("query 不能为空")
+        if len(query) > 200:
+            raise ValueError("query 过长（≤200 字）")
+
+        lines: list[str] = []
+        present = "、".join(
+            self.pack.npcs[i].name for i in self.state.present_npcs if i in self.pack.npcs
+        )
+        lines.append(
+            f"地点：{self.state.scene} · 第 {self.state.day} 天 · 剩余行动点 {self.state.action_points_left}"
+        )
+        lines.append(f"在场：{present or '无'}")
+        stats_str = " · ".join(
+            f"{self.pack.schedule.stats[k].label} {v:g}"
+            for k, v in self.state.stats.items()
+        )
+        lines.append(f"玩家属性：{stats_str}")
+        if self.state.affections:
+            aff_str = " · ".join(
+                f"{self.pack.npcs[k].name} {v:g}"
+                for k, v in self.state.affections.items() if k in self.pack.npcs
+            )
+            lines.append(f"好感：{aff_str}")
+        node = self.story.active_node(self.state)
+        lines.append(
+            f"主线目标：{node.goal if node is not None else '自由探索，等待主线事件'}"
+        )
+        # 检索区：与查询相关的事实/记忆/lore（输出上限收紧：工具结果直接进模型上下文）
+        if self.state.player_facts:
+            facts = rank_facts(
+                self.state.player_facts, query, self.state.turn_count, k=5, pinned=3
+            )
+            lines.append("相关关键事实：\n" + "\n".join(f"- {m.fact}" for m in facts))
+        for npc_id in self.state.present_npcs:
+            entries = self.state.npc_memories.get(npc_id, [])
+            if not entries:
+                continue
+            ranked = rank_facts(entries, query, self.state.turn_count, k=5, pinned=2)
+            name = self.pack.npcs[npc_id].name
+            lines.append(f"{name}的相关记忆：\n" + "\n".join(f"- {m.fact}" for m in ranked))
+        lore = select_lore(self.pack.world.lore, query)
+        if lore:
+            lines.append("相关设定：\n" + "\n".join(f"- {e.text}" for e in lore))
+        actions = self.actions_available()
+        if actions:
+            lines.append(
+                "可选行动：" + "；".join(f"{a.label}（{a.cost} 行动点）" for a in actions)
+            )
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # A3（P1）：反思层——零散记忆 → 关系洞察

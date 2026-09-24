@@ -161,6 +161,28 @@ def build_tools(schedule: ScheduleSpec) -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_world",
+                "description": (
+                    "只读查询当前世界状态：地点/时间/在场人物、属性与好感、主线目标、"
+                    "与查询相关的长期记忆与世界观设定、当前可选行动。"
+                    "对状态不确定时**先查询再叙事**，查不到的不得编造；"
+                    "查询结果只作叙事依据，不得原样复述给玩家，也不得泄露引擎机制。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "想查的问题或关键词，如「沈清秋喜欢什么」「现在在哪」",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
     ]
 
 
@@ -376,6 +398,7 @@ class LLMClient:
         max_iters: int = MAX_TURN_ITERATIONS,
         on_text: Callable[[str], None] | None = None,
         remember: Callable[[dict], str] | None = None,
+        query_world: Callable[[dict], str] | None = None,
     ) -> TurnResult:
         """执行一轮：组装 → 生成 → 执行工具 → 校验 → 返回 TurnResult。
 
@@ -383,6 +406,8 @@ class LLMClient:
         时这里转为结构化 tool 错误回传。
         remember(args) 由引擎注入（M2a 记忆显式化）：内部走 MemorySystem 契约；
         抛 MemoryError 时转为结构化 tool 错误回传。
+        query_world(args) 由引擎注入（agent-first 第一件）：**只读**查询世界状态；
+        抛 ValueError 时转为结构化 tool 错误回传。
         on_text：提供时启用流式输出，内容增量实时回调（玩家边等边看）。
         """
         msgs = [dict(m) for m in messages]
@@ -547,6 +572,22 @@ class LLMClient:
                             status = "rejected"
                         msgs.append(_tool_result(tc.id, result_msg))
                         memories.append({**args, "result": result_msg})
+                        self._trace("tool", turn_seq=turn_seq, name=name, status=status,
+                                    detail=result_msg[:80])
+                elif name == "query_world":
+                    if query_world is None:
+                        result_msg = "[协议错误] 引擎未启用世界查询功能"
+                        msgs.append(_tool_result(tc.id, result_msg))
+                        self._trace("tool", turn_seq=turn_seq, name=name,
+                                    status="protocol_error", detail=result_msg)
+                    else:
+                        try:
+                            result_msg = query_world(args)
+                            status = "ok"
+                        except ValueError as e:
+                            result_msg = f"[引擎拒绝] {e}"
+                            status = "rejected"
+                        msgs.append(_tool_result(tc.id, result_msg))
                         self._trace("tool", turn_seq=turn_seq, name=name, status=status,
                                     detail=result_msg[:80])
                 elif name == "submit_narration":

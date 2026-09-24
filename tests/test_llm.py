@@ -164,13 +164,16 @@ def test_tool_schema_enums_injected_from_pack():
     """工具 schema 的枚举值来自世界包（属性/NPC 精确注入，章 4 ACI）。"""
     pack = load_worldpack(PACK_PATH)
     tools = build_tools(pack.schedule)
-    assert len(tools) == 3  # change_stat / submit_narration / remember（M2a）
+    # change_stat / submit_narration / remember（M2a）/ query_world（agent-first 第一件）
+    assert len(tools) == 4
     by_name = {t["function"]["name"]: t for t in tools}
     change = by_name["change_stat"]["function"]["parameters"]["properties"]
     assert set(change["target"]["enum"]) == {"player", "shen_qingqiu"}
     assert set(change["stat"]["enum"]) == {"charm", "martial", "silver", "affection"}
     remember = by_name["remember"]["function"]["parameters"]["properties"]
     assert set(remember["target"]["enum"]) == {"player", "shen_qingqiu"}
+    qw = by_name["query_world"]["function"]["parameters"]
+    assert qw["required"] == ["query"]  # 只读工具：唯一必填参数
 
 
 REMEMBER = _tool_call(
