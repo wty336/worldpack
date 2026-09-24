@@ -26,6 +26,7 @@ from game_agent.judge_corpus import (
     ADVERSARIAL_CATEGORIES,
     NORMAL_CATEGORY,
     build_materials,
+    build_state,  # agent-first 第 5 件：语料同源事实图
     corpus_version,
     load_corpus,
     majority_hit,
@@ -46,10 +47,11 @@ def _run_case(judge, pack, case, rounds):
     "未拦截"，系统性低估拦截率（2026-09-11 重测前的行为）。
     """
     materials = build_materials(pack, case)
+    state = build_state(pack, case)  # agent-first 第 5 件：事实图与材料同源
     rounds_detail = []
     verdicts: list[bool | None] = []
     for r in range(1, rounds + 1):
-        ok, verdict = judge.check(case.narration, materials)
+        ok, verdict = judge.check(case.narration, materials, state=state, pack=pack)
         verdicts.append(ok)
         rounds_detail.append({"round": r, "passed": ok, "verdict": verdict})
     return majority_hit(verdicts, min_known=(rounds + 1) // 2), rounds_detail

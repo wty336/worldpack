@@ -27,7 +27,7 @@
 | 2 | 内轮自校正（关键节点 Reflexion） | 仅 turn 运行时 | 无基线 | ✅ 已落地（2026-09-24，§3.5） |
 | 3 | 语义检索替换 bigram | memory `rank_facts` + context 消费 | judge 语料基线（材料内容变）+ 工厂材料复验 | ✅ 已落地（2026-09-24，§3.6；E1 重测见 §3.6.3） |
 | 4 | 规划层 plan-and-execute | status_text + compress 摘要契约 | judge 基线 + compress 评测集 | ✅ 已落地（2026-09-24，§3.7；设计 `docs/design-planning.md`） |
-| 5 | 事实图 Judge | judge 内部（语料尺子不动） | E1 门禁三包重跑 | 待做 |
+| 5 | 事实图 Judge | judge 内部（语料尺子不动） | E1 门禁三包重跑 | 🔄 落地中（2026-09-24，§3.8；设计 `docs/design-factgraph.md`） |
 | 6 | canary 注入门禁 | 系统提示 + 新评测 | 新增门禁（纯增量） | 待做 |
 
 暂缓不变：多 Agent 化（训练面翻倍且单 NPC 场景收益有限）、自我改进闭环（放在 1~6 之后）。
@@ -158,6 +158,38 @@
 
 **待观察**：长局卡壳 stage 1 触发率是否下降；计划生成质量抽查；计划一次侧信道调用
 的成本（usage 自动记账）。
+
+### 3.8 执行记录 · 第 5 件：事实图 Judge（confab 缺席证据代码化）🔄（2026-09-24）
+
+**设计**：`docs/design-factgraph.md`。实现要点：
+
+- `game_agent/factgraph.py`：图从**材料同源真值**构建（pack+state：玩家事实/NPC 记忆/
+  lore/NPC 卡/场景/数值），不含 flags；两级判定 = factcheck 侧信道（purpose="factcheck"，
+  temp=0，预算 500，要点式输出）抽"新确立的承诺/债务/事实" → 代码查缺席；
+- `JudgeSystem.check(narration, materials, state=None, pack=None)`：图违规 → **确定性
+  False**（LLM 未知时也照常工作）；state/pack 缺省 = 图检查关闭（旧调用方零改动）；
+- `judge_corpus.build_state`（`build_materials` 复用）→ E1 语料与真实局同一建图路径；
+- game 两处调用点（judge_every 与关键节点自校正）已接 state/pack。
+
+**口径收敛（E1 实测驱动，三次迭代）**：
+
+1. 初版"2~4 字锚点、任一缺席即违规"→ 2 字伪锚点满屏误报；
+2. 改为"3~4 字强锚点全缺席才违规"→ confab 20/20 ✓ 但 normal 误报 12%（6 条）：
+   2 字专名（听雨/东市/银两）无法接地、中文数字不匹配（五十两 vs 50）、
+   抽取器把"师父剑谱"类背景铺垫当断言；
+3. 收敛：**接地窗口放开到 2~4 字**（2 字只帮接地不触发违规）+ **抽取器排除背景铺垫
+   与玩家状态描述**（状态由引擎维护，不可能"新确立"）→ 图层误报清零。
+
+**E1（ancient_jianghu，flash）**：confab **20/20 = 100%**（此前 14B 零样本仅拦 ~32%，
+flash 82~90%——缺席证据路线被代码机械补齐）；normal 误报率回归基线噪声水平
+（基线 3/48 为 LLM judge 既有噪声，图层 0 新增——数字以最终报告为准）。
+**成本**：每次 judge 检查多一次 factcheck 调用，E1 单包约 +¥0.1。
+
+**守卫**：`tests/test_factgraph.py` **13 条**（建图/解析/缺席/接地/2 字专名/部分接地/
+静默/合并语义/向后兼容/语料同源）。全量回归：**633 → 646 passed**。
+
+**待办**：xianxia_wendao / urban_neon 两包 E1 补跑（约 ¥0.6）；T1/T2 切片报数验证
+（预期两档同时被机械补齐）。
 
 ---
 

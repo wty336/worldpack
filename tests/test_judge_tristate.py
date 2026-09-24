@@ -123,7 +123,7 @@ class _StubJudge:
     def __init__(self, verdicts):
         self.verdicts = list(verdicts)
 
-    def check(self, narration, materials):
+    def check(self, narration, materials, state=None, pack=None):
         return self.verdicts.pop(0), "v"
 
 

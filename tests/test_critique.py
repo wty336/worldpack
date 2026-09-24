@@ -81,6 +81,7 @@ def test_judge_pass_no_regeneration():
         [
             resp(msg(tool_calls=[_submit("s1", "良好叙事")])),
             resp(msg(content="通过")),
+            resp(msg(content="无")),  # 事实图 factcheck（agent-first 第 5 件）：无断言
         ],
         critique=True,
     )
@@ -97,6 +98,7 @@ def test_judge_unknown_no_regeneration():
             resp(msg(tool_calls=[_submit("s1", "初稿")])),
             resp(msg(content="")),  # judge 第一次：空
             resp(msg(content="")),  # judge 升级重试：仍空 → None
+            resp(msg(content="无")),  # factcheck：无断言 → 无违规
         ],
         critique=True,
     )
@@ -127,6 +129,7 @@ def test_fail_regenerates_and_keeps_only_second_draft():
         [
             resp(msg(tool_calls=[_submit("s1", "第一稿：把剑名写成了听风")])),
             resp(msg(content="问题类型：设定矛盾：剑名听风与事实听雨冲突")),
+            resp(msg(content="无")),  # factcheck：无断言
             resp(msg(tool_calls=[_submit("s2", "第二稿：剑名听雨，无误")])),
         ],
         critique=True,
@@ -144,6 +147,7 @@ def test_second_draft_still_bad_accepted():
         [
             resp(msg(tool_calls=[_submit("s1", "第一稿：错")])),
             resp(msg(content="问题类型：设定矛盾：……")),
+            resp(msg(content="无")),  # factcheck：无断言
             resp(msg(tool_calls=[_submit("s2", "第二稿：还是错")])),
         ],
         critique=True,
@@ -168,6 +172,7 @@ def test_stream_buffered_then_replayed_once():
         [
             resp(msg(tool_calls=[_submit("s1", "第一稿：听风")])),
             resp(msg(content="问题类型：设定矛盾：听风与听雨冲突")),
+            resp(msg(content="无")),  # factcheck：无断言
             resp(msg(tool_calls=[_submit("s2", "第二稿：听雨")])),
         ],
         critique=True,
@@ -185,6 +190,7 @@ def test_pass_case_replays_final_once():
         [
             resp(msg(tool_calls=[_submit("s1", "良好叙事")])),
             resp(msg(content="通过")),
+            resp(msg(content="无")),  # factcheck：无断言
         ],
         critique=True,
     )

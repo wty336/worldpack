@@ -412,7 +412,9 @@ class Game:
         materials = self.builder.status_text(
             self.state, self.story.active_node(self.state)
         )
-        ok, verdict = self.judge.check(result.narration, materials)
+        ok, verdict = self.judge.check(
+            result.narration, materials, state=self.state, pack=self.pack
+        )  # agent-first 第 5 件：附跑事实图（confab 缺席证据代码判定）
         if ok is not False or not verdict:
             return result
         self.history.append(
@@ -625,7 +627,9 @@ class Game:
         materials = self.builder.status_text(
             self.state, self.story.active_node(self.state)
         )
-        ok, verdict = self.judge.check(narration, materials)
+        ok, verdict = self.judge.check(
+            narration, materials, state=self.state, pack=self.pack
+        )  # agent-first 第 5 件：附跑事实图（confab 缺席证据代码判定）
         if ok is False and verdict:  # None = 未知（判定不可用）→ 不注入反馈，也不当作通过
             self.history.append(
                 {

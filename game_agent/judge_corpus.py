@@ -163,8 +163,8 @@ def load_corpus(pack_root: str | Path) -> list[JudgeCase]:
     return cases
 
 
-def build_materials(pack: WorldPack, case: JudgeCase) -> str:
-    """按用例状态构造 Judge 材料（与生产同款：ContextBuilder.status_text）。"""
+def build_state(pack: WorldPack, case: JudgeCase) -> GameState:
+    """按用例字段构造 Judge 状态（材料与事实图的**同源真值**，agent-first 第 5 件）。"""
     state = GameState.from_pack(pack)
     state.day = case.day
     state.scene = case.scene
@@ -180,7 +180,12 @@ def build_materials(pack: WorldPack, case: JudgeCase) -> str:
     for k, v in case.stats.items():  # 真实轨迹用例：还原当轮属性（否则状态栏与真实不符）
         if k in state.stats:
             state.stats[k] = float(v)
-    return ContextBuilder.from_pack(pack).status_text(state, None)
+    return state
+
+
+def build_materials(pack: WorldPack, case: JudgeCase) -> str:
+    """按用例状态构造 Judge 材料（与生产同款：ContextBuilder.status_text）。"""
+    return ContextBuilder.from_pack(pack).status_text(build_state(pack, case), None)
 
 
 def majority_hit(verdicts: list[bool | None], min_known: int = 1) -> bool | None:

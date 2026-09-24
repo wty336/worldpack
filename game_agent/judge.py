@@ -15,6 +15,7 @@ from .budgets import (
     JUDGE_MAX_TOKENS,
     complete_with_empty_retry,
 )
+from .factgraph import build_graph, check_graph  # agent-first 第 5 件：事实图代码层
 
 JUDGE_SYSTEM = (
     "你是游戏叙事的质量校验员。对照给定材料，检查最新一轮叙事是否存在以下问题：\n"
@@ -54,12 +55,17 @@ class JudgeSystem:
             },
         ]
 
-    def check(self, narration: str, materials: str) -> tuple[bool | None, str]:
+    def check(
+        self, narration: str, materials: str, state=None, pack=None
+    ) -> tuple[bool | None, str]:
         """检查一轮叙事。返回 (判定, 判定原文)：True 通过 / False 有问题 / **None 未知**。
 
         - 空响应与截断由 ``budgets.complete_with_empty_retry`` 统一处理（升级预算重试一次）；
-        - 重试后仍拿不到可用判定、或调用异常 → 返回 ``(None, '')``：
-          **不影响主线**（调用点只在 False 时注入校验反馈），但也**不得谎报为通过**。
+        - 重试后仍拿不到可用判定、或调用异常 → LLM 层返回 ``(None, '')``：
+          **不影响主线**（调用点只在 False 时注入校验反馈），但也**不得谎报为通过**；
+        - agent-first 第 5 件（事实图代码层）：state+pack 都提供时，附跑 confab
+          "缺席证据"检查——代码层查到违规 → **确定性 False**（LLM 未知时也照常工作）；
+          state/pack 缺省 = 图检查关闭（旧调用方零改动，向后兼容）。
         """
         try:
             output = complete_with_empty_retry(
@@ -70,5 +76,11 @@ class JudgeSystem:
                 temperature=JUDGE_TEMPERATURE,
             )
         except Exception:  # noqa: BLE001
-            return None, ""
-        return parse_verdict(output)
+            ok, verdict = None, ""
+        else:
+            ok, verdict = parse_verdict(output)
+        if state is not None and pack is not None:
+            violation = check_graph(self.llm, narration, build_graph(pack, state))
+            if violation:
+                return False, violation
+        return ok, verdict
