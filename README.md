@@ -71,6 +71,8 @@ uv run python -m game_agent check-worldpack world-packs/<pack>          # L1 离
 uv run pytest                                                           # L2 全量离线测试
 uv run python scripts/judge_sensitivity.py --pack world-packs/<pack>    # E1 Judge 门禁（真机）
 uv run python scripts/worldpack_smoke.py --pack world-packs/<pack>      # 真机冒烟（通关+审计+禁表）
+# 一键版（Track B/B2）：分层门禁 + 报告卡（reports/qa_gate_*.json）
+uv run python scripts/qa_gate.py --pack world-packs/<pack> [--levels l1,l2,l3] [--offline] [--dry-run]
 # 深度检查（可选，约 ¥1-2）：100 回合长局——压缩/记忆/检索/审计不腐化
 uv run python scripts/longrun_probe.py --pack world-packs/xianxia_wendao --turns 100
 # 素材导入（工具 B）：小说/大纲/设定 → 世界包（生成语料为草稿质量，过门禁按报告手工修）

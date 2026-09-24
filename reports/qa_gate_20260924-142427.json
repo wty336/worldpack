@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-09-24T14:24:27",
+  "pack": "world-packs/ancient_jianghu",
+  "levels": [
+    "l1"
+  ],
+  "offline": false,
+  "dry_run": false,
+  "passed_all": true,
+  "executed": 2,
+  "skipped": 0,
+  "gates": [
+    {
+      "id": "l1-check",
+      "name": "世界包离线校验",
+      "level": "l1",
+      "command": [
+        "E:\\研究生\\LLM\\game-agent\\.venv\\Scripts\\python.exe",
+        "-m",
+        "game_agent",
+        "check-worldpack",
+        "E:\\研究生\\LLM\\game-agent\\world-packs\\ancient_jianghu"
+      ],
+      "passed": true,
+      "skipped_reason": "",
+      "exit_code": 0,
+      "duration_s": 1.4,
+      "stdout_tail": "[✓] 世界包 '江湖旧梦' 加载成功\n  背景: 大盛王朝·长安城（架空，唐风）\n  属性: charm(魅力, 初始 10.0), martial(武功, 初始 5.0), silver(银两, 初始 50.0)\n  好感对象: shen_qingqiu(沈清秋, 初始 5.0)\n  日程行动: 修炼, 打工, 拜访沈清秋, 备礼探访\n  主线节点: 初遇, 七夕诗会\n  事件: 3 个 · 结局: 2 个\n  NPC: 沈清秋\n  flag 声明: met_shen, poetry_join, poetry_resolved, poetry_top3\n  lore 条目: 6 条（按需注入，B1）\n  世界包规范: docs/worldpack-manual.md（作者手册：schema + 守则 + 陷阱 + 验收单）\n"
+    },
+    {
+      "id": "l1-pytest",
+      "name": "全量离线测试",
+      "level": "l1",
+      "command": [
+        "E:\\研究生\\LLM\\game-agent\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "passed": true,
+      "skipped_reason": "",
+      "exit_code": 0,
+      "duration_s": 29.9,
+      "stdout_tail": ".................................... [ 73%]\n........................................................................ [ 85%]\n........................................................................ [ 97%]\n..............                                                           [100%]\n============================== warnings summary ===============================\n.venv\\Lib\\site-packages\\starlette\\testclient.py:53\n  E:\\研究生\\LLM\\game-agent\\.venv\\Lib\\site-packages\\starlette\\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.\n    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n590 passed, 1 warning in 29.07s\n"
+    }
+  ]
+}
