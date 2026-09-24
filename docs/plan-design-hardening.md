@@ -14,12 +14,12 @@
 | --- | --- | --- | --- | --- |
 | A | A1 事实图证据面 / A2 Judge 连贯性材料 / A3 长程反重复 / A4 卡壳重规划 / A5 熔断保守回合 | 判官"看不见"与"喊一嗓子就走"的一致性缺口 | factgraph / judge / game / cli / web | ✅ 已落地 |
 | B | B1 factcheck 常开 / B2 反馈复查闭环 | 校验从开环变闭环、确定性层与 LLM 层分层 | game / judge | ✅ 已落地 |
-| C | ToolRegistry + MCP 暴露 | 工具层硬编码 → 声明式注册表；接入生态 | llm / 新 registry / 新 mcp | 待排期 |
-| D | 地点一等公民 | scene 自由字符串 → 声明式地点表 + 受校验的 change_scene | worldpack / llm / context / lore | 待排期 |
+| C | ToolRegistry + MCP 暴露 | 工具层硬编码 → 声明式注册表；接入生态 | llm / 新 registry / 新 mcp | ✅ 已落地 |
+| D | 地点一等公民 | scene 自由字符串 → 声明式地点表 + 受校验的 change_scene | worldpack / llm / context / lore | ✅ 已落地 |
 | E | 机制层表达力（counters / items） | flags 只有 bool → 计数器与持有物入真值 | worldpack / conditions / stats / state | 待排期 |
 | F | 小项：token 校准闭环 / 复盘回写 | 预算估算用实测 usage 校准 | usage / compression | 待排期 |
 
-执行顺序 A → B → C → D → E（F 随时可插队）。C/D/E 动 worldpack schema，
+执行顺序 A → B → C → D → E（F 随时可插队）。A/B/C/D 已落地。C/D/E 动 worldpack schema，
 按守则同步更新 `docs/worldpack-manual.md` 与 `check-worldpack` 交叉校验。
 
 ---
@@ -182,7 +182,7 @@ MCP 层薄封装不碰状态（复用 query_world 的只读纪律测试模式）
 
 ---
 
-## 4. 批次 D：地点一等公民【待排期】
+## 4. 批次 D：地点一等公民【已落地，见 §9】
 
 **现状**：`state.scene` 是自由字符串；`ActionSpec.scene/present` 与节点
 `on_enter.scene` 能写它，但世界包不声明地点表——LLM 叙事里的移动与引擎
@@ -297,3 +297,54 @@ MCP 层薄封装不碰状态（复用 query_world 的只读纪律测试模式）
   按本文件 §0 顺序待排期；C 与 MCP 合并做；
 - 已知口径：`purpose="factcheck"` / `"plan"` 未在 Settings 建独立模型档位
   （回退主模型）——沿用 factgraph 原状，若要分层路由在批次 F 一并补。
+
+
+---
+
+## 10. 批次 C/D 落地记录（2026-09-25）
+
+### 批次 C：ToolRegistry + MCP（commit d40fa22）
+
+- **registry.py（新）**：`ToolSpec`（name/schema/handler/rejects/terminator/tag）+
+  `ToolRegistry`（register / bind_handler / schemas / dispatch 单点派发）；
+  引擎四件套 schema **逐字段迁移**（golden 测试钉住输出一致），`llm.build_tools`
+  变薄代理；`from_callbacks` 兼容旧回调签名——run_turn 派发只剩一条代码路径；
+- **llm.py**：run_turn 增加 `registry=` 参数（Game 推荐路径，API tools= 来自
+  registry.schemas()，含自定义工具）；if/elif 硬编码派发删除；TurnResult 的
+  stat_changes/memories 改由 ToolSpec.tag 记账桶归集；
+- **世界包自定义工具**：`schedule.yaml` 可选 `tools:` 段（id/label/description/
+  parameters/requires/cost/effects/once）→ 注册进 registry，Game 绑定处理器：
+  门槛（requires DSL）→ 行动点 → `apply_effects` 饱和结算 → once 记入
+  `state.used_custom_tools`（存档回环）；加载期交叉校验：引擎重名、required
+  参数、requires/effects 引用合法性，且**纳入 completion 可达性**（自定义工具
+  是合法 flag 写入路径）；
+- **MCP server（mcp_server.py，新）**：stdio JSON-RPC 最小子集
+  （initialize / notifications / ping / tools/list / tools/call），零依赖手写；
+  暴露**玩家侧六件套**（status/actions/say/pick/act/end_day）——叙述者工具
+  （change_stat/remember）不对外：玩家代理无权直改数值，真值纪律在 MCP
+  边界的延伸；CLI 入口 `python -m game_agent mcp [pack]`；
+- **守卫**：test_registry 9（golden schema/四态派发/兼容 shim/自定义工具进 API
+  schema）+ test_custom_tools 8（执行/三拒绝/once/成本/交叉校验）+
+  test_mcp 10（握手/工具面/业务错误/端到端 serve）。
+
+### 批次 D：地点一等公民（commit b5cf06c）
+
+- **worldpack.py**：`world.yaml` 可选 `locations: [{id, name, keys, description}]`
+  （schema 在 C 已立）；`resolve_scene()`（id/name 命中 → (显示名, id)，未命中
+  透传——未声明地点表的世界包行为与旧版一致）；交叉校验：地点 id/name 唯一 +
+  节点/行动/开场 scene 必须落在表内（加载期拒绝）；
+- **真值写入四处解析**：`GameState.from_pack`（开场）、`storyline._try_enter_node`
+  （节点进入）、节点完成回开场、`schedule.execute_action`（行动结算）——
+  `state.scene`（显示名）与新增 `state.scene_id`（表 id，存档回环兼容老档）一并维护；
+- **change_scene 工具**（仅声明地点表时注册）：LLM 提议移动 → 引擎校验
+  白名单（表外拒绝）/ reason 必填（checklist）/ 关键抉择锁定 → 写入真值；
+  与 change_stat 同构的提议-校验-执行契约；
+- **lore 挂接**：`context._retrieval_context` 并入当前地点 keys——所在地点的
+  设定恒参与 lore 命中（走到铸剑谷，铸剑谷的 lore 无需玩家恰好提这三个字）；
+- **守卫**：test_locations 12 项（解析/白名单/锁定/lore 挂接对照/存档回环/交叉校验）。
+
+### 回归与口径
+
+- 全量 `uv run pytest`：**739 passed**（698 → 727（C）→ 739（D），零回退）；
+- 现有六个世界包均未声明 locations/tools → 行为零变化，无需改动即过校验；
+- worldpack-manual 同步新增 §3.2-tools 与 §3.7（地点表）章节。

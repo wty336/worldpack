@@ -136,7 +136,31 @@ actions:                      # 日程行动
   消费型行动（花钱换好感的）**必须有门槛**，否则玩家可免费刷好感。
 - **收益曲线**：效果值写数字 = 确定性；写 `{base, spread, decay_every, decay_step}` =
   范围随机 + 按执行前属性值边际递减（最低 0）。作者定义的效果越界一律**饱和**，不会炸档。
-- `scene`/`present`：行动后玩家所在场景与在场 NPC（id）。
+- `scene`/`present`：行动后玩家所在场景与在场 NPC（id）。声明了地点表时
+  （§3.7），此处应写表内的 id 或显示名——表外 scene 会**加载失败**。
+
+#### tools: —— 自定义效果型工具（可选，批次 C）
+
+给叙述模型的"领域动作"：剧情走到某处时由 LLM 在叙事中调用、引擎结算效果
+（修炼包的`突破`、都市包的`黑入终端`这类不进每日日程的动作）。
+
+```yaml
+tools:
+  - id: breakthrough            # 工具名（不得与引擎工具 change_stat 等重名）
+    label: 尝试突破
+    description: 剧情推进到瓶颈时，玩家可以尝试冲击境界
+    requires: {all: [{stat: {cultivation: {gte: 30}}}]}   # 可选门槛（§4 DSL）
+    cost: 0                     # 可选：消耗行动点（缺省 0 = 纯叙事动作）
+    effects:
+      stats: {cultivation: 5}
+      flags: {breakthrough_done: true}    # 写 flag 也要已声明
+    once: false                 # true = 整局只能成功执行一次（开锁/引爆类）
+```
+
+- 效果引用的 stats/affections/flags **必须已在 schedule 声明**（加载期校验）；
+- 拒绝场景（门槛不满足/行动点不足/once 已用）以结构化错误回传给模型，
+  模型按叙事处理"做不到"，不会崩回合；
+- 自定义工具的效果也是**节点 completion 的合法 flag 写入路径**（可达性校验认它）。
 
 ### 3.3 mainline.yaml —— 主线节点链（最重要的文件）
 
@@ -243,6 +267,27 @@ memory_limit: 20
 上下文**。因此：正常对话里 NPC 不得说出 secrets 内容；想让 NPC 在某个好感阶段透露秘密，
 就把"已可透露"写进对应 tone 或事件脚本。同理，Judge 语料的正常用例**不得暗示 secrets**
 （见 §7 陷阱 3）。
+
+### 3.7 world.yaml 的 locations —— 地点表（可选，批次 D）
+
+不声明时场景（scene）是自由字符串，行为与旧版一致；声明后场景升级为**受引擎校验的
+一等公民**：玩家"走到哪"由 change_scene 工具提议（LLM 只能选表内 id），引擎复核后写入
+状态栏真值。
+
+```yaml
+locations:
+  - id: clinic          # 引擎/工具使用的标识（唯一）
+    name: 夜澜市·白噪诊所   # 状态栏与场景卡的显示名（唯一）
+    keys: [白噪诊所, 诊所]   # 在此地点时恒参与 lore 命中（§3.1 的 lore）
+    description: 城北地下室里的非法义体诊所   # 给 change_scene 提议参考，不注入状态栏
+```
+
+- **声明后的硬规则**：`mainline` 节点 `on_enter.scene`、`schedule` 行动 `scene`、
+  `world.start_scene` 都必须写**表内的 id 或显示名**，否则加载失败；
+- lore 触发升级：所在地点的 `keys` 恒参与命中——走到诊所，关于诊所的 lore
+  无需玩家恰好提到"诊所"两个字；
+- 何时值得声明：世界包有 ≥5 个会反复出现的地点、或希望"移动"成为玩法的一部分。
+  线性小包不必声明。
 
 ---
 
