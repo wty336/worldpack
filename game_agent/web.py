@@ -33,7 +33,7 @@ from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
 from .schedule import ScheduleError
 from .state import GameState
-from .storyline import StorylineError
+from .storyline import FREE_INPUT_OPTION, StorylineError
 from .usage import UsageTracker
 from .worldpack import WorldPackError, load_worldpack
 
@@ -223,6 +223,8 @@ def _turn_stream(session: Session, req: TurnRequest):
             deltas.put(("error", f"生成失败（协议熔断）: {e}"))
         except ValueError as e:
             deltas.put(("error", str(e)))
+        except Exception as e:  # noqa: BLE001 — 审查修复：未预期异常转 error 事件，不静默杀回合
+            deltas.put(("error", f"内部错误: {type(e).__name__}: {e}"))
         finally:
             deltas.put(None)  # 结束哨兵
 
@@ -304,6 +306,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <div id="status"></div>
 <script>
 let sid = null;
+const FREE_INPUT = "__FREE_INPUT__";  // 自由输入入口文案（由引擎常量注入，保持单一真源）
 const $ = (id) => document.getElementById(id);
 const story = $("story"), promptEl = $("prompt"), choicesEl = $("choices"), statusEl = $("status");
 
@@ -318,14 +321,20 @@ async function start() {
   await refreshStatus();
 }
 function render(v) {
-  if (v.narration) story.textContent = v.narration;
-  if (v.briefing) story.textContent = v.briefing + "\\n";
+  if (v.narration || v.briefing) {
+    story.textContent = (v.briefing ? v.briefing + "\\n" : "") + (v.narration || "");
+  }
   promptEl.textContent = v.choice_prompt ? ("【关键抉择】" + v.choice_prompt.prompt) : "";
   choicesEl.innerHTML = "";
+  const critical = !!v.choice_prompt;  // 关键抉择 → pick 序号；日常选项 → say 文本（与 CLI 同权）
   (v.choices || []).forEach((c, i) => {
     const b = document.createElement("button");
     b.textContent = c;
-    b.onclick = () => turn({ kind: "pick", index: i });
+    b.onclick = critical
+      ? () => turn({ kind: "pick", index: i })
+      : (c === FREE_INPUT)
+        ? () => { $("in").focus(); }
+        : () => turn({ kind: "say", text: c });
     choicesEl.appendChild(b);
   });
   if (v.ending) {
@@ -342,7 +351,7 @@ async function turn(req) {
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  story.textContent = "";
+  let cleared = false;  // 审查式修复：首个内容增量到达才清空旧叙事——错误轮保留原文
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -354,7 +363,10 @@ async function turn(req) {
       const ev = block.match(/^event: (\\w+)/m);
       const data = block.match(/^data: (.*)$/m);
       if (!ev || !data) continue;
-      if (ev[1] === "delta") story.textContent += JSON.parse(data[1]);
+      if (ev[1] === "delta") {
+        if (!cleared) { story.textContent = ""; cleared = true; }
+        story.textContent += JSON.parse(data[1]);
+      }
       else if (ev[1] === "done") render(JSON.parse(data[1]));
       else if (ev[1] === "error") promptEl.textContent = "[错误] " + JSON.parse(data[1]);
     }
@@ -388,7 +400,7 @@ start();
 </script>
 </body>
 </html>
-"""
+""".replace("__FREE_INPUT__", FREE_INPUT_OPTION)  # 前端与引擎共用同一自由输入文案
 
 
 @app.get("/", response_class=HTMLResponse)
