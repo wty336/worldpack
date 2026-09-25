@@ -144,10 +144,24 @@ def test_act_applies_effects_and_narrates():
 
 
 def test_act_without_points_raises():
-    pack, state, game = _game([])
-    game.act("cultivate")  # 消耗唯一行动点（N1 关键选择待决，不消耗 LLM 响应）
+    """行动点耗尽 → 执行前即拒绝（ScheduleError）。
+
+    批次 C2 守卫后：关键抉择期 act 会先拒绝——行动点耗尽路径需预置 N1
+    完成、在日常阶段测试（旧行为"抉择期行动被静默吞掉"已按设计废除）。
+    """
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT]))], mutate=_n1_done)
+    game.act("cultivate")  # 消耗唯一行动点（行动后正常叙事）
     with pytest.raises(ScheduleError):
         game.act("work")  # 点数不足：执行前即拒绝
+
+
+def test_act_during_critical_choice_raises():
+    """C2 守卫：关键抉择期行动被拒（旧行为会静默结算效果且不叙事）。"""
+    pack, state, game = _game([])
+    game.start()  # 进入 N1：关键抉择待决
+    with pytest.raises(GameError, match="关键抉择"):
+        game.act("cultivate")
+    assert state.action_points_left == 1  # 未被扣
 
 
 def test_end_day_advances():

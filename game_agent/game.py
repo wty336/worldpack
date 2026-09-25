@@ -159,7 +159,13 @@ class Game:
         return "（游戏开始）"
 
     def act(self, action_id: str) -> TurnView:
-        """执行日程行动：结算（门槛/检定/效果）→ 日程事件检查 → 叙事。"""
+        """执行日程行动：结算（门槛/检定/效果）→ 日程事件检查 → 叙事。
+
+        关键抉择期间拒绝（C2，与 say() 同守卫）——否则效果会被静默结算、
+        行动点被扣，而剧情视图纹丝不动（玩家实测困惑定位）。
+        """
+        if self.story.choice_locked(self.state):
+            raise GameError("此刻是关键抉择，只能从固定选项中选择")
         action = self.schedule.action_by_id(action_id)
         outcome = self.schedule.execute_action(self.state, action_id)
         lines = [f"（玩家选择日程行动：{action.label}）"]

@@ -126,7 +126,8 @@ def test_index_html_has_end_day_control():
     assert 'kind: "end_day"' in html
     assert "结束今天" in html
     assert "行动点已用完" in html
-    assert "数值由引擎结算" in html  # 行动区自说明：数值是代码结算的，不是模型
+    assert "推进时间" in html and "自动触发" in html  # 分工说明：行动 = 时间 = 剧情油门
+    assert "ad.critical" in html and "行动暂不可用" in html  # 阶段分流
 
 
 def test_end_day_advances_day(monkeypatch):
@@ -141,3 +142,20 @@ def test_end_day_advances_day(monkeypatch):
     st = client.get(f"/api/{sid}/actions").json()
     assert st["day"] == 2
     assert st["action_points_left"] == pack.schedule.day_action_points  # 行动点按新一天重置
+
+
+def test_actions_phase_contract_and_critical_guard(monkeypatch):
+    """阶段数据契约：关键抉择期 actions.critical=True；期间 act 被引擎拒绝（C2）。"""
+    client = _client(monkeypatch)
+    d = client.post("/api/new").json()
+    sid = d["sid"]
+    # 开局 = n1 关键抉择进行中
+    st = client.get(f"/api/{sid}/actions").json()
+    assert st["critical"] is True
+    # 期间执行行动 → 引擎拒绝（此前会静默结算效果并扣行动点——bug）
+    r = client.post(f"/api/{sid}/turn", json={"kind": "act", "action_id": "cultivate"})
+    assert "event: error" in r.text and "关键抉择" in r.text
+    assert client.get(f"/api/{sid}/actions").json()["action_points_left"] == 1  # 未被扣
+    # 解决抉择 → 日常阶段 critical=False
+    client.post(f"/api/{sid}/turn", json={"kind": "pick", "index": 0})
+    assert client.get(f"/api/{sid}/actions").json()["critical"] is False

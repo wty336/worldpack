@@ -177,6 +177,7 @@ def api_actions(sid: str) -> dict:
     return {
         "day": game.state.day,
         "action_points_left": game.state.action_points_left,
+        "critical": game.story.choice_locked(game.state),  # 前端据此禁用行动区
         "actions": [{"id": a.id, "label": a.label} for a in game.actions_available()],
     }
 
@@ -435,14 +436,20 @@ async function refreshStatus() {
   statusEl.textContent = d.text || "";
   const ar = await fetch("/api/" + sid + "/actions");
   const ad = await ar.json();
-  statusEl.textContent += "\\n[第 " + ad.day + " 天 · 行动点 " + ad.action_points_left + "] 今日行动（消耗行动点，数值由引擎结算）：";
+  // 玩家反馈：上方剧情选项与下方日程行动并存，需要讲清分工——
+  // 对话推剧情（免费、不耗时）；日程行动是养成（耗行动点 = 推时间，触发后续主线条件）
+  if (ad.critical) {
+    statusEl.textContent += "\\n[关键抉择进行中] 行动暂不可用——先用上方固定选项完成剧情。";
+    return;
+  }
+  statusEl.textContent += "\\n[第 " + ad.day + " 天 · 行动点 " + ad.action_points_left
+    + "] 今日行动（消耗行动点 = 推进时间；新剧情按天数条件自动触发）：";
   ad.actions.forEach((a) => {
     const b = document.createElement("button");
     b.textContent = a.label;
     b.onclick = () => turn({ kind: "act", action_id: a.id });
     statusEl.appendChild(b);
   });
-  // 玩家反馈补齐：时间只随"结束今天"推进——行动点用完后没有这个按钮会被卡在同一天
   const endBtn = document.createElement("button");
   endBtn.textContent = "结束今天 →";
   endBtn.onclick = () => turn({ kind: "end_day" });
