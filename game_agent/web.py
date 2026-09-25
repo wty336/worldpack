@@ -460,7 +460,7 @@ async function refreshStatus() {
     return;
   }
   statusEl.textContent += "\\n[第 " + ad.day + " 天 · 行动点 " + ad.action_points_left
-    + "] 今日行动（消耗行动点 = 推进时间；新剧情按天数条件自动触发）：";
+    + "] 今日行动（消耗行动点 = 推进时间；新剧情按天数条件自动触发）——点按钮或直接在对话里说（如「去后山修炼」），结算相同：";
   ad.actions.forEach((a) => {
     const b = document.createElement("button");
     b.textContent = a.label;

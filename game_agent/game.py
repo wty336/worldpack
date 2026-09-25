@@ -114,6 +114,8 @@ class Game:
         self.registry.bind_handler("change_stat", self._apply_change)
         self.registry.bind_handler("remember", self._remember)
         self.registry.bind_handler("query_world", self._query_world)
+        if pack.schedule.actions:
+            self.registry.bind_handler("do_action", self._do_action)
         for tool in pack.schedule.tools:
             self.registry.bind_handler(tool.id, lambda args, t=tool: self._run_custom_tool(t, args))
         if pack.world.locations:  # 批次 D：地点表声明时启用 change_scene
@@ -582,6 +584,46 @@ class Game:
             state.used_custom_tools.append(tool.id)
         note_str = "；".join(notes) if notes else "无实际数值变化"
         return f"（{tool.label}：{note_str}）"
+
+    def _do_action(self, args: dict) -> str:
+        """对话中发起的日程行动（玩家反馈：对话与按钮殊途同归）。
+
+        在 run_turn 中途被模型调用——**只做确定性结算，不做叙事**（叙事由模型
+        在本轮 submit_narration 中织入）。与日程按钮（game.act）共用同一结算核
+        （schedule.execute_action：行动点/门槛/检定/收益曲线），日程触发事件
+        的脚本消息进历史（后续回合可见），并附在结果文本里供本轮即时织入。
+        """
+        if self.story.choice_locked(self.state):
+            raise ValueError("此刻是关键抉择，只能从固定选项中选择")
+        action_id = str(args.get("action", "")).strip()
+        reason = str(args.get("reason", "")).strip()
+        if not reason:
+            raise ValueError("reason 不能为空：必须附玩家表达的意图要点")
+        action = self.schedule.action_by_id(action_id)  # 未知行动 → ScheduleError → 结构化拒绝
+        if self.state.action_points_left < action.cost:
+            raise ValueError(
+                f"行动点不足：「{action.label}」需要 {action.cost} 点，"
+                f"今日剩余 {self.state.action_points_left} 点"
+            )
+        outcome = self.schedule.execute_action(self.state, action_id)
+        lines = [f"（玩家在对话中发起日程行动：{action.label}；意图：{reason}）"]
+        if outcome.check is not None:
+            c = outcome.check
+            stat_label = self.pack.schedule.stats[c.stat].label
+            lines.append(
+                f"【行动检定】{stat_label} {c.value:g} · 掷 {c.roll:.1f}"
+                f"（难度 {c.difficulty:g}，大成功需 ≥{c.difficulty + c.margin:g}）"
+                f"· 结果：{c.tier_cn}"
+            )
+        if outcome.notes:
+            lines.append(f"【行动效果】{'；'.join(outcome.notes)}")
+        ev = self.events.check_schedule_event(self.state, action_id)
+        if ev is not None:
+            ev_msg = self.events.trigger(self.state, ev)
+            self.history.append(ev_msg)
+            lines.append(f"【日程事件】{ev_msg['content']}")
+        lines.append("（请把以上检定与效果自然织入本轮叙事，不要原样罗列）")
+        return "\n".join(lines)
 
     def _change_scene(self, args: dict) -> str:
         """批次 D：场景移动提议——LLM 只能选地点表内的 id，引擎校验后写入真值。

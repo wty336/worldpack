@@ -165,7 +165,9 @@ def test_tool_schema_enums_injected_from_pack():
     pack = load_worldpack(PACK_PATH)
     tools = build_tools(pack.schedule)
     # change_stat / submit_narration / remember（M2a）/ query_world（agent-first 第一件）
-    assert len(tools) == 4
+    # / do_action（对话发起的日程行动，与按钮同结算核）
+    assert len(tools) == 5
+    assert "do_action" in {t["function"]["name"] for t in tools}
     by_name = {t["function"]["name"]: t for t in tools}
     change = by_name["change_stat"]["function"]["parameters"]["properties"]
     assert set(change["target"]["enum"]) == {"player", "shen_qingqiu"}

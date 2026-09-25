@@ -42,7 +42,7 @@ def test_build_tools_golden_shape():
     pack = _pack()
     tools = build_tools(pack.schedule)
     assert [t["function"]["name"] for t in tools] == [
-        "change_stat", "submit_narration", "remember", "query_world",
+        "change_stat", "submit_narration", "remember", "query_world", "do_action",
     ]
     change_stat = tools[0]["function"]
     assert change_stat["parameters"]["properties"]["target"]["enum"] == [

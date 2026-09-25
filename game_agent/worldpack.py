@@ -25,7 +25,9 @@ class WorldPackError(Exception):
 
 
 # 引擎内置工具名（批次 C）：自定义工具不得与之重名（registry 与交叉校验共用此清单）
-ENGINE_TOOL_NAMES = ("change_stat", "submit_narration", "remember", "query_world")
+ENGINE_TOOL_NAMES = (
+    "change_stat", "submit_narration", "remember", "query_world", "do_action",
+)
 
 
 # ---------------------------------------------------------------------------

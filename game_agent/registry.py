@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 from .memory import MemoryError
 from .stats import StatChangeError
+from .schedule import ScheduleError
 from .worldpack import ENGINE_TOOL_NAMES, ScheduleSpec, WorldPack, WorldPackError
 
 
@@ -265,6 +266,43 @@ def _query_world_spec() -> ToolSpec:
     )
 
 
+def _do_action_spec(schedule: ScheduleSpec) -> ToolSpec:
+    """玩家反馈（剧情推进体验）新增：对话中发起的日程行动与按钮殊途同归。
+
+    玩家在自由对话里明确表达"现在要做某项日程行动"时，模型经本工具把意图
+    交给引擎——行动点/门槛/检定/收益由引擎确定性结算（与日程按钮同一结算核），
+    结果文本供模型织进叙事。结算纪律见引擎规则第 10 条。
+    """
+    action_ids = sorted(a.id for a in schedule.actions)
+    labels = "；".join(f"{a.id}（{a.label}）" for a in sorted(schedule.actions, key=lambda a: a.id))
+    return ToolSpec(
+        name="do_action",
+        description=(
+            "日程行动结算：当玩家在对话中**明确表达现在要进行某项日程行动**时调用，"
+            f"由引擎校验行动点与门槛并确定性结算（可用行动：{labels}）。"
+            "把返回的检定/收益结果自然织入叙事；被拒绝（行动点不足/门槛不满足）时"
+            "按叙事处理为做不成，不要反复重试。玩家只是提及过去习惯或未来打算时"
+            "**不得**调用；不得替玩家擅自决定行动。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": action_ids,
+                    "description": "日程行动 id",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "玩家表达的意图（原话要点），作为结算依据",
+                },
+            },
+            "required": ["action", "reason"],
+        },
+        rejects=(ValueError, StatChangeError, ScheduleError),
+    )
+
+
 # ---------------------------------------------------------------------------
 # 世界包自定义工具（schedule.yaml 的 tools: 段，批次 C）
 # ---------------------------------------------------------------------------
@@ -292,12 +330,14 @@ def _custom_tool_spec(tool) -> ToolSpec:
 
 
 def from_schedule(schedule: ScheduleSpec) -> ToolRegistry:
-    """引擎四件套 + 世界包自定义工具（schema-only；handler 待 Game 绑定）。"""
+    """引擎四件套 + do_action + 世界包自定义工具（schema-only；handler 待 Game 绑定）。"""
     reg = ToolRegistry()
     reg.register(_change_stat_spec(schedule))
     reg.register(_submit_narration_spec())
     reg.register(_remember_spec(schedule))
     reg.register(_query_world_spec())
+    if schedule.actions:  # 无日程行动的包不注册（避免空枚举 schema）
+        reg.register(_do_action_spec(schedule))
     seen = set(ENGINE_TOOL_NAMES)
     for tool in schedule.tools:
         if tool.id in seen:
