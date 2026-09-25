@@ -161,3 +161,14 @@ def test_actions_phase_contract_and_critical_guard(monkeypatch):
     # 解决抉择 → 日常阶段 critical=False
     client.post(f"/api/{sid}/turn", json={"kind": "pick", "index": 0})
     assert client.get(f"/api/{sid}/actions").json()["critical"] is False
+
+
+def test_index_html_history_toggle():
+    """结构断言（玩家反馈）：默认只显示本轮 + 剧情回顾切换 + 新回合自动回位。"""
+    html = web.INDEX_HTML
+    assert 'id="story" class="only-current"' in html  # 默认只看本轮
+    assert "only-current .entry { display: none; }" in html
+    assert 'id="historyBtn"' in html and "剧情回顾" in html and "只看本轮" in html
+    assert "function toggleHistory" in html
+    assert "if (fullHistory) toggleHistory();" in html  # 新回合自动回到本轮视图
+    assert "story.scrollTop = fullHistory ? story.scrollHeight : 0;" in html  # 滚动语义

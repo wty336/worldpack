@@ -289,6 +289,9 @@ INDEX_HTML = """<!DOCTYPE html>
            max-height: 62vh; overflow-y: auto; }
   #story .entry { padding: 4px 0 10px; border-bottom: 1px dashed #eee2cc; }
   #story .entry:last-child { border-bottom: none; }
+  #story.only-current .entry { display: none; }  /* 默认只看本轮（玩家反馈） */
+  #story.only-current .entry:last-child { display: block; }
+  #historyBtn.toggled { background: #efe3c8; }
   #prompt { color: #8a6d3b; margin: 10px 0; white-space: pre-wrap; }
   #gen { color: #8a6d3b; margin: 10px 0; font-size: .9em; display: none; }
   #gen::after { content: "▮"; animation: blink 1.1s infinite; }
@@ -306,13 +309,14 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <h1 id="game-title">文字养成游戏（Web 演示）</h1>
-<div id="story"><div class="entry">（正在开局……）</div></div>
+<div id="story" class="only-current"><div class="entry">（正在开局……）</div></div>
 <div id="gen"></div>
 <div id="prompt"></div>
 <div id="choices"></div>
 <div id="inputrow">
   <input id="in" placeholder="说些什么……（回车发送）">
   <button onclick="say()">发言</button>
+  <button id="historyBtn" onclick="toggleHistory()">剧情回顾</button>
   <button onclick="doSave()">存档</button>
   <button onclick="doLoad()">读档</button>
 </div>
@@ -332,7 +336,18 @@ function beginEntry() {
   while (story.children.length > 30) story.removeChild(story.firstChild);  // 上限防 DOM 膨胀
   scrollStory();
 }
-function scrollStory() { story.scrollTop = story.scrollHeight; }
+function scrollStory() {
+  story.scrollTop = fullHistory ? story.scrollHeight : 0;  // 回顾看末尾；本轮从头读
+}
+let fullHistory = false;  // 玩家反馈：故事框默认只放本轮，按钮切换完整历史
+function toggleHistory() {
+  fullHistory = !fullHistory;
+  story.classList.toggle("only-current", !fullHistory);
+  const btn = $("historyBtn");
+  btn.textContent = fullHistory ? "只看本轮" : "剧情回顾";
+  btn.classList.toggle("toggled", fullHistory);
+  scrollStory();
+}
 
 // 生成态：等待 LLM 期间禁用输入与选项（防重复提交），并显示已等待秒数——
 // 玩家实测反馈"不知道是卡了还是模型在思考"。
@@ -401,8 +416,10 @@ function render(v) {
   scrollStory();
 }
 async function turn(req) {
+  if (fullHistory) toggleHistory();  // 新回合开始 → 自动回到本轮视图
   startGen("模型思考中");
   beginEntry();
+  scrollStory();
   try {
     const resp = await fetch("/api/" + sid + "/turn", {
       method: "POST",
