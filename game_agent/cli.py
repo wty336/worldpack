@@ -14,11 +14,12 @@ import traceback
 from pathlib import Path
 
 from .config import load_settings
-from .game import Game
+from .game import Game, GameError, TurnView
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
 from .scaffold import init_worldpack
 from .state import GameState
+from .storyline import FREE_INPUT_OPTION
 from .usage import UsageTracker
 from .worldpack import WorldPackError, load_worldpack
 
@@ -270,11 +271,32 @@ def _repl(game: Game) -> int:
         return 1
 
 
+def _recover_view(game: Game) -> TurnView:
+    """规则性错误（关键抉择期行动/结束今天）后的重入视图。
+
+    若有关键抉择待决，重建**固定选项视图**（把玩家带回模态选择，选项由引擎接管、
+    不可绕过）；否则保守视图（仅自由输入入口）。用途：GameError 是玩家可恢复的
+    误操作，不该走崩溃存档——恢复现场继续玩。
+    """
+    choice = game.story.pending_choice(game.state)
+    if choice is not None:
+        return TurnView(
+            narration=None,
+            choices=[o.text for o in choice.options],
+            choice_prompt=choice,
+        )
+    return TurnView(narration=None, choices=[FREE_INPUT_OPTION])
+
+
 def _action_phase(game: Game):
     actions = game.actions_available()
     if not actions:
         print("（生成中…）")
-        view = game.end_day()
+        try:
+            view = game.end_day()
+        except GameError as e:  # 关键抉择期误入行动阶段：恢复模态选择，不崩溃存档
+            print(f"\n[!] {e}")
+            return _recover_view(game)
         if view.choice_prompt is not None or view.ending is not None:
             return view  # 跨天直接进入新节点/结局：交回主循环渲染
         if view.narration:
@@ -285,7 +307,11 @@ def _action_phase(game: Game):
         print(f"  {i}. {a.label}")
     n = _ask_number(len(actions))
     print("（生成中…）")
-    return game.act(actions[n - 1].id)
+    try:
+        return game.act(actions[n - 1].id)
+    except GameError as e:  # 同上：恢复模态选择
+        print(f"\n[!] {e}")
+        return _recover_view(game)
 
 
 def _handle_command(game: Game, raw: str, out: dict) -> str | None:
@@ -329,7 +355,12 @@ def _handle_command(game: Game, raw: str, out: dict) -> str | None:
         return "new"
     elif cmd == "/end":
         print("（生成中…）")
-        view = game.end_day()  # 叙事化跨天：可能直接跨入新节点的关键抉择
+        try:
+            view = game.end_day()  # 叙事化跨天：可能直接跨入新节点的关键抉择
+        except GameError as e:  # 关键抉择期输入 /end：恢复模态选择，不崩溃存档
+            print(f"\n[!] {e}")
+            out["view"] = _recover_view(game)
+            return "view"
         if view.choice_prompt is not None or view.ending is not None:
             out["view"] = view
             return "view"
