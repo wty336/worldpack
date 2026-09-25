@@ -281,6 +281,9 @@ INDEX_HTML = """<!DOCTYPE html>
   #story { white-space: pre-wrap; line-height: 1.9; background: #fff;
            border: 1px solid #e6dcc8; border-radius: 8px; padding: 16px; min-height: 160px; }
   #prompt { color: #8a6d3b; margin: 10px 0; white-space: pre-wrap; }
+  #gen { color: #8a6d3b; margin: 10px 0; font-size: .9em; display: none; }
+  #gen::after { content: "▮"; animation: blink 1.1s infinite; }
+  @keyframes blink { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
   #choices { margin: 10px 0; }
   button { background: #f7efe0; border: 1px solid #d9c9a8; border-radius: 6px;
            padding: 8px 14px; margin: 4px 6px 4px 0; cursor: pointer; font-size: .95em; }
@@ -295,6 +298,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <body>
 <h1 id="game-title">文字养成游戏（Web 演示）</h1>
 <div id="story">（正在开局……）</div>
+<div id="gen"></div>
 <div id="prompt"></div>
 <div id="choices"></div>
 <div id="inputrow">
@@ -308,17 +312,46 @@ INDEX_HTML = """<!DOCTYPE html>
 let sid = null;
 const FREE_INPUT = "__FREE_INPUT__";  // 自由输入入口文案（由引擎常量注入，保持单一真源）
 const $ = (id) => document.getElementById(id);
-const story = $("story"), promptEl = $("prompt"), choicesEl = $("choices"), statusEl = $("status");
+const story = $("story"), promptEl = $("prompt"), choicesEl = $("choices"), statusEl = $("status"), genEl = $("gen");
+let genTimer = null;
+
+// 生成态：等待 LLM 期间禁用输入与选项（防重复提交），并显示已等待秒数——
+// 玩家实测反馈"不知道是卡了还是模型在思考"。
+function setBusy(busy) {
+  document.querySelectorAll("#choices button, #inputrow button").forEach((b) => (b.disabled = busy));
+  $("in").disabled = busy;
+}
+function startGen(label) {
+  setBusy(true);
+  genEl.style.display = "block";
+  const t0 = Date.now();
+  const tick = () => {
+    genEl.textContent = `${label}（已等 ${Math.round((Date.now() - t0) / 1000)} 秒，回答将逐字流式输出）`;
+  };
+  tick();
+  genTimer = setInterval(tick, 1000);
+}
+function endGen() {
+  if (genTimer) { clearInterval(genTimer); genTimer = null; }
+  genEl.textContent = "";
+  genEl.style.display = "none";
+  setBusy(false);
+}
 
 async function start() {
-  const r = await fetch("/api/new", { method: "POST" });
-  const d = await r.json();
-  sid = d.sid;
-  const name = d.name || "文字养成游戏";
-  document.title = name + " · Web";
-  $("game-title").textContent = name;
-  render(d.view);
-  await refreshStatus();
+  startGen("正在开局");
+  try {
+    const r = await fetch("/api/new", { method: "POST" });
+    const d = await r.json();
+    sid = d.sid;
+    const name = d.name || "文字养成游戏";
+    document.title = name + " · Web";
+    $("game-title").textContent = name;
+    render(d.view);
+    await refreshStatus();
+  } finally {
+    endGen();
+  }
 }
 function render(v) {
   if (v.narration || v.briefing) {
@@ -343,35 +376,47 @@ function render(v) {
   }
 }
 async function turn(req) {
-  const resp = await fetch("/api/" + sid + "/turn", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  const reader = resp.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  let cleared = false;  // 审查式修复：首个内容增量到达才清空旧叙事——错误轮保留原文
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf("\\n\\n")) >= 0) {
-      const block = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      const ev = block.match(/^event: (\\w+)/m);
-      const data = block.match(/^data: (.*)$/m);
-      if (!ev || !data) continue;
-      if (ev[1] === "delta") {
-        if (!cleared) { story.textContent = ""; cleared = true; }
-        story.textContent += JSON.parse(data[1]);
+  startGen("模型思考中");
+  try {
+    const resp = await fetch("/api/" + sid + "/turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let cleared = false;  // 审查式修复：首个内容增量到达才清空旧叙事——错误轮保留原文
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\\n\\n")) >= 0) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const ev = block.match(/^event: (\\w+)/m);
+        const data = block.match(/^data: (.*)$/m);
+        if (!ev || !data) continue;
+        if (ev[1] === "delta") {
+          if (!cleared) {
+            story.textContent = "";
+            cleared = true;
+            if (genTimer) { clearInterval(genTimer); genTimer = null; }  // 流式开始，指示器让位
+          }
+          story.textContent += JSON.parse(data[1]);
+        }
+        else if (ev[1] === "done") render(JSON.parse(data[1]));
+        else if (ev[1] === "error") {
+          if (!cleared && genTimer) { clearInterval(genTimer); genTimer = null; }
+          promptEl.textContent = "[错误] " + JSON.parse(data[1]);
+        }
       }
-      else if (ev[1] === "done") render(JSON.parse(data[1]));
-      else if (ev[1] === "error") promptEl.textContent = "[错误] " + JSON.parse(data[1]);
     }
+  } finally {
+    endGen();  // 无论正常结束/错误/连接中断，都恢复可交互
+    try { await refreshStatus(); } catch (e) { /* 状态刷新失败不阻断 */ }
   }
-  await refreshStatus();
 }
 function say() {
   const t = $("in").value.trim();

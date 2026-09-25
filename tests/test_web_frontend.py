@@ -106,3 +106,15 @@ def test_index_html_routes_choices_by_criticality():
     assert '$("in").focus()' in html  # 自由输入入口 → 聚焦，不当作发言
     assert "__FREE_INPUT__" not in html  # 占位符已替换为引擎常量
     assert FREE_INPUT_OPTION in html
+
+
+def test_index_html_has_generating_state():
+    """结构断言（玩家实测反馈）：生成态指示器 + 忙碌禁用 + 异常也恢复可交互。"""
+    html = web.INDEX_HTML
+    assert 'id="gen"' in html  # 指示器元素存在
+    assert "function startGen" in html and "function endGen" in html
+    assert "setBusy(true)" in html and "setBusy(false)" in html
+    assert ".disabled = busy" in html  # 忙碌期禁用选项与输入
+    assert "已等" in html and "流式输出" in html  # 计时提示文案
+    assert "finally {\n    endGen();" in html  # turn() 异常路径也恢复可交互
+    assert 'startGen("模型思考中")' in html and 'startGen("正在开局")' in html
