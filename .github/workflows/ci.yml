@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests (offline, 784 items)
+        run: uv run pytest -q
+
+      - name: Validate all world packs (offline)
+        run: |
+          for pack in world-packs/*/; do
+            echo "::group::check-worldpack $pack"
+            uv run python -m game_agent check-worldpack "$pack"
+            echo "::endgroup::"
+          done

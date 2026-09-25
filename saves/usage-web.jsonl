@@ -17,3 +17,4 @@
 {"ts": "2026-09-07T16:43:02", "model": "deepseek-v4-flash", "purpose": "turn", "prompt_tokens": 5402, "completion_tokens": 729, "cache_hit_tokens": 5248, "cache_miss_tokens": 154}
 {"ts": "2026-09-07T16:43:14", "model": "deepseek-v4-flash", "purpose": "turn", "prompt_tokens": 6384, "completion_tokens": 1148, "cache_hit_tokens": 6016, "cache_miss_tokens": 368}
 {"ts": "2026-09-07T16:43:17", "model": "deepseek-v4-flash", "purpose": "extract", "prompt_tokens": 843, "completion_tokens": 248, "cache_hit_tokens": 0, "cache_miss_tokens": 843}
+{"ts": "2026-09-25T09:57:47", "model": "deepseek-v4-flash", "purpose": "plan", "prompt_tokens": 173, "completion_tokens": 42, "cache_hit_tokens": 0, "cache_miss_tokens": 173}

@@ -35,3 +35,19 @@ runs/
 # IDE
 .idea/
 .vscode/
+
+# 简历/面试预案：只在本地维护，绝不入库（防 git add -A 误提交）
+docs/resume-entry.md
+
+# ZCode 工作区配置
+.zcodeignore
+
+# pytest 临时目录
+pytest-of-*/
+
+# 实验性冒烟存档不入库（主线冒烟证据 saves/smoke-ancient_jianghu.* 除外）
+saves/smoke-a5/
+saves/smoke-seed2/
+saves/smoke-tb4/
+saves/smoke-tb6/
+saves/smoke-trace/
