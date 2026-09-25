@@ -165,11 +165,22 @@ def test_act_during_critical_choice_raises():
 
 
 def test_end_day_advances():
-    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT]))])
+    """叙事化跨天：日期标记 + 过渡场景进入叙事（时序推进元消息入历史）。"""
+    pack, state, game = _game(
+        [resp(msg(tool_calls=[SUBMIT])), resp(msg(tool_calls=[SUBMIT2]))],
+        mutate=_n1_done,
+    )
     game.act("cultivate")
-    text = game.end_day()
-    assert "第 2 天" in text
+    view = game.end_day()
+    assert view.narration is not None and "第 2 天" in view.narration
     assert state.action_points_left == 1
+    assert any("【时序推进】" in (m.get("content") or "") for m in game.history)
+    # 时序推进是引擎元消息：带 name=engine（A-2 纪律，不进检索上下文）
+    assert all(
+        m.get("name") == "engine"
+        for m in game.history
+        if "【时序推进】" in (m.get("content") or "")
+    )
 
 
 def test_n2_trigger_and_choice_flow():

@@ -162,7 +162,7 @@ def test_offline_playthrough_reaches_freefall_ending():
     覆盖：3 个关键抉择、每日 2 行动点、智识检定大成功档、时间事件（第 5 天
     停电之夜）、信用点收益、结局代码判定。全程 17 个 LLM 回合。
     """
-    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(17)])
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(30)])  # 余量含 end_day 过渡回合
     assert state.action_points_left == 2  # day_action_points 由包声明
 
     view = game.start()  # N1 白噪诊所
@@ -171,26 +171,32 @@ def test_offline_playthrough_reaches_freefall_ending():
     assert state.flags["deal_made"] and state.flags["clinic_helper"]
     assert state.current_node is None
 
-    for _ in range(2):  # 第 1~2 天：每天两次拾荒
+    view = None
+    for _ in range(2):  # 第 1~2 天：每天两次拾荒；第 2 天跨天后 N2（day≥3）接管
         view = game.act("scavenge")
         view = game.act("scavenge")
-        game.end_day()
+        view = game.end_day()
+        if view.choice_prompt is not None:
+            break
     assert state.day == 3
-
-    view = game.say("去数据街看看")  # N2 触发（day≥3 且已达成协议）
+    if view.choice_prompt is None:
+        view = game.say("去数据街看看")  # N2 触发（兼容路径）
     assert state.current_node == "n2_data_street"
     view = game.pick(1)  # 把阿零的坐标卖给霓光
     assert state.flags["memory_lead"] and state.flags["zero_sold"]
     assert state.current_node is None
 
-    for _ in range(5):  # 第 3~7 天：每天两次拾荒；第 5 天触发时间事件
+    for _ in range(5):  # 第 3~7 天：每天两次拾荒；第 5 天停电；day 8 时 N3 跨天接管
         view = game.act("scavenge")
         view = game.act("scavenge")
-        game.end_day()
+        view = game.end_day()
+        if view.choice_prompt is not None:
+            break
     assert state.day == 8
     assert "ev_blackout" in state.triggered_events  # time 类事件路径 ✓
 
-    view = game.say("去霓光大厦")  # N3 触发（day≥8 且已有线索）
+    if view.choice_prompt is None:
+        view = game.say("去霓光大厦")  # N3 触发（兼容路径）
     assert state.current_node == "n3_neon_tower"
     view = game.pick(1)  # 与霓光谈判交易
     assert state.flags["confrontation_done"] and state.flags["tower_deal"]
@@ -205,18 +211,30 @@ def test_offline_playthrough_reaches_city_swallow_ending():
 
     覆盖：条件互斥的多结局判定（交易/好感类结局条件不满足时落到兜底结局）。
     """
-    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(3)])
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(25)])  # 余量含 end_day 过渡回合
     game.start()
     game.pick(0)  # 接霓光的寻回任务（N1 完成）
+    view = None
     for _ in range(3):
-        game.end_day()  # 第 4 天
-    view = game.say("去数据街看看")  # N2 触发
+        view = game.end_day()  # 第 2~4 天；day≥3 时 N2 跨天接管
+        if view.choice_prompt is not None:
+            break
+    if view.choice_prompt is None:
+        view = game.say("去数据街看看")  # N2 触发（兼容路径）
     game.pick(2)  # 帮阿零销毁追踪代码（+智识 2，仍 <30）
     for _ in range(8):
-        game.end_day()  # 第 12 天
-    view = game.say("去霓光大厦")  # N3 触发
+        view = game.end_day()  # → 第 12 天；day≥8 时 N3 跨天接管
+        if view.choice_prompt is not None:
+            break
+    if view.choice_prompt is None:
+        view = game.say("去霓光大厦")  # N3 触发（兼容路径）
     view = game.pick(0)  # 硬闯（+义体，不加智识）
     assert state.stats["intel"] < 30
+    # N3 在 day 8 跨天接管（旧口径 day 12 才触发）——结局条件 day≥12 由后续跨天到达
+    for _ in range(6):
+        if view.ending is not None:
+            break
+        view = game.end_day()
     assert view.ending is not None and view.ending.id == "ending_city_swallow"
     assert audit_stats(pack, state) == []
 

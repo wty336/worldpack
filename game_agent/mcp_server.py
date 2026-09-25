@@ -113,8 +113,8 @@ def build_player_registry(game: Game) -> ToolRegistry:
         lambda args: _view_text(game.act(str(args.get("action_id", "")))),
     )
     _spec(
-        "end_day", "结束今天，进入下一天（时间触发事件在此结算）", no_args,
-        lambda args: game.end_day(),
+        "end_day", "结束今天，进入下一天（叙事化跨天：时序过渡场景 + 时间事件结算）", no_args,
+        lambda args: _view_text(game.end_day()),
     )
     return reg
 

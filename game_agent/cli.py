@@ -162,6 +162,7 @@ def _repl(game: Game) -> int:
     print(f"===== 《{game.pack.world.name}》 =====")
     if game.pack.world.opening:
         print("\n" + game.pack.world.opening)  # 开场背景介绍（修复"上来就是选项"）
+    out: dict = {}  # _handle_command → 主循环的视图回传通道（/end 跨入新节点时用）
     print(
         "\n命令：/help 帮助 · /status 状态 · /actions 今日行动 · /save [/load] 存档读档 "
         "· /new 重新开始 · /end 结束今天 · /quit 退出"
@@ -224,9 +225,12 @@ def _repl(game: Game) -> int:
                 if not raw:
                     continue
                 if raw.startswith("/"):
-                    marker = _handle_command(game, raw)
+                    marker = _handle_command(game, raw, out)
                     if marker == "action":
                         view = _action_phase(game)
+                        break
+                    if marker == "view" and "view" in out:
+                        view = out.pop("view")  # /end 可能直接跨入新节点的关键抉择
                         break
                     if marker == "new":
                         view = game.start()  # 已重置状态，重新开场
@@ -269,8 +273,12 @@ def _repl(game: Game) -> int:
 def _action_phase(game: Game):
     actions = game.actions_available()
     if not actions:
-        game.end_day()
-        print(f"—— 第 {game.state.day} 天 ——")
+        print("（生成中…）")
+        view = game.end_day()
+        if view.choice_prompt is not None or view.ending is not None:
+            return view  # 跨天直接进入新节点/结局：交回主循环渲染
+        if view.narration:
+            print("\n" + view.narration)
         actions = game.actions_available()
     print(f"\n—— 第 {game.state.day} 天 —— 今日行动（行动点 {game.state.action_points_left}）：")
     for i, a in enumerate(actions, 1):
@@ -280,7 +288,7 @@ def _action_phase(game: Game):
     return game.act(actions[n - 1].id)
 
 
-def _handle_command(game: Game, raw: str) -> str | None:
+def _handle_command(game: Game, raw: str, out: dict) -> str | None:
     """处理 / 命令。返回 'action'（进入行动阶段）、'quit' 或 None（继续对话循环）。"""
     cmd, _, arg = raw.partition(" ")
     cmd = cmd.strip()
@@ -320,8 +328,13 @@ def _handle_command(game: Game, raw: str) -> str | None:
         print("重新开始。")
         return "new"
     elif cmd == "/end":
-        game.end_day()
-        print(f"—— 第 {game.state.day} 天 ——")
+        print("（生成中…）")
+        view = game.end_day()  # 叙事化跨天：可能直接跨入新节点的关键抉择
+        if view.choice_prompt is not None or view.ending is not None:
+            out["view"] = view
+            return "view"
+        if view.narration:
+            print("\n" + view.narration)
         return "action"
     elif cmd == "/quit":
         return "quit"

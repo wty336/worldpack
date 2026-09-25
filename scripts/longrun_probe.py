@@ -238,7 +238,10 @@ def main(argv: list[str] | None = None) -> int:
                 recall_report[100] = probe_recall(100)
 
             said = False
-            game.end_day()
+            day_view = game.end_day()  # 叙事化跨天：过渡场景；day 条件满足时可能跨入新节点
+            if day_view.choice_prompt is not None:
+                view = day_view  # 关键抉择接管：交回主循环处理（与 worldpack_smoke 同法）
+                continue
             su = state.affections.get("su_wanying", 0.0)
             if su >= 40:
                 log(f"[警告] 苏晚晴好感已达 {su:g}——接近「剑心同尘」阈值 50，请关注漂移")

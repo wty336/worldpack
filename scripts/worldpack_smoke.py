@@ -203,10 +203,15 @@ def main(argv: list[str] | None = None) -> int:
                 continue
 
             said = False
-            game.end_day()
+            day_view = game.end_day()  # 叙事化跨天：过渡场景参与冒烟日志
+            if day_view.choice_prompt is not None or day_view.ending is not None:
+                # 跨天直接跨入新节点（关键抉择）/结局：循环采纳接管视图
+                view = day_view
+                continue
             log(
                 f"—— 第 {state.day} 天 ——",
-                f"[状态] 属性 {state.stats} · 好感 {state.affections}",
+                (day_view.narration or "")
+                + f"\n[状态] 属性 {state.stats} · 好感 {state.affections}",
             )
 
         if view.ending is not None:

@@ -127,7 +127,7 @@ def test_offline_playthrough_reaches_changsheng_ending():
     覆盖：3 个关键抉择节点、时间事件（第 5 天宗门小比）、道心检定三档、
     收益曲线边际递减、结局代码判定。全程 10 个 LLM 回合。
     """
-    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(10)])
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(25)])  # 余量含 end_day 过渡回合
 
     view = game.start()  # N1 收徒大典：关键抉择
     assert state.current_node == "n1_entrance"
@@ -137,23 +137,27 @@ def test_offline_playthrough_reaches_changsheng_ending():
     assert state.current_node is None
 
     view = game.act("meditate")  # 第 1 天
-    game.end_day()
+    view = game.end_day()        # 第 1→2 天（过渡叙事；day<3 不会进节点）
+    assert view.choice_prompt is None
     view = game.act("meditate")  # 第 2 天
-    game.end_day()  # 第 3 天
-
-    view = game.say("去秘境看看")  # N2 秘境历练触发（day≥3 且已入门）
+    view = game.end_day()        # 第 2→3 天：过渡叙事直接触发 N2（day≥3）
+    if view.choice_prompt is None:
+        view = game.say("去秘境看看")  # 兼容：未跨入时由对话触发
     assert state.current_node == "n2_secret_realm"
     assert view.choice_prompt.id == "relic_choice"
     view = game.pick(1)  # 先取残碑拓纹
     assert state.flags["relic_taken"] and state.flags["realm_done"]
     assert state.current_node is None
 
-    for _ in range(5):  # 第 3~7 天连修，第 5 天触发时间事件「宗门小比」
+    for _ in range(5):  # 第 3~7 天连修，第 5 天时间事件「宗门小比」；day 到 8 时 N3 跨天接管
         view = game.act("meditate")
-        game.end_day()
+        view = game.end_day()
+        if view.choice_prompt is not None:
+            break
     assert "ev_sect_contest" in state.triggered_events  # time 类事件路径 ✓
 
-    view = game.say("去山门看看")  # N3 魔潮夜袭触发（day≥8 且秘境已归）
+    if view.choice_prompt is None:
+        view = game.say("去山门看看")  # N3 魔潮夜袭触发（day≥8 且秘境已归；兼容路径）
     assert state.current_node == "n3_night_raid"
     view = game.pick(2)  # 独闯敌阵
     assert state.flags["crisis_done"] and state.flags["lone_strike"]
@@ -167,19 +171,31 @@ def test_offline_playthrough_reaches_guichen_ending():
 
     覆盖：条件互斥的结局判定（高优先结局条件不满足时落到兜底结局）。
     """
-    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(3)])
+    pack, state, game = _game([resp(msg(tool_calls=[SUBMIT])) for _ in range(25)])  # 余量含 end_day 过渡回合
 
     game.start()
     game.pick(0)  # 拜入剑峰（N1 完成）
+    view = None
     for _ in range(3):
-        game.end_day()  # 第 4 天
-    view = game.say("去秘境看看")  # N2 触发
+        view = game.end_day()  # 第 2~4 天；day≥3 时 N2 在跨天中接管
+        if view.choice_prompt is not None:
+            break
+    if view.choice_prompt is None:
+        view = game.say("去秘境看看")  # N2 触发（兼容路径）
     game.pick(0)  # 弃碑救人（不加修为）
     for _ in range(8):
-        game.end_day()  # 第 12 天
-    view = game.say("去山门看看")  # N3 触发
+        view = game.end_day()  # → 第 12 天；day≥8 时 N3 跨天接管
+        if view.choice_prompt is not None:
+            break
+    if view.choice_prompt is None:
+        view = game.say("去山门看看")  # N3 触发（兼容路径）
     view = game.pick(1)  # 护送撤退（+道心，不加修为）
     assert state.stats["xiu_wei"] < 30
+    # N3 在 day 8 跨天接管（旧口径 day 12 才触发）——结局条件 day≥12 由后续跨天到达
+    for _ in range(6):
+        if view.ending is not None:
+            break
+        view = game.end_day()
     assert view.ending is not None and view.ending.id == "ending_guichen"
     assert audit_stats(pack, state) == []
 

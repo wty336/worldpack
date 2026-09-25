@@ -168,7 +168,13 @@ class Game:
             raise GameError("此刻是关键抉择，只能从固定选项中选择")
         action = self.schedule.action_by_id(action_id)
         outcome = self.schedule.execute_action(self.state, action_id)
-        lines = [f"（玩家选择日程行动：{action.label}）"]
+        lines = [
+            f"（玩家选择日程行动：{action.label}）",
+            # 玩家反馈（衔接突兀）：从当前情境自然过渡到行动——辞别在场人物、
+            # 交代赶路，再进入行动场景；不要让对话凭空中断
+            "（衔接要求：先从当前情境自然过渡——如需离开当前场景或辞别在场人物，"
+            "用一两句交代，再叙述本次行动的过程与结果）",
+        ]
         if outcome.check is not None:
             c = outcome.check
             stat_label = self.pack.schedule.stats[c.stat].label
@@ -196,12 +202,40 @@ class Game:
         self.history.append(msg)
         return self._narrate(msg["content"])
 
-    def end_day(self) -> str:
+    def end_day(self) -> TurnView:
+        """结束今天：推进日期 → 时间事件 → **叙事化过渡**（玩家反馈修复）。
+
+        此前只返回 "—— 第 N 天 ——" 的裸标记：Web 故事框直接空掉，
+        玩家看到的是"点了按钮、剧情死了"。现在跨天是一次正常叙事回合——
+        【时序推进】是引擎元消息（name=engine，A-2 纪律：不进检索上下文），
+        LLM 把"一天结束了"写成衔接性短场景（辞别/夜宿/次日清晨），
+        当日到期的时间事件消息随本轮生效。返回 TurnView（narration 含日期
+        标记；若新节点带关键抉择则接管为固定选项视图）。
+        关键抉择期间拒绝（与 say/act 同守卫：抉择没做完，今天不该翻篇）。
+        """
+        if self.story.choice_locked(self.state):
+            raise GameError("此刻是关键抉择，只能从固定选项中选择")
         self.schedule.end_day(self.state)
-        # 时间触发事件：日期推进后检查，消息并入历史（下一个叙事回合生效）
         for ev in self.events.check_time_events(self.state):
             self.history.append(self.events.trigger(self.state, ev))
-        return f"—— 第 {self.state.day} 天 ——"
+        self.history.append(
+            {
+                "role": "user",
+                "name": "engine",  # A-2：时序推进是引擎元消息，排除出检索上下文
+                "content": (
+                    "【时序推进】今天结束了。请用两三句收束今日：告别在场人物、"
+                    "交代入夜或歇息，再以次日清晨的到来自然收尾。"
+                    "除非上方另有【事件】消息，不要发起新情节，篇幅简短。"
+                ),
+            }
+        )
+        view = self._narrate()
+        marker = f"—— 第 {self.state.day} 天 ——"
+        if view.narration:
+            view.narration = marker + "\n\n" + view.narration
+        else:
+            view.narration = marker  # 关键抉择/事件接管轮：仅标记日期
+        return view
 
     # ------------------------------------------------------------------
     # 查询

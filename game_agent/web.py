@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .config import load_settings
-from .game import Game, GameError, TurnView
+from .game import Game, GameError
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
 from .schedule import ScheduleError
@@ -217,8 +217,9 @@ def _turn_stream(session: Session, req: TurnRequest):
                 view = game.act(req.action_id or "")
             elif req.kind == "end_day":
                 # 玩家反馈补齐：Web 此前没有结束今天的入口（CLI 有 /end）——
-                # 行动点耗尽后玩家会被永远卡在同一天
-                view = TurnView(narration=game.end_day(), choices=[])
+                # 行动点耗尽后玩家会被永远卡在同一天。
+                # end_day 现在是叙事化回合（时序过渡场景），不再是裸日期标记
+                view = game.end_day()
             else:
                 raise ValueError(f"未知回合类型 {req.kind}")
             holder["view"] = view
@@ -284,7 +285,10 @@ INDEX_HTML = """<!DOCTYPE html>
          padding: 16px; background: #faf6ef; color: #333; }
   h1 { font-size: 1.3em; margin: 8px 0; }
   #story { white-space: pre-wrap; line-height: 1.9; background: #fff;
-           border: 1px solid #e6dcc8; border-radius: 8px; padding: 16px; min-height: 160px; }
+           border: 1px solid #e6dcc8; border-radius: 8px; padding: 16px;
+           max-height: 62vh; overflow-y: auto; }
+  #story .entry { padding: 4px 0 10px; border-bottom: 1px dashed #eee2cc; }
+  #story .entry:last-child { border-bottom: none; }
   #prompt { color: #8a6d3b; margin: 10px 0; white-space: pre-wrap; }
   #gen { color: #8a6d3b; margin: 10px 0; font-size: .9em; display: none; }
   #gen::after { content: "▮"; animation: blink 1.1s infinite; }
@@ -302,7 +306,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <h1 id="game-title">文字养成游戏（Web 演示）</h1>
-<div id="story">（正在开局……）</div>
+<div id="story"><div class="entry">（正在开局……）</div></div>
 <div id="gen"></div>
 <div id="prompt"></div>
 <div id="choices"></div>
@@ -319,6 +323,16 @@ const FREE_INPUT = "__FREE_INPUT__";  // 自由输入入口文案（由引擎常
 const $ = (id) => document.getElementById(id);
 const story = $("story"), promptEl = $("prompt"), choicesEl = $("choices"), statusEl = $("status"), genEl = $("gen");
 let genTimer = null;
+let curEntry = null;  // 追加式日志：每回合一个分段，故事连续可回看（玩家反馈：跨天不该清空剧情）
+
+function beginEntry() {
+  curEntry = document.createElement("div");
+  curEntry.className = "entry";
+  story.appendChild(curEntry);
+  while (story.children.length > 30) story.removeChild(story.firstChild);  // 上限防 DOM 膨胀
+  scrollStory();
+}
+function scrollStory() { story.scrollTop = story.scrollHeight; }
 
 // 生成态：等待 LLM 期间禁用输入与选项（防重复提交），并显示已等待秒数——
 // 玩家实测反馈"不知道是卡了还是模型在思考"。
@@ -352,6 +366,8 @@ async function start() {
     const name = d.name || "文字养成游戏";
     document.title = name + " · Web";
     $("game-title").textContent = name;
+    story.innerHTML = "";
+    beginEntry();
     render(d.view);
     await refreshStatus();
   } finally {
@@ -359,8 +375,11 @@ async function start() {
   }
 }
 function render(v) {
-  if (v.narration || v.briefing) {
-    story.textContent = (v.briefing ? v.briefing + "\\n" : "") + (v.narration || "");
+  const text = (v.briefing ? v.briefing + "\\n" : "") + (v.narration || "");
+  if (text) {
+    curEntry.textContent = text;  // 终稿覆盖流式草稿（同一分段内）
+  } else if (curEntry && !curEntry.textContent.trim()) {
+    curEntry.remove();  // 空分段（如抉择轮直接接管）不留白行
   }
   promptEl.textContent = v.choice_prompt ? ("【关键抉择】" + v.choice_prompt.prompt) : "";
   choicesEl.innerHTML = "";
@@ -379,9 +398,11 @@ function render(v) {
     promptEl.textContent = "『" + v.ending.title + "』\\n" + (v.ending.text || "");
     choicesEl.innerHTML = "";
   }
+  scrollStory();
 }
 async function turn(req) {
   startGen("模型思考中");
+  beginEntry();
   try {
     const resp = await fetch("/api/" + sid + "/turn", {
       method: "POST",
@@ -391,7 +412,6 @@ async function turn(req) {
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
-    let cleared = false;  // 审查式修复：首个内容增量到达才清空旧叙事——错误轮保留原文
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -404,16 +424,13 @@ async function turn(req) {
         const data = block.match(/^data: (.*)$/m);
         if (!ev || !data) continue;
         if (ev[1] === "delta") {
-          if (!cleared) {
-            story.textContent = "";
-            cleared = true;
-            if (genTimer) { clearInterval(genTimer); genTimer = null; }  // 流式开始，指示器让位
-          }
-          story.textContent += JSON.parse(data[1]);
+          if (genTimer) { clearInterval(genTimer); genTimer = null; }  // 流式开始，指示器让位
+          curEntry.textContent += JSON.parse(data[1]);
+          scrollStory();
         }
         else if (ev[1] === "done") render(JSON.parse(data[1]));
         else if (ev[1] === "error") {
-          if (!cleared && genTimer) { clearInterval(genTimer); genTimer = null; }
+          if (genTimer) { clearInterval(genTimer); genTimer = null; }
           promptEl.textContent = "[错误] " + JSON.parse(data[1]);
         }
       }
@@ -462,7 +479,7 @@ async function refreshStatus() {
   }
 }
 async function doSave() { const r = await fetch("/api/" + sid + "/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); alert((await r.json()).ok ? "已存档" : "失败"); }
-async function doLoad() { const r = await fetch("/api/" + sid + "/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); const d = await r.json(); if (d.ok) { story.textContent = "（已读档）"; promptEl.textContent = ""; choicesEl.innerHTML = ""; statusEl.textContent = d.status; } else alert("读档失败"); }
+async function doLoad() { const r = await fetch("/api/" + sid + "/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); const d = await r.json(); if (d.ok) { story.innerHTML = ""; beginEntry(); curEntry.textContent = "（已读档）"; promptEl.textContent = ""; choicesEl.innerHTML = ""; statusEl.textContent = d.status; } else alert("读档失败"); }
 start();
 </script>
 </body>

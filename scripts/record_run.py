@@ -122,8 +122,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             continue
         said = False
-        game.end_day()
-        record({"kind": "end_day"}, None)
+        before = len(game.state.stat_log)
+        day_view = game.end_day()
+        record(
+            {"kind": "end_day"},
+            {"narration": (day_view.narration or "")[:120], "stat_changes": len(game.state.stat_log) - before},
+        )
 
     print(f"run_id={rec.run_id} · 回合数 {turn} · 结局 {view.ending.title if view.ending else '未达成'}")
     print(f"产物目录 {rec.run_dir}\n" + tracker.cost_report())

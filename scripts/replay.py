@@ -44,7 +44,9 @@ def _apply_action(game: Game, entry: dict):
     if kind == "pick":
         return game.pick(payload), f"关键选择：{payload}"
     if kind == "end_day":
-        return None, game.end_day()
+        # end_day 已叙事化（时序过渡回合）：返回 view 参与对比；
+        # 旧 runlog 的 end_day 未记录 view（rec_nar 为空），diff 会如实显示口径变化
+        return game.end_day(), "结束今天"
     raise ValueError(f"未知动作类型: {kind}")
 
 

@@ -135,6 +135,8 @@ def test_end_day_advances_day(monkeypatch):
     client = _client(monkeypatch)
     d = client.post("/api/new").json()
     sid = d["sid"]
+    # 先解决开局关键抉择（C2 守卫：抉择未决时 end_day 被拒）
+    client.post(f"/api/{sid}/turn", json={"kind": "pick", "index": 0})
     r = client.post(f"/api/{sid}/turn", json={"kind": "end_day"})
     view = _done_view(r.text)
     assert "第 2 天" in view["narration"]
