@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .config import load_settings
-from .game import Game, GameError
+from .game import Game, GameError, TurnView
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
 from .schedule import ScheduleError
@@ -123,7 +123,7 @@ def _sse(event: str, data: str) -> str:
 
 
 class TurnRequest(BaseModel):
-    kind: str  # "say" / "pick" / "act" / "start"
+    kind: str  # "say" / "pick" / "act" / "end_day" / "start"
     text: str | None = None
     index: int | None = None
     action_id: str | None = None
@@ -214,6 +214,10 @@ def _turn_stream(session: Session, req: TurnRequest):
                 view = game.pick(req.index or 0)
             elif req.kind == "act":
                 view = game.act(req.action_id or "")
+            elif req.kind == "end_day":
+                # 玩家反馈补齐：Web 此前没有结束今天的入口（CLI 有 /end）——
+                # 行动点耗尽后玩家会被永远卡在同一天
+                view = TurnView(narration=game.end_day(), choices=[])
             else:
                 raise ValueError(f"未知回合类型 {req.kind}")
             holder["view"] = view
@@ -431,13 +435,24 @@ async function refreshStatus() {
   statusEl.textContent = d.text || "";
   const ar = await fetch("/api/" + sid + "/actions");
   const ad = await ar.json();
-  statusEl.textContent += "\\n[第 " + ad.day + " 天 · 行动点 " + ad.action_points_left + "] ";
+  statusEl.textContent += "\\n[第 " + ad.day + " 天 · 行动点 " + ad.action_points_left + "] 今日行动（消耗行动点，数值由引擎结算）：";
   ad.actions.forEach((a) => {
     const b = document.createElement("button");
     b.textContent = a.label;
     b.onclick = () => turn({ kind: "act", action_id: a.id });
     statusEl.appendChild(b);
   });
+  // 玩家反馈补齐：时间只随"结束今天"推进——行动点用完后没有这个按钮会被卡在同一天
+  const endBtn = document.createElement("button");
+  endBtn.textContent = "结束今天 →";
+  endBtn.onclick = () => turn({ kind: "end_day" });
+  statusEl.appendChild(endBtn);
+  if (ad.action_points_left <= 0) {
+    const hint = document.createElement("span");
+    hint.className = "t";
+    hint.textContent = " 行动点已用完——点「结束今天」进入下一天。";
+    statusEl.appendChild(hint);
+  }
 }
 async function doSave() { const r = await fetch("/api/" + sid + "/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); alert((await r.json()).ok ? "已存档" : "失败"); }
 async function doLoad() { const r = await fetch("/api/" + sid + "/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); const d = await r.json(); if (d.ok) { story.textContent = "（已读档）"; promptEl.textContent = ""; choicesEl.innerHTML = ""; statusEl.textContent = d.status; } else alert("读档失败"); }

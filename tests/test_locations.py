@@ -88,7 +88,11 @@ def test_find_location():
 
 def test_scene_registry_only_when_locations_declared():
     """change_scene 仅在地点表声明时注册（未声明 → 引擎工具面不变）。"""
-    pack_plain = load_worldpack(PACK_PATH)
+    # ancient_jianghu 已试点声明 locations（批次 D 内容采用）；
+    # xianxia_wendao 未声明 → 作为"无地点表"对照
+    pack_plain = load_worldpack(
+        Path(__file__).resolve().parent.parent / "world-packs" / "xianxia_wendao"
+    )
     assert build_registry(pack_plain).get("change_scene") is None
     assert build_registry(_pack_with_locations()).get("change_scene") is not None
 

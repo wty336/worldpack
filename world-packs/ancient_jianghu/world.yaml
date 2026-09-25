@@ -4,6 +4,15 @@ start_scene: 长安城·东市
 player_role: 初入长安的江湖游侠，身负师门旧事，一身布衣、一柄旧剑
 player_goal: 在长安立足，查明师父旧事，守护想守护的人
 
+# 批次 D 试点：地点表——声明后场景是引擎真值，叙事中的移动须经 change_scene
+# 工具提议（白名单 + reason），状态栏 <scene> 与 lore 命中随所在地点联动
+locations:
+  - {id: east_market, name: 长安城·东市, keys: [东市], description: 长安最热闹的坊市，打工与打探消息的去处}
+  - {id: shen_gate, name: 长安城·沈府门前, keys: [沈府, 门前], description: 沈府正门，初遇沈清秋之地}
+  - {id: shen_mansion, name: 长安城·沈府, keys: [沈府, 偏院, 书斋], description: 沈府内院，拜访沈清秋时所在}
+  - {id: back_mountain, name: 长安城郊·后山, keys: [后山, 崖壁], description: 城郊山崖，崖壁有前人剑诀刻痕}
+  - {id: qujiang, name: 长安城·曲江池畔, keys: [曲江, 诗会], description: 长安胜景，七夕诗会所在地}
+
 core_rules:
   - 玩家是初入江湖的游侠，因缘际会来到长安
   - 武功以修炼与实战切磋提升

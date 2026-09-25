@@ -118,3 +118,26 @@ def test_index_html_has_generating_state():
     assert "已等" in html and "流式输出" in html  # 计时提示文案
     assert "finally {\n    endGen();" in html  # turn() 异常路径也恢复可交互
     assert 'startGen("模型思考中")' in html and 'startGen("正在开局")' in html
+
+
+def test_index_html_has_end_day_control():
+    """结构断言（玩家实测反馈）：行动区有"结束今天"入口与耗尽提示。"""
+    html = web.INDEX_HTML
+    assert 'kind: "end_day"' in html
+    assert "结束今天" in html
+    assert "行动点已用完" in html
+    assert "数值由引擎结算" in html  # 行动区自说明：数值是代码结算的，不是模型
+
+
+def test_end_day_advances_day(monkeypatch):
+    """end_day 回合类型：天数推进 + 返回跨天标记叙事（离线 fake）。"""
+    client = _client(monkeypatch)
+    d = client.post("/api/new").json()
+    sid = d["sid"]
+    r = client.post(f"/api/{sid}/turn", json={"kind": "end_day"})
+    view = _done_view(r.text)
+    assert "第 2 天" in view["narration"]
+    pack = load_worldpack(PACK_PATH)  # 该包每天 1 点行动点
+    st = client.get(f"/api/{sid}/actions").json()
+    assert st["day"] == 2
+    assert st["action_points_left"] == pack.schedule.day_action_points  # 行动点按新一天重置
