@@ -25,7 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import game_agent.web as web
-from game_agent import jobs
+from game_agent import catalog, jobs
 from game_agent.jobs import CANCELLED, DONE, FAILED, QUEUED, RUNNING, GenerationJob, JobRegistry
 
 SOURCE = "# 素材\n\n主角在环形都市醒来，遇到诊所医生林。\n"
@@ -268,8 +268,13 @@ def test_events_endpoint_replays_for_late_subscriber():
     assert len(events) > 3
 
 
-def test_generate_refuses_to_overwrite_existing_pack():
-    """**护栏**：同名包已存在 → 400。`materialize` 会清空 npcs/，覆盖等于静默毁包。"""
+def test_generate_refuses_to_shadow_published_pack():
+    """**护栏**：同名**已发布**包存在 → 400。
+
+    草稿区落地后这条的意义变了（也更准了）：生成写进 `_drafts/`，所以它不再可能
+    覆盖已发布内容；拒绝的理由从"会覆盖"变成"会产生一个发布时会撞名的草稿，
+    且作者会误以为在改那个已发布的包"。
+    """
     client = TestClient(web.app)
     root = web._pack_root()
     (root / "taken").mkdir(parents=True, exist_ok=True)
@@ -279,7 +284,23 @@ def test_generate_refuses_to_overwrite_existing_pack():
         "name": "taken", "source_text": SOURCE, "offline": True,
     })
     assert r.status_code == 400
-    assert "已存在同名世界包" in r.json()["detail"]
+    assert "已发布" in r.json()["detail"]
+
+
+def test_generate_into_existing_draft_is_allowed():
+    """**草稿可以反复生成**——那正是草稿区的用途（也是 §3.2 ③ 要解决的事）。
+
+    在草稿区落地之前，同名生成是被一刀拒绝的，于是"改一版再生成"只能靠不停换名字。
+    """
+    client = TestClient(web.app)
+    body = {"name": "iter_me", "source_text": SOURCE, "offline": True}
+    for _ in range(2):
+        r = client.post("/api/packs/generate", json=body)
+        assert r.status_code == 202, r.text
+        assert _wait(web.JOBS.get(r.json()["job_id"])).status == DONE
+    # 两次都落在同一个草稿目录，且草稿不是"已发布卡"
+    assert (catalog.draft_dir("iter_me", web._pack_root()) / "world.yaml").is_file()
+    assert "iter_me" not in [p["id"] for p in client.get("/api/catalog").json()["packs"]]
 
 
 def test_generate_rejects_bad_name_and_empty_source():

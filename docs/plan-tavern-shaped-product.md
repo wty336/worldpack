@@ -443,8 +443,8 @@ send({ kind: 'end_day' }, { onDone: v => applyView(v) })
 | E-3 | 新增 `catalog.py` + `GET /api/catalog` + `_make_game(sid, pack_id)` + `POST /api/new{pack_id}` | 小 | 能力 A | ✅ **已完成**：`game_agent/catalog.py`（坏包隔离 / 路径安全查表 / 签名缓存）；`GET /api/catalog`；`POST /api/new{pack_id}`（未知 id → 400）；`GET /api/{sid}/meta`。`tests/test_catalog.py`（15 项） |
 | E-4 | 会话级"自由/剧本"开关（跳过节点进入） | 小 | 能力 A | ✅ **已完成**：`StorylineEngine(mainline_enabled=)` + `POST /api/new{mode}`；语义刻意收窄为"不再进入新节点"（§2.2）。`tests/test_catalog.py`（4 项） |
 | E-5 | `import_story.py` → `game_agent/worldgen.py`（纯函数 + 薄 CLI） | 中 | 能力 B | ✅ **已完成**：`worldgen.py` 809 行（提示词/分块提取/物化/校验修复/语料/进度事件），CLI 851→**237 行**薄壳。等价性已证：重构前 vs 重构后离线跑，退出码相同、**8 个产出文件逐字节相同**、stdout 归一化后逐行相同。守卫 `tests/test_worldgen.py`（22 项） |
-| E-6 | 后台任务表 + 进度 SSE（照抄 `_turn_stream` 的 queue+线程模式） | 中 | 能力 B | ⬜ 见 `docs/roadmap.md` **N1** |
-| E-7 | 草稿区 `world-packs/_drafts/` + 发布闸门（过 `check_worldpack` 才能发布） | 小 | 能力 B/C | ⬜ 见 roadmap **N3** |
+| E-6 | 后台任务表 + 进度 SSE（照抄 `_turn_stream` 的 queue+线程模式） | 中 | 能力 B | ✅ **已完成**（2026-10，roadmap **N1**）：`game_agent/jobs.py` 任务表 + 串行执行器；5 个端点（生成 / 查询 / SSE / 取消）；**不能照抄 `_turn_stream`**——那是秒级单连接，分钟级任务必须事件留档 + 回放 + 多订阅者广播。`tests/test_jobs.py`（22 项）+ 真机 `scripts/worldgen_smoke.py` |
+| E-7 | 草稿区 `world-packs/_drafts/` + 发布闸门（过 `check_worldpack` 才能发布） | 小 | 能力 B/C | ✅ 已完成 · 见 **§6.6** |
 | E-8 | 创作者 Agent：新 system prompt + 10 个工具 + `creator_model` 路由 + 修复循环 | 中 | 能力 C | ⬜ 见 roadmap **N6** |
 | E-9 | 会话列表 / 存档列表接口（`SESSIONS` 是无淘汰的内存 dict） | 小 | 前端左栏 | ✅ **已完成**：`GET /api/sessions`（pack/mode **由 game 推出**，不存第二份）+ `GET /api/saves`（只读顶层摘要 / 坏档隔离 / mtime 倒序）。`tests/test_catalog.py`（3 项） |
 
@@ -658,6 +658,101 @@ validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、
 
 ---
 
+### 6.6 批次 5 执行记录（2026-10）：草稿区 ↔ 已发布区（E-7，§3.2 ③）
+
+**交付**：`game_agent/catalog.py` 的草稿生命周期（+139 行）+ `web.py` 四个接口
+（`GET /api/packs/drafts`、`POST /api/packs/publish`、`DELETE /api/packs/drafts/{name}`、
+生成改道 + `/api/new{draft}`）+ `tests/test_drafts.py`（17 项）。
+
+**这一步解锁了什么**：在草稿区落地之前，"同名生成"被一刀拒绝（`can_create` 怕
+`materialize` 清空 `npcs/` 而静默毁掉线上包）。于是"改一版再生成"只能靠不停换名字——
+`world-packs/` 里堆出 `foo`、`foo2`、`foo_new2`，作者自己都分不清哪个是最终版。
+现在写口变成一条链：**生成 → 校验 → 发布**，Web 界面从不直写已发布区。
+
+#### 三条设计判断
+
+1. **草稿的不可见性靠结构，不靠"记得过滤"**。`_drafts/` 目录天然没有 `world.yaml`，
+   而目录扫描要求 `world.yaml`，所以草稿**不可能**被当成一张可玩的卡——
+   不需要每个读取点都记得排除它（"记得过滤"这种事迟早会漏一个点）。
+   发布是一次 `rename`（同文件系统内原子），不是"改一个字段 + 祈祷没人漏读"。
+2. **闸门是 `check_worldpack`，报错原文必须能拿到**。这条不是形式主义：`check_worldpack`
+   会拒绝"该节点将永远无法完成""结局数值不可达"这类**作者看不出来、玩家一定会撞上**的问题。
+   发布是把草稿变成"别人也能玩"的承诺，没过闸门的东西不该获得这个承诺。而拒绝时
+   回的是**原文**而不是"校验失败"——那段原文就是工作台拿去喂模型修的燃料（§4.2）。
+3. **`draft` 标记从包的真实位置推出**（`session_is_draft` = 父目录名是不是 `_drafts`），
+   不另存布尔量。与 `session_pack_id`、`session_mode` 同一纪律：存第二份就多一个
+   "改了这边忘了那边"的机会。
+
+#### 写守卫时发现的一个真实缺陷（已修）
+
+给"坏草稿"写守卫时发现：**草稿如果缺 `world.yaml`，会从草稿列表里整个消失**。
+原因是 `list_drafts` 一开始复用了已发布区的 `_is_pack_dir` 判据。后果恰恰最糟——
+作者改坏了草稿、正需要看报错原文，看到的却是"草稿不存在"；生成中途被杀留下的
+半成品也一样无声蒸发。
+
+修法是让 `list_drafts` **列出草稿区下的每一个子目录**，不要求它有 `world.yaml`。
+这是与 `list_packs` 的一处**刻意分歧**，理由写进了代码注释：
+
+- 已发布区是**内容**——缺 `world.yaml` 的东西不是内容，本就不该出现在卡列表里；
+- 草稿区是**工作区**——那里的东西是作者明确放进去的。会消失的故障是最难查的故障，
+  列出它并附上 `error` 原文，比让它凭空不见有用得多。
+
+守卫用 `missing` / `bad_yaml` 两种坏法参数化，因为两者走**不同**的代码路径：
+前者考验"目录还算不算草稿"，后者考验"加载失败有没有降级成 `error`"。
+
+#### 一处必须记下的连带损伤（两个，同一根因）
+
+**加一个兄弟目录 `_drafts/` 会打断所有"裸遍历 `world-packs/`"的地方。** 而 `_drafts`
+在字母序上排在 `ancient_jianghu` **之前**（`_` = 0x5F < `a` = 0x61），所以那不是
+"偶尔踩到"，是**每次都中**。两处：
+
+1. **`scripts/worldgen_smoke.py` 会被改成"污染仓库"的脚本**。它原本断言生成的包出现在
+   `/api/catalog`，并且清理时只删 `world-packs/<name>`。生成改道草稿区之后：
+   那条断言会**假红**（其实行为是对的），而清理会**把产物留在 `world-packs/_drafts/` 里**
+   ——下一次 `git add -A` 就会把冒烟垃圾提交进去。
+   已重写为完整的生命周期冒烟（草稿不可见 → 同名可重生成 → 发布 → 反过来拒绝遮蔽 →
+   草稿试玩带 `draft` 标记 → 删除只动草稿区），并**两个区域都清**。
+2. **`scripts/replay.py` 会直接崩**：它用 `iterdir()` + `load_worldpack()` 找包，
+   第一个候选就是 `_drafts/` → `WorldPackError: 缺少文件: world-packs\_drafts\world.yaml`。
+   **pytest 盖不到它**（脚本不在测试范围内），是"改路径要连带查谁在断言它"这条纪律
+   全仓搜出来的。已改用 `catalog.list_packs()`——即**生产代码回答"有哪些卡"的那个函数**。
+
+全仓复核了 6 处 `world-packs/` 遍历点：4 处本来就按 `judge_corpus.yaml` 过滤（草稿没有语料，
+天然安全），2 处（上面这两个）真的坏了。
+
+**为这类坑补的守卫**：`tests/test_catalog.py::test_world_packs_enumerators_all_discriminate`
+——登记每个遍历者"靠什么区分目录与卡"，并扫描 `scripts/` + `game_agent/` 里所有同时出现
+`world-packs` 与 `iterdir(` 的文件，**新的遍历者不登记就失败**。要求登记不是官僚：
+这个坑的成因正是"写遍历时没想过那个目录会有第二种"。
+
+> 这个守卫自己先假绿过一次，值得记：第一版用**原始文本**检查判据，于是把
+> `catalog.list_packs` 换成一个不存在的函数、只在上面留一句提到它的**注释**，守卫照样绿。
+> 改成 `ast.unparse` 后注释被丢掉，变异立刻变红。**注释能满足的守卫等于没有守卫。**
+> （顺带撞上 `card_hook_check.py` 带 UTF-8 BOM，`ast.parse` 需要 `utf-8-sig`。）
+
+#### 另一处（测试基建）
+
+`web._make_game` 加了 `draft` 关键字入参后，`test_web_frontend.py` 里那个按关键字
+接收参数的假件没跟上 → `TypeError` → 500，症状是**五个与草稿毫无关系的前端测试**
+报"读取状态失败"。补了一个 `test_make_game_signature_is_pinned` 把签名钉住：
+下次漂移会得到一句指名道姓的失败，而不是五个莫名其妙的 500。
+
+#### 验证
+
+- 离线 **976 项全绿**（`test_drafts.py` 17 项为新）。
+- **变异验证**（三处，都在还原后复跑全绿）：
+  1. 把 `list_drafts` 改回 `_is_pack_dir` 判据 → 恰好那 3 条覆盖该缺陷的守卫变红
+     （`[bad_yaml]` 参数化分支照常绿，因为它们不依赖该判据）；
+  2. 给 `web._make_game` 加一个入参 → 签名钉子变红；
+  3. 遍历者登记守卫**两个方向都验**：把 `replay.py` 改名冒充新遍历者 → 报"没登记判据"；
+     把它的 `catalog.list_packs` 换成别的函数（注释里仍提到该名字）→ 也变红
+     （这一条第一次做时是**假绿**的，见上文"注释能满足的守卫等于没有守卫"）。
+- **真机冒烟**：`scripts/worldgen_smoke.py` 29 项全过，1 项**不可判**（离线生成仅 0.11s，
+  HTTP 链路上的流式增量性测不出——如实记不可判，不冒充通过）。
+  冒烟产物已两区清理干净（`_drafts/` 复查为空）。
+
+---
+
 ## 7. 交付顺序与工作量（人日，粗粒度）
 
 > ⚠️ **进度已并入 `docs/roadmap.md`**（2026-10）。那张表是"下一步做什么"的唯一答案；
@@ -668,7 +763,7 @@ validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、
 | 0 | E-1 / E-2（两个已知缺陷） | 2–3 | ✅ **已完成** |
 | 1 | **Stage A 前端拆分** + E-3 / E-4 / E-9 | 3–4 | ✅ **已完成** |
 | 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + **Stage B/C 三栏界面** | 6–10 | ✅ **已完成**（真机冒烟 18/18） |
-| 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | 🟡 **B1 已完成**（`game_agent/worldgen.py`）；B2/B3/B4 见 roadmap N1–N3 |
+| 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | 🟡 **B1/B2 已完成**（`worldgen.py` + 后台任务 SSE + 草稿区/发布闸门，见 §6.5/§6.6）；B3 工作台界面见 roadmap N2 |
 | 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ⬜ 见 roadmap N6 |
 | 5 | 分发（entry point / `asset://` / MCP 加固） | 2–3 | ⬜ 见 roadmap N11 |
 

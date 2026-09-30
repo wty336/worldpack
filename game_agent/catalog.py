@@ -24,16 +24,41 @@
 from __future__ import annotations
 
 import re
+import shutil
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .worldpack import WorldPackError, load_worldpack, pack_digest, validate_name
+
+
+class CatalogError(Exception):
+    """目录层的操作失败（发布/删除被拒）。与 `WorldPackError` 分工：
+    那个是"包内容不合法"，这个是"目录层不允许这么做"。
+    """
+
+
 DEFAULT_PACK_ROOT = "world-packs"
 
 # 目录名白名单：与 `_safe_save_path` 同一姿态（宁可严，不可漏）。
 # 允许中文与外文包名（作者会用 `武侠_旧梦` 这种），但**禁止任何路径成分**。
 _ID_PATTERN = re.compile(r"^[\w\u4e00-\u9fff\-]{1,64}$")
+
+DRAFTS_DIRNAME = "_drafts"
+"""草稿区目录名（`world-packs/_drafts/<name>/`）。
+
+上游：`docs/plan-tavern-shaped-product.md` §3.2 ③——"生成的包先进草稿区，
+过 `check_worldpack` 才允许发布"。这是 `plan-creator-player.md` 的**唯一写口**：
+Web 界面不直写文件系统，所有变更经"生成 → 校验 → 发布"这条链。
+
+**为什么必须是独立目录，而不是一个 `published: false` 字段**：
+- 目录层扫描天然排除它——`_is_pack_dir` 要求目录里有 `world.yaml`，而 `_drafts`
+  本身没有。于是**草稿不可能被误当成可玩的卡**，不需要每个读取点都记得过滤
+  （"记得过滤"这种事迟早会漏）；
+- 发布是一次 `rename`（同文件系统内原子），而不是"改一个字段 + 祈祷没人漏读"。
+
+下划线前缀还有一层实用考虑：它在目录列表里排最前，作者一眼看得见"这是工作区，不是内容"。
+"""
 
 
 @dataclass(frozen=True)
@@ -51,6 +76,7 @@ class PackEntry:
     locations: int = 0
     digest: str = ""  # 玩法内容指纹（与存档身份戳同源）
     path: str = ""
+    draft: bool = False  # True = 还在草稿区：未发布、不在可选卡列表里
     error: str = field(default="")  # 非空 = 该包加载失败，原因在此
 
     @property
@@ -70,6 +96,7 @@ class PackEntry:
             "locations": self.locations,
             "digest": self.digest,
             "path": self.path,
+            "draft": self.draft,
             "playable": self.playable,
             "error": self.error,
         }
@@ -210,21 +237,125 @@ def default_pack_id(root: str | Path = DEFAULT_PACK_ROOT) -> str | None:
 
 
 def can_create(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> str | None:
-    """能否在 `root/<name>` 处新建一个包；不能则返回原因。
+    """能否建一个新草稿；不能则返回原因。
 
     **这是 API 侧的护栏，CLI 没有它也不该有**：`import_story.py --name X` 是人手敲的，
-    覆盖自己的包是明确意图；而 `POST /api/packs/generate {name: "ancient_jianghu"}`
-    会**静默毁掉一个已发布的包**（`materialize` 先清空 `npcs/` 再写）。
-    一个可被脚本调用的接口不该有这种默认行为。
+    覆盖自己的包是明确意图；而一个能被脚本调用的接口不该有"静默毁掉已发布内容"的默认行为。
 
-    要迭代已存在的包，正确路径是草稿区（roadmap N3）——那里本来就是给反复改用的。
+    草稿区（§3.2 ③）落地后这条放松了一半：**同名草稿可以反复覆盖**（那正是草稿的用途），
+    但**已发布的同名包仍然拒绝**——否则发布时会撞名，且作者会误以为在改那个已发布的包。
     """
     if (bad := validate_name(name)) is not None:
         return bad
-    target = Path(root) / name
-    if target.exists():
+    published = Path(root) / name
+    if published.exists():
         return (
-            f"已存在同名世界包：{target}。为避免覆盖已发布内容，接口拒绝写入；"
-            f"换个名字，或直接改那个包的目录（草稿区见 roadmap N3）。"
+            f"已存在同名的**已发布**世界包：{published}。"
+            f"草稿不会写到这里（避免覆盖线上内容）；请换个名字，"
+            f"或先用别的名字生成草稿再比较。"
         )
     return None
+
+
+# ---------------------------------------------------------------------------
+# 草稿区 ↔ 已发布区（§3.2 ③ 的"唯一写口"）
+# ---------------------------------------------------------------------------
+
+
+def drafts_root(root: str | Path = DEFAULT_PACK_ROOT) -> Path:
+    return Path(root) / DRAFTS_DIRNAME
+
+
+def draft_dir(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> Path:
+    """草稿目录。**调用方必须先 `validate_name`**（这里只做拼接）。"""
+    return drafts_root(root) / name
+
+
+def list_drafts(root: str | Path = DEFAULT_PACK_ROOT) -> list[PackEntry]:
+    """草稿区里的包（与 `list_packs` 同形状，`draft=True`）。
+
+    **与 `list_packs` 的一个刻意差别**：这里列出 `_drafts/` 下的**每一个子目录**，
+    不要求它有 `world.yaml`。理由：
+    - 已发布区是"内容"，缺 `world.yaml` 的东西**不是内容**，不该出现在卡列表里；
+    - 草稿区是"工作区"，作者**明确**把它放在那儿。一个缺文件的草稿如果直接消失，
+      作者看到的是"我生成的草稿去哪了"——而这正是最需要看到错误原文的时刻。
+      列出它、附上 `error`，比藏起来有用。
+
+    （生成失败在提取阶段时根本不会建目录，所以正常路径下的草稿都是有 `world.yaml` 的；
+    这条主要覆盖"作者手工动过草稿"与"生成中途被杀"。）
+    """
+    base = drafts_root(root)
+    if not base.is_dir():
+        return []
+    out = []
+    for d in sorted(base.iterdir(), key=lambda p: p.name):
+        if d.is_dir() and not d.name.startswith("."):
+            out.append(replace(_entry_from_dir(d), draft=True))
+    return out
+
+
+def resolve_draft(name: str | None, root: str | Path = DEFAULT_PACK_ROOT) -> PackEntry | None:
+    """把名字解析成草稿项；不存在/非法返回 None。与 `resolve_pack` 同样是**查表**。"""
+    if not name or not _ID_PATTERN.fullmatch(name):
+        return None
+    for entry in list_drafts(root):
+        if entry.id == name:
+            return entry
+    return None
+
+
+def can_publish(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> str | None:
+    """能否把该草稿发布出去；不能则返回原因。**闸门 = `check_worldpack` 必须过。**
+
+    上游 §3.2 ③："过 `check_worldpack` 才允许发布"。这条不是形式主义——
+    `check_worldpack` 会拒绝"该节点将永远无法完成""结局数值不可达""引用了未声明的旗标"
+    这类**作者看不出来但玩家一定会撞上**的问题。发布是把草稿变成"别人也能玩"的承诺，
+    没过闸门的东西不该获得这个承诺。
+    """
+    if (bad := validate_name(name)) is not None:
+        return bad
+    entry = resolve_draft(name, root)
+    if entry is None:
+        return f"草稿不存在：{drafts_root(root) / name}"
+    if (Path(root) / name).exists():
+        return (
+            f"已存在同名的已发布包：{Path(root) / name}。"
+            f"发布不会覆盖已发布内容——请先改名，或另行处理那个包。"
+        )
+    if not entry.playable:
+        return (
+            f"草稿未通过 check-worldpack，不能发布：\n{entry.error}\n"
+            f"（web 创作工作台会把这段报错原文给模型去修；也可以在草稿目录里手工改）"
+        )
+    return None
+
+
+def publish(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> PackEntry:
+    """把草稿发布到已发布区（`rename`，同一文件系统内原子）。失败抛 `CatalogError`。"""
+    if (bad := can_publish(name, root)) is not None:
+        raise CatalogError(bad)
+    src = draft_dir(name, root)
+    dst = Path(root) / name
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        src.rename(dst)  # 原子：失败时草稿原地不动，不会出现"半个已发布包"
+    except OSError as e:
+        raise CatalogError(f"发布失败（草稿仍在原处）：{e}") from e
+    _invalidate(root)
+    entry = _entry_from_dir(dst)
+    _CACHE.pop(str(Path(root).resolve()), None)
+    return entry
+
+
+def delete_draft(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> None:
+    """删除草稿（清理用）。拒绝删已发布包——那不在本函数的职责里。"""
+    if validate_name(name) is not None or resolve_draft(name, root) is None:
+        raise CatalogError(f"草稿不存在：{name!r}")
+    shutil.rmtree(draft_dir(name, root))
+    _invalidate(root)
+
+
+def _invalidate(root: str | Path) -> None:
+    """目录变更后主动清缓存（不等指纹比对）。"""
+    with _CACHE_LOCK:
+        _CACHE.pop(str(Path(root).resolve()), None)

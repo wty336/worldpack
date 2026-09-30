@@ -149,12 +149,17 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _pack_from_state(cp: dict):
+    from game_agent import catalog
     from game_agent.worldpack import load_worldpack
 
     pack_name = cp["state"]["pack_name"]
-    for candidate in (REPO_ROOT / "world-packs").iterdir():
-        if candidate.is_dir() and load_worldpack(candidate).world.name == pack_name:
-            return load_worldpack(candidate)
+    # 用 `catalog.list_packs()` 枚举，而不是裸 `iterdir()`：
+    # `world-packs/` 现在有两个区域——内容区与草稿区 `_drafts/`（是工作区，不是卡）。
+    # 裸遍历会把 `_drafts/` 喂给 `load_worldpack` 并抛异常；而 `_drafts` 在字母序上
+    # 排在 `ancient_jianghu` **之前**，所以那不是"偶尔踩到"，是**每次都崩**。
+    for entry in catalog.list_packs(REPO_ROOT / "world-packs"):
+        if entry.name == pack_name:
+            return load_worldpack(entry.path)
     raise FileNotFoundError(f"找不到世界包: {pack_name}")
 
 

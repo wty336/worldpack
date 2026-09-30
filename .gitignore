@@ -58,6 +58,20 @@ saves/smoke-tb4/
 saves/smoke-tb6/
 saves/smoke-trace/
 
+# 会话级运行时残留：`saves/autosave-<sid>.json`（B-4 按会话隔离的自动存档）与
+# `saves/usage-<sid>.jsonl`（G1 每会话账本）。sid 是随机 hex，跑一局 / 跑一次测试
+# 就多一批，**不是证据**。
+#
+# 为什么用"随机 hex 会话号"这个**形状**而不是整个 saves/ 忽略：saves/ 是**有意维护的
+# 证据库**（smoke-* / baseline-* / playthrough-* / memory-regression-* 等 90 余份
+# 带语义名字的运行记录，它们才是要入库的东西）。上面那条注释里的
+# `saves/smoke-ancient_jianghu.* 除外` 也正是同一个区分。整目录忽略会把证据一起丢掉。
+#
+# 注意 `saves/autosave-8f517e3573f8.json` 已入库——ignore 规则只作用于未跟踪文件，
+# 它不会被自动移除。留着不是问题（那份是有意保留的证据），但也别再新增同类。
+saves/autosave-[0-9a-f]*.json
+saves/usage-[0-9a-f]*.jsonl
+
 # SillyTavern 源码调研副本（上游 1.19.0 @ 06bde93，自带 .git，95.5 MB）
 #
 # 它是 `docs/sillytavern-borrow.md` 与 `st-prompt-macros-report.md` 的**分析基准**，

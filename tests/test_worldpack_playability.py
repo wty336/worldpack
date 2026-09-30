@@ -40,6 +40,30 @@ PACKS = Path(__file__).resolve().parent.parent / "world-packs"
 SRC = PACKS / "ancient_jianghu"
 
 
+def _shipped_packs() -> list[tuple[str, object]]:
+    """在库内容包（目录名, WorldPack），**用生产的目录口径枚举**。
+
+    为什么不再直接 `PACKS.iterdir()`：`world-packs/` 现在有两个区域——
+    内容区（每个子目录都是一张卡）与草稿区 `_drafts/`（**是工作区，不是卡**，
+    它连 `world.yaml` 都没有）。裸 `iterdir()` 会把草稿区当成一个包去 `load_worldpack`，
+    于是"生成过一次东西"就会让三条内容守卫变红。
+
+    **修法刻意不是"在测试里跳过 `_drafts`"**：那等于把"什么算一张卡"的规则抄到第三个
+    地方，将来加别的区域时又会漏（本仓库对这类"记得过滤"一贯的态度是换成结构或单一真源）。
+    这里直接用 `catalog.list_packs()`——它就是生产代码回答"有哪些卡"的那个函数，
+    测试因此不可能与线上口径分叉。附带好处：坏包会带着 `error` 原文失败，
+    比裸 `load_worldpack` 抛异常更好读。
+    """
+    from game_agent import catalog
+
+    out = []
+    for entry in catalog.list_packs(PACKS):
+        assert entry.playable, f"在库包 {entry.id!r} 加载失败（内容区不该有坏包）：{entry.error}"
+        out.append((entry.id, load_worldpack(entry.path)))
+    assert out, "world-packs/ 下没有任何内容包——守卫会静默通过，拒绝继续"
+    return out
+
+
 class _AllRng:
     """rng：random() 恒 0（chance 必命中）；uniform 取上界。"""
 
@@ -229,9 +253,8 @@ def test_duplicate_event_id_rejected():
 
 def test_shipped_packs_have_unique_ids():
     """现有 8 个包在新增唯一性校验下必须仍然通过（不留回归债）。"""
-    for d in sorted(PACKS.iterdir()):
-        if d.is_dir():
-            load_worldpack(d)  # 不抛即通过
+    for _name, _pack in _shipped_packs():
+        pass  # `_shipped_packs()` 内部已经 load 过，不抛即通过
 
 
 # ---------------------------------------------------------------------------
@@ -373,13 +396,10 @@ def test_shipped_packs_all_forbidden_entries_tokenizable():
     from game_agent.storyline import _forbidden_tokens
 
     bad = []
-    for d in sorted(PACKS.iterdir()):
-        if not d.is_dir():
-            continue
-        pack = load_worldpack(d)
+    for name, pack in _shipped_packs():
         for entry in pack.world.forbidden:
             if not _forbidden_tokens_for(entry):
-                bad.append((d.name, entry))
+                bad.append((name, entry))
     assert not bad, f"以下禁用规则零 token（防线失效）: {bad}"
 
 
@@ -430,29 +450,26 @@ def test_shipped_packs_stages_cover_their_domain():
     这里只拦**真空隙**（缝宽 >1，如 20→30）。
     """
     problems = []
-    for d in sorted(PACKS.iterdir()):
-        if not d.is_dir():
-            continue
-        pack = load_worldpack(d)
+    for name, pack in _shipped_packs():
         for npc in pack.npcs.values():
             spec = pack.schedule.affections.get(npc.id)
             lo_bound = spec.min if spec else 0.0
             hi_bound = spec.max if spec else 100.0
             stages = sorted((s.range[0], s.range[1]) for s in npc.affection_stages)
             if not stages:
-                problems.append((d.name, npc.id, "无阶段"))
+                problems.append((name, npc.id, "无阶段"))
                 continue
             if stages[0][0] > lo_bound:
-                problems.append((d.name, npc.id, f"{lo_bound}~{stages[0][0]} 空隙"))
+                problems.append((name, npc.id, f"{lo_bound}~{stages[0][0]} 空隙"))
             for i in range(len(stages) - 1):
                 if stages[i][1] >= stages[i + 1][0]:
-                    problems.append((d.name, npc.id, f"重叠 {stages[i]}/{stages[i + 1]}"))
+                    problems.append((name, npc.id, f"重叠 {stages[i]}/{stages[i + 1]}"))
                 elif stages[i + 1][0] - stages[i][1] > 1.0:
                     problems.append(
-                        (d.name, npc.id, f"{stages[i][1]}~{stages[i + 1][0]} 空隙")
+                        (name, npc.id, f"{stages[i][1]}~{stages[i + 1][0]} 空隙")
                     )
             if stages[-1][1] < hi_bound:
-                problems.append((d.name, npc.id, f"{stages[-1][1]}~{hi_bound} 空隙"))
+                problems.append((name, npc.id, f"{stages[-1][1]}~{hi_bound} 空隙"))
     assert not problems, f"阶段覆盖问题: {problems}"
 
 

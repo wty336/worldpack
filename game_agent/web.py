@@ -95,18 +95,27 @@ def _require_pack(pack_id: str) -> catalog.PackEntry:
     return entry
 
 
-def _resolve_pack(pack_id: str | None) -> tuple[Path, str]:
+def _resolve_pack(pack_id: str | None, draft: str | None = None) -> tuple[Path, str]:
     """决定这一局用哪个包 → (包目录, pack_id)。
 
-    优先级（E-3）：
-    1. 显式 `pack_id`——**只能经 `catalog.resolve_pack()` 查表得到**，绝不拼路径；
+    优先级：
+    1. 显式 `draft`（§3.2 ③ 的草稿试玩）——**只能经 `catalog.resolve_draft()` 查表得到**；
+    2. 显式 `pack_id`——**只能经 `catalog.resolve_pack()` 查表得到**，绝不拼路径；
        不认识的 id 直接 400，不做"猜一个相近的"这种兜底。
-    2. `GAME_WORLDPACK` 环境变量（CLI `--pack`）——按**路径**加载，可指向目录外。
-    3. 目录兜底：`ancient_jianghu` 优先，否则第一个可玩的包。
+    3. `GAME_WORLDPACK` 环境变量（CLI `--pack`）——按**路径**加载，可指向目录外。
+    4. 目录兜底：`ancient_jianghu` 优先，否则第一个可玩的包。
 
-    第 3 条刻意不硬编码 DEFAULT_PACK：目录是内容，不该有"某个包必须在库"的假设——
+    第 4 条刻意不硬编码 DEFAULT_PACK：目录是内容，不该有"某个包必须在库"的假设——
     包被移走时应当退到"还有什么能玩"，而不是启动即 500。
     """
+    if draft:
+        entry = catalog.resolve_draft(draft, _pack_root())
+        if entry is None:
+            raise HTTPException(400, f"草稿不存在: {draft!r}（草稿区：{catalog.drafts_root(_pack_root())}）")
+        if not entry.playable:
+            raise HTTPException(400, f"草稿无法加载: {draft}——{entry.error}")
+        return Path(entry.path), entry.id
+
     if pack_id:
         entry = _require_pack(pack_id)
         return Path(entry.path), entry.id
@@ -174,6 +183,14 @@ def session_mode(session: Session) -> str:
     return MODE_STORY if session.game.mainline_enabled else MODE_FREE
 
 
+def session_is_draft(session: Session) -> bool:
+    """本局是否在试玩草稿——**从包的真实位置推出**（父目录名是 `_drafts`）。
+
+    与 `session_pack_id` 同一纪律：不另存一份布尔量，就没有"存了但忘了同步"的可能。
+    """
+    return session.game.pack.root.parent.name == catalog.DRAFTS_DIRNAME
+
+
 SESSIONS: dict[str, Session] = {}
 
 # N1：后台生成任务表（进程级；见 `jobs.py` 的"为什么不能照抄 _turn_stream"）
@@ -189,7 +206,11 @@ _TERMINAL_STAGES = {"done", "error", "cancelled"}
 
 
 def _make_game(
-    sid: str, pack_id: str | None = None, *, mainline_enabled: bool = True
+    sid: str,
+    pack_id: str | None = None,
+    *,
+    draft: str | None = None,
+    mainline_enabled: bool = True,
 ) -> tuple[Game, UsageTracker]:
     """建一局。返回 (game, tracker)——tracker 由调用方存进 Session（G1）。
 
@@ -198,7 +219,7 @@ def _make_game(
     settings = load_settings()
     if not settings.has_api_key:
         raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
-    pack_path, _ = _resolve_pack(pack_id)
+    pack_path, _ = _resolve_pack(pack_id, draft)
     pack = load_worldpack(pack_path)
     state = GameState.from_pack(pack)
     tracker = UsageTracker(_usage_path(sid), session=sid)  # G1：本会话专属账本
@@ -266,6 +287,7 @@ class NewRequest(BaseModel):
 
     pack_id: str | None = None  # None = 用 GAME_WORLDPACK / 目录兜底
     mode: str = MODE_STORY  # story = 沿主线推进；free = 自由游玩
+    draft: str | None = None  # §3.2 ③：试玩草稿（未发布的包）
 
 
 class GenerateRequest(BaseModel):
@@ -280,6 +302,12 @@ class GenerateRequest(BaseModel):
     offline: bool = False  # 默认真机（与 CLI 一致）；离线是给回归/演示用的
     with_corpus: bool = False
     rounds: int = 4
+
+
+class PublishRequest(BaseModel):
+    """§3.2 ③：把草稿发布到已发布区（过 `check_worldpack` 才允许）。"""
+
+    name: str
 
 
 def _safe_save_path(raw: str) -> Path:
@@ -379,8 +407,9 @@ def api_generate(req: GenerateRequest) -> dict:
     一次生成约 ¥0.1–0.3（`with_corpus=true` 更多，因为它多打 12 次调用）。
     调用方（创作工作台）负责在点之前把这件事说清楚。
 
-    **拒绝覆盖已存在的包**（`catalog.can_create`）：`materialize` 会先清空 `npcs/`，
-    所以同名写入等于静默毁掉一个已发布的包。要迭代走草稿区（roadmap N3）。
+    **拒绝遮蔽已发布的包**（`catalog.can_create`）：`materialize` 会先清空 `npcs/`，
+    所以同名写入已发布区等于静默毁掉一个线上包。同名**草稿**则允许反复覆盖——
+    那正是草稿区的用途（§3.2 ③ 落地后，"改一版再生成"不再需要不停换名字）。
     """
     if (bad := catalog.can_create(req.name, _pack_root())) is not None:
         raise HTTPException(400, bad)
@@ -389,9 +418,11 @@ def api_generate(req: GenerateRequest) -> dict:
     if req.rounds < 1:
         raise HTTPException(400, "rounds 至少为 1（没有任何修复轮次的生成不符合质量门口径）")
 
+    # §3.2 ③：**生成写进草稿区，不写已发布区**。这样反复生成同一个名字是安全的
+    # （草稿本来就是给反复改用的），而"发布"才是那个需要过闸门的显式动作。
     job = JOBS.create(
         pack_name=req.name,
-        pack_dir=_pack_root() / req.name,
+        pack_dir=catalog.draft_dir(req.name, _pack_root()),
         source_text=req.source_text,
         offline=req.offline,
         with_corpus=req.with_corpus,
@@ -399,6 +430,38 @@ def api_generate(req: GenerateRequest) -> dict:
     )
     JOBS.run_in_background(job, req.source_text, jobs.default_runner)
     return {"ok": True, **job.snapshot()}
+
+
+@app.get("/api/packs/drafts")
+def api_drafts() -> dict:
+    """草稿列表（含未通过校验的，附 `error` 原文）。"""
+    entries = catalog.list_drafts(_pack_root())
+    return {"ok": True, "drafts": [e.to_dict() for e in entries]}
+
+
+@app.post("/api/packs/publish")
+def api_publish(req: PublishRequest) -> dict:
+    """把草稿发布到已发布区。**闸门 = `check_worldpack` 必须过**（§3.2 ③）。
+
+    这是"唯一写口"的最后一环：Web 界面从不直写文件系统——它生成到草稿区、
+    校验、然后发布。发布不过关时把**报错原文**回给调用方（工作台会拿它去喂模型修）。
+    """
+    try:
+        entry = catalog.publish(req.name, _pack_root())
+    except catalog.CatalogError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "pack": entry.to_dict()}
+
+
+@app.delete("/api/packs/drafts/{name}")
+def api_delete_draft(name: str) -> dict:
+    """删除草稿（清理用）。**只删草稿区**——不提供"删除已发布包"的接口：
+    那是文件系统层面的事，不该由 HTTP 顺手做掉。"""
+    try:
+        catalog.delete_draft(name, _pack_root())
+    except catalog.CatalogError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "deleted": name}
 
 
 @app.get("/api/packs/generate")
@@ -471,14 +534,18 @@ def _job_stream(job: GenerationJob):
 
 @app.post("/api/new")
 def api_new(req: NewRequest | None = None) -> dict:
-    """开局。`pack_id` 选定"哪张卡"，`mode` 选定"跟主线走 / 自由探索"。"""
+    """开局。`pack_id` 选已发布的卡，`draft` 试玩草稿，`mode` 选"跟主线走 / 自由探索"。"""
     req = req or NewRequest()
     mode = _validate_mode(req.mode)
     if req.pack_id:  # 接口层先校验契约（见 `_require_pack` 的说明）
         _require_pack(req.pack_id)
+    if req.draft and catalog.resolve_draft(req.draft, _pack_root()) is None:
+        raise HTTPException(400, f"草稿不存在: {req.draft!r}")
     sid = uuid.uuid4().hex[:12]
     # B-4：autosave 按 sid 命名，需先生成 sid
-    game, tracker = _make_game(sid, req.pack_id, mainline_enabled=(mode == MODE_STORY))
+    game, tracker = _make_game(
+        sid, req.pack_id, draft=req.draft, mainline_enabled=(mode == MODE_STORY)
+    )
     session = Session(game=game, lock=threading.Lock(), usage=tracker)
     with session.lock:
         view = game.start()
@@ -489,6 +556,7 @@ def api_new(req: NewRequest | None = None) -> dict:
         "name": game.pack.world.name,
         "pack_id": session_pack_id(session),  # E-3：前端据此显示"在玩哪张卡"
         "mode": mode,  # E-4：前端据此显示模式徽标
+        "draft": session_is_draft(session),  # §3.2 ③：草稿试玩 → 前端打"未发布"水印
         "view": _view(game, view),
     }
 
@@ -521,6 +589,7 @@ def api_meta(sid: str) -> dict:
         "pack_id": session_pack_id(s),
         "name": s.game.pack.world.name,
         "mode": session_mode(s),
+        "draft": session_is_draft(s),
         "mainline": s.game.state.current_node,
         "turn": s.game.state.turn_count,
         "day": s.game.state.day,

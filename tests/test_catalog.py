@@ -12,6 +12,8 @@
 3. **模式语义**：自由模式不进入主线节点，但不成"清空进度"（已进节点不动）；
 4. **接口接线**：`/api/catalog`、`/api/new{pack_id,mode}`、`/api/{sid}/meta`、
    `/api/sessions`、`/api/saves` 的契约与错误码。
+5. **`world-packs/` 的遍历者登记在案**（§5）——草稿区落地后新出现的一类坑，
+   详见 `test_world_packs_enumerators_all_discriminate`。
 """
 
 from __future__ import annotations
@@ -257,9 +259,16 @@ def _client(monkeypatch, seen: list | None = None) -> TestClient:
     """装配一个不依赖 API Key 的 Web 客户端；`seen` 记录 _make_game 的调用参数。"""
     pack = load_worldpack(REAL_PACK)
 
-    def fake_make_game(sid: str, pack_id=None, *, mainline_enabled=True):
+    def fake_make_game(sid: str, pack_id=None, *, draft=None, mainline_enabled=True):
+        """签名必须与 `web._make_game` 一致（E-3/E-4/E-7 起多了选包、模式与草稿三个入参）。
+
+        `pack_id` / `draft` / `mainline_enabled` 在这里**刻意不生效**：本文件的守卫关心的是
+        视图契约与前端结构分流，不是选包/模式/草稿语义（那些由 `test_catalog.py` 的
+        目录层守卫与 `test_jobs.py` 的任务守卫负责）。
+        """
         if seen is not None:
-            seen.append({"pack_id": pack_id, "mainline_enabled": mainline_enabled})
+            seen.append({"pack_id": pack_id, "draft": draft,
+                         "mainline_enabled": mainline_enabled})
         llm = LLMClient(FakeClient([resp(msg(tool_calls=[_submit("开场。", ["甲", "乙", "丙"])]))]),
                         "fake", build_tools(pack.schedule))
         return (
@@ -287,12 +296,12 @@ def test_new_passes_pack_and_mode_through(monkeypatch):
     client = _client(monkeypatch, seen)
 
     d = client.post("/api/new", json={"pack_id": "campus_otome", "mode": "free"}).json()
-    assert seen[-1] == {"pack_id": "campus_otome", "mainline_enabled": False}
+    assert seen[-1] == {"pack_id": "campus_otome", "draft": None, "mainline_enabled": False}
     assert d["pack_id"] == "ancient_jianghu"  # 假 _make_game 固定用这个包
     assert d["mode"] == "free"
 
     client.post("/api/new", json={"pack_id": None, "mode": "story"})
-    assert seen[-1] == {"pack_id": None, "mainline_enabled": True}
+    assert seen[-1] == {"pack_id": None, "draft": None, "mainline_enabled": True}
 
 
 def test_new_without_body_still_works(monkeypatch):
@@ -301,7 +310,7 @@ def test_new_without_body_still_works(monkeypatch):
     client = _client(monkeypatch, seen)
     d = client.post("/api/new").json()
     assert d["sid"] and d["mode"] == "story"
-    assert seen[-1] == {"pack_id": None, "mainline_enabled": True}
+    assert seen[-1] == {"pack_id": None, "draft": None, "mainline_enabled": True}
 
 
 def test_new_rejects_unknown_pack(monkeypatch):
@@ -310,6 +319,27 @@ def test_new_rejects_unknown_pack(monkeypatch):
     r = TestClient(web.app).post("/api/new", json={"pack_id": "no_such_pack"})
     assert r.status_code == 400
     assert "未知的世界包" in r.json()["detail"]
+
+
+def test_make_game_signature_is_pinned():
+    """`web._make_game` 的签名变了 → 所有测试假件都必须跟着改。
+
+    为什么值得一条专门的守卫：接口是**按关键字**把新参数传下来的，假件少一个参数
+    不会"忽略它"，而是 `TypeError` → 500。本仓库已经因此红过一次——加 `draft` 时
+    `test_web_frontend` 的假件没跟上，症状是五个**与草稿毫无关系**的前端测试报
+    "读取状态失败"。这条守卫把那种漂移换成一句指名道姓的失败。
+
+    改动方法：更新本断言，并同步 `test_catalog._client`、`test_web_frontend._client`
+    （以及任何新的假件）。
+    """
+    import inspect
+
+    params = inspect.signature(web._make_game).parameters
+    assert list(params) == ["sid", "pack_id", "draft", "mainline_enabled"]
+    assert params["pack_id"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert params["draft"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert params["mainline_enabled"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert params["mainline_enabled"].default is True
 
 
 def test_new_rejects_unknown_mode(monkeypatch):
@@ -436,3 +466,72 @@ def test_status_endpoint_survives_and_reports_after_rejection(monkeypatch, tmp_p
     st = client.get(f"/api/{sid}/status")
     assert st.status_code == 200  # 不再是 500
     assert st.json()["text"]
+
+
+# ---------------------------------------------------------------------------
+# 5. `world-packs/` 的遍历者必须区分"目录"与"卡"
+# ---------------------------------------------------------------------------
+
+
+#: 文件 → 它用来把"一个目录"和"一张卡"分开的判据。
+#:
+#: **为什么需要这张表**：`world-packs/` 现在有两个区域——内容区（每个子目录都是一张卡）
+#: 与草稿区 `_drafts/`（**是工作区，不是卡**）。裸 `iterdir()` + `load_worldpack()`
+#: 的写法在草稿区出现后会直接抛 `缺少文件: world-packs\_drafts\world.yaml`；
+#: 而 `_drafts` 在字母序上排在 `ancient_jianghu` **之前**，所以那不是"偶尔踩到"，
+#: 是**每次都崩**。`scripts/replay.py` 就是这么坏掉的——而且 pytest 盖不到它
+#: （它不是测试的一部分），是"改路径要连带查谁在断言它"这条纪律查出来的。
+_WORLD_PACK_ENUMERATORS = {
+    "game_agent/catalog.py": "world.yaml",  # `_is_pack_dir`——生产口径，单一真源
+    "scripts/eval_quota_check.py": "judge_corpus.yaml",
+    "scripts/card_hook_check.py": "judge_corpus.yaml",
+    "scripts/axis_coverage_check.py": "judge_corpus.yaml",
+    "scripts/tier_slice.py": "judge_corpus.yaml",
+    "scripts/near_dup_check.py": "judge_corpus.yaml",
+    "scripts/replay.py": "catalog.list_packs",
+}
+
+
+def test_world_packs_enumerators_all_discriminate():
+    """每个遍历 `world-packs/` 的文件都必须写明"凭什么算一张卡"。
+
+    两件事一起守：
+    1. **登记在案的遍历者不许丢掉判据**——有人把 `if (p/"world.yaml").exists()` 删了
+       会在这里红，而不是等到"生成过一次草稿"之后在某个脚本里炸；
+    2. **新的遍历者必须登记**——扫 `scripts/` 与 `game_agent/` 里所有同时出现
+       `world-packs` 与 `iterdir(` 的文件，不在表里就失败。
+       要求登记不是官僚：`_drafts/` 这个坑的教训正是"写遍历时没想过目录会有第二种"。
+
+    判据检查用 **AST 反解析后的源码**（`ast.unparse`）而不是原始文本：注释会被丢掉。
+    这条不是洁癖——第一版用原始文本，结果把 `catalog.list_packs` 换成一个不存在的函数、
+    只在上面留一句提到它的注释，守卫**照样绿**。注释能满足的守卫等于没有守卫。
+    检测"这个文件遍历了 world-packs"仍用原始文本（宁可多抓：多登记一个文件是无害的，
+    漏登记才是有害的方向）。
+    """
+    import ast
+
+    root = REPO
+    found = set()
+    for sub in ("scripts", "game_agent"):
+        for f in sorted((root / sub).glob("*.py")):
+            text = f.read_text(encoding="utf-8")
+            if "world-packs" in text and "iterdir(" in text:
+                found.add(f"{sub}/{f.name}")
+
+    unregistered = found - set(_WORLD_PACK_ENUMERATORS)
+    assert not unregistered, (
+        f"这些文件遍历了 world-packs/ 但没登记判据：{sorted(unregistered)}。"
+        f"请在 `_WORLD_PACK_ENUMERATORS` 里登记它靠什么区分目录与卡"
+        f"（或改用 `catalog.list_packs()`）——草稿区 `_drafts/` 会让裸遍历抛异常。"
+    )
+
+    for rel, discriminator in _WORLD_PACK_ENUMERATORS.items():
+        path = root / rel
+        assert path.is_file(), f"登记的文件不存在了：{rel}（遍历者被删或改名，请同步这张表）"
+        # `utf-8-sig`：仓库里有个脚本带 BOM（`card_hook_check.py`），
+        # `ast.parse` 见到 U+FEFF 会直接 SyntaxError。
+        code = ast.unparse(ast.parse(path.read_text(encoding="utf-8-sig")))
+        assert discriminator in code, (
+            f"{rel} 的**代码**里找不到区分判据 {discriminator!r}——"
+            f"草稿区 `_drafts/` 会被当成一张卡。（写在注释里不算：注释不能挡异常。）"
+        )

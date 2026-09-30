@@ -45,8 +45,13 @@ def _client(monkeypatch) -> TestClient:
     pack = load_worldpack(PACK_PATH)
     state = GameState.from_pack(pack)
 
-    def fake_make_game(sid: str, pack_id=None, *, mainline_enabled=True):
-        """签名与 `web._make_game` 一致；选包/模式在本文件的守卫里不生效。"""
+    def fake_make_game(sid: str, pack_id=None, *, draft=None, mainline_enabled=True):
+        """签名必须与 `web._make_game` **逐字一致**——包括用不到的 `draft`。
+
+        接口把新入参按关键字传下来，签名少了它就从"忽略该参数"变成
+        `TypeError` → 500。签名同步不是洁癖：它在这里是接口契约的一部分。
+        选包/模式/草稿在本文件的守卫里刻意不生效（那三样各有专责守卫）。
+        """
         llm = LLMClient(
             FakeClient([
                 resp(msg(tool_calls=[_submit(
