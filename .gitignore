@@ -72,6 +72,12 @@ saves/smoke-trace/
 saves/autosave-[0-9a-f]*.json
 saves/usage-[0-9a-f]*.jsonl
 
+# N7 起还多了 `saves/timeline-<sid>/`（每会话的存档点/回退/分支）。
+# **同一个形状、同一条规则**：名字里带随机会话号，属于"跑一局就多一批"的运行残留，
+# 不是证据。注意它是个**目录**（里面是 `timeline.jsonl` + `rev-*.json`），
+# 所以用 `*/` 而不是文件后缀匹配。
+saves/timeline-*/
+
 # SillyTavern 源码调研副本（上游 1.19.0 @ 06bde93，自带 .git，95.5 MB）
 #
 # 它是 `docs/sillytavern-borrow.md` 与 `st-prompt-macros-report.md` 的**分析基准**，
