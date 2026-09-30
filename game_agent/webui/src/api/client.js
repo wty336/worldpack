@@ -68,6 +68,12 @@ export const ENDPOINTS = Object.freeze({
   drafts: 'GET /api/packs/drafts',
   publish: 'POST /api/packs/publish',
   deleteDraft: 'DELETE /api/packs/drafts/{name}',
+  packCost: 'GET /api/packs/{name}/cost',
+  packInjection: 'GET /api/packs/{name}/injection',
+  // C5：质量门禁按钮（服务端强制成本前置确认）
+  runGate: 'POST /api/packs/{name}/gate',
+  gates: 'GET /api/gates',
+  gate: 'GET /api/gates/{gate_id}',
   // 创作者 Agent（N6）：拿现成的卡来改 → 对话式改人物设定与世界书
   fork: 'POST /api/packs/fork',
   creatorState: 'GET /api/creator/{name}',
@@ -125,6 +131,20 @@ export const api = {
   publish: (name) => post('/api/packs/publish', { name }).then((r) => jsonOrThrow(r, '发布')),
   deleteDraft: (name) =>
     del(`/api/packs/drafts/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, '删除草稿')),
+  /** N5/C3：**按卡累计**成本（游玩 + 改卡都在内，因为两边带同一个 pack 轴）。 */
+  packCost: (name) =>
+    fetch(`/api/packs/${encodeURIComponent(name)}/cost`).then((r) => jsonOrThrow(r, '读取这张卡的成本')),
+  /** C4：**注入提醒**扫描（不是门禁——后端 `is_gate: false`，UI 据此只标黄）。 */
+  packInjection: (name) =>
+    fetch(`/api/packs/${encodeURIComponent(name)}/injection`)
+      .then((r) => jsonOrThrow(r, '读取注入提醒')),
+
+  /** C5：跑一道质量门。**会花钱**，所以必须先拿到成本说明再带 confirm=true 调。 */
+  runGate: (name, kind, confirm = false) =>
+    post(`/api/packs/${encodeURIComponent(name)}/gate`, { kind, confirm })
+      .then((r) => jsonOrThrow(r, '起门禁')),
+  gates: () => fetch('/api/gates').then((r) => jsonOrThrow(r, '读取门禁记录')),
+  gate: (id) => fetch(`/api/gates/${encodeURIComponent(id)}`).then((r) => jsonOrThrow(r, '读取门禁结果')),
 
   // ---- 创作者 Agent（N6）----
 

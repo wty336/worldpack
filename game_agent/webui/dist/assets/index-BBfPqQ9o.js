@@ -6879,6 +6879,14 @@ const api = {
   /** 发布到已发布区。**闸门 = check_worldpack**，不过则 400 且 detail 是报错原文。 */
   publish: (name) => post("/api/packs/publish", { name }).then((r) => jsonOrThrow(r, "发布")),
   deleteDraft: (name) => del(`/api/packs/drafts/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, "删除草稿")),
+  /** N5/C3：**按卡累计**成本（游玩 + 改卡都在内，因为两边带同一个 pack 轴）。 */
+  packCost: (name) => fetch(`/api/packs/${encodeURIComponent(name)}/cost`).then((r) => jsonOrThrow(r, "读取这张卡的成本")),
+  /** C4：**注入提醒**扫描（不是门禁——后端 `is_gate: false`，UI 据此只标黄）。 */
+  packInjection: (name) => fetch(`/api/packs/${encodeURIComponent(name)}/injection`).then((r) => jsonOrThrow(r, "读取注入提醒")),
+  /** C5：跑一道质量门。**会花钱**，所以必须先拿到成本说明再带 confirm=true 调。 */
+  runGate: (name, kind, confirm = false) => post(`/api/packs/${encodeURIComponent(name)}/gate`, { kind, confirm }).then((r) => jsonOrThrow(r, "起门禁")),
+  gates: () => fetch("/api/gates").then((r) => jsonOrThrow(r, "读取门禁记录")),
+  gate: (id) => fetch(`/api/gates/${encodeURIComponent(id)}`).then((r) => jsonOrThrow(r, "读取门禁结果")),
   // ---- 创作者 Agent（N6）----
   /** 把**已发布**的卡复制成草稿——"改一张现成的卡"的第一步（原版只读，不会被动）。 */
   fork: (name) => post("/api/packs/fork", { name }).then((r) => jsonOrThrow(r, "复制成草稿")),
@@ -6979,23 +6987,31 @@ const _hoisted_7$1 = {
   key: 0,
   class: "t"
 };
-const _hoisted_8$1 = { key: 0 };
-const _hoisted_9$1 = { class: "status-actions" };
-const _hoisted_10$1 = ["disabled"];
-const _hoisted_11$1 = {
+const _hoisted_8$1 = {
   key: 1,
+  class: "cost"
+};
+const _hoisted_9$1 = {
+  key: 2,
   class: "t"
 };
-const _hoisted_12$1 = ["disabled", "onClick"];
-const _hoisted_13$1 = { class: "pname" };
-const _hoisted_14$1 = {
+const _hoisted_10$1 = { key: 0 };
+const _hoisted_11$1 = { class: "status-actions" };
+const _hoisted_12$1 = ["disabled"];
+const _hoisted_13$1 = {
+  key: 3,
+  class: "t"
+};
+const _hoisted_14$1 = ["disabled", "onClick"];
+const _hoisted_15$1 = { class: "pname" };
+const _hoisted_16$1 = {
   key: 0,
   class: "t"
 };
-const _hoisted_15$1 = { class: "pera" };
-const _hoisted_16$1 = { class: "pmeta" };
-const _hoisted_17$1 = { class: "col col-mid" };
-const _hoisted_18$1 = { class: "col col-right" };
+const _hoisted_17$1 = { class: "pera" };
+const _hoisted_18$1 = { class: "pmeta" };
+const _hoisted_19$1 = { class: "col col-mid" };
+const _hoisted_20$1 = { class: "col col-right" };
 const _sfc_main$2 = {
   __name: "PlayView",
   props: {
@@ -7017,6 +7033,7 @@ const _sfc_main$2 = {
     const dock = ref(null);
     const timeline = ref([]);
     const currentRev = ref(null);
+    const cost = ref(null);
     let timer = null;
     const modeLabel = computed(() => props.session.mode === "free" ? "自由探索" : "跟着主线");
     function recoveryText(list, sub) {
@@ -7048,6 +7065,18 @@ const _sfc_main$2 = {
       } catch (e) {
         emit2("notice", { message: e.message, isError: true });
       }
+      await loadCost();
+    }
+    async function loadCost() {
+      try {
+        const d = await api.cost(props.session.sid);
+        cost.value = d.totals || null;
+      } catch {
+        cost.value = null;
+      }
+    }
+    function money(v) {
+      return v == null ? "—" : `¥${Number(v).toFixed(3)}`;
     }
     onMounted(async () => {
       if (props.session.openingView) applyView(props.session.openingView);
@@ -7134,18 +7163,23 @@ const _sfc_main$2 = {
             createBaseVNode("p", _hoisted_4$2, "世界包：" + toDisplayString(__props.session.pack_id), 1),
             createBaseVNode("p", _hoisted_5$2, "模式：" + toDisplayString(modeLabel.value), 1),
             createBaseVNode("p", _hoisted_6$1, "回合：" + toDisplayString(view.value.turn ?? 0) + " · 第 " + toDisplayString(actions.value.day ?? "?") + " 天", 1),
-            view.value.turn ? (openBlock(), createElementBlock("div", _hoisted_7$1, [
-              view.value.sub_turns > 1 ? (openBlock(), createElementBlock("span", _hoisted_8$1, "本轮生成了 " + toDisplayString(view.value.sub_turns) + " 次", 1)) : createCommentVNode("", true)
+            cost.value ? (openBlock(), createElementBlock("p", _hoisted_7$1, [
+              createTextVNode(" 本局成本：" + toDisplayString(money(cost.value.cost_offpeak)) + " ", 1),
+              createBaseVNode("span", null, "（" + toDisplayString(cost.value.calls) + " 次调用·空闲时段价）", 1)
             ])) : createCommentVNode("", true),
-            createBaseVNode("div", _hoisted_9$1, [
+            cost.value && cost.value.unknown_price_calls ? (openBlock(), createElementBlock("p", _hoisted_8$1, " ⚠️ 有 " + toDisplayString(cost.value.unknown_price_calls) + " 次调用用的模型不在价格表里，上面这个数**偏低**。 ", 1)) : createCommentVNode("", true),
+            view.value.turn ? (openBlock(), createElementBlock("div", _hoisted_9$1, [
+              view.value.sub_turns > 1 ? (openBlock(), createElementBlock("span", _hoisted_10$1, "本轮生成了 " + toDisplayString(view.value.sub_turns) + " 次", 1)) : createCommentVNode("", true)
+            ])) : createCommentVNode("", true),
+            createBaseVNode("div", _hoisted_11$1, [
               createBaseVNode("button", {
                 disabled: unref(streaming),
                 onClick: _cache[0] || (_cache[0] = ($event) => emit2("leave"))
-              }, "换一张卡", 8, _hoisted_10$1)
+              }, "换一张卡", 8, _hoisted_12$1)
             ]),
             _cache[8] || (_cache[8] = createBaseVNode("h3", { class: "sec" }, "时间线", -1)),
             _cache[9] || (_cache[9] = createBaseVNode("p", { class: "t" }, " 每一回合都会自动记一版。回到某一版会**新开一条分支**——原来的线留着， 不会被覆盖。 ", -1)),
-            !timeline.value.length ? (openBlock(), createElementBlock("p", _hoisted_11$1, "（还没有版本）")) : createCommentVNode("", true),
+            !timeline.value.length ? (openBlock(), createElementBlock("p", _hoisted_13$1, "（还没有版本）")) : createCommentVNode("", true),
             (openBlock(true), createElementBlock(Fragment, null, renderList(timeline.value, (e) => {
               return openBlock(), createElementBlock("button", {
                 key: e.rev,
@@ -7153,22 +7187,22 @@ const _sfc_main$2 = {
                 disabled: unref(streaming) || e.rev === currentRev.value,
                 onClick: ($event) => rewindTo(e.rev)
               }, [
-                createBaseVNode("span", _hoisted_13$1, [
+                createBaseVNode("span", _hoisted_15$1, [
                   createTextVNode(" rev " + toDisplayString(e.rev) + " · 第 " + toDisplayString(e.turn) + " 回合 ", 1),
-                  e.rev === currentRev.value ? (openBlock(), createElementBlock("span", _hoisted_14$1, "（当前）")) : createCommentVNode("", true)
+                  e.rev === currentRev.value ? (openBlock(), createElementBlock("span", _hoisted_16$1, "（当前）")) : createCommentVNode("", true)
                 ]),
-                createBaseVNode("span", _hoisted_15$1, toDisplayString(e.label), 1),
-                createBaseVNode("span", _hoisted_16$1, [
+                createBaseVNode("span", _hoisted_17$1, toDisplayString(e.label), 1),
+                createBaseVNode("span", _hoisted_18$1, [
                   createTextVNode(toDisplayString(e.branch) + " · 第 " + toDisplayString(e.day) + " 天 · " + toDisplayString(shortTime(e.ts)) + " ", 1),
                   e.is_rewind ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
                     createTextVNode(" · 回退派生")
                   ], 64)) : createCommentVNode("", true)
                 ])
-              ], 10, _hoisted_12$1);
+              ], 10, _hoisted_14$1);
             }), 128))
           ])
         ]),
-        createBaseVNode("section", _hoisted_17$1, [
+        createBaseVNode("section", _hoisted_19$1, [
           createVNode(_sfc_main$4, {
             entries: entries.value,
             draft: unref(draft),
@@ -7194,7 +7228,7 @@ const _sfc_main$2 = {
             onLeave: _cache[5] || (_cache[5] = ($event) => emit2("leave"))
           }, null, 8, ["streaming"])
         ]),
-        createBaseVNode("aside", _hoisted_18$1, [
+        createBaseVNode("aside", _hoisted_20$1, [
           createVNode(_sfc_main$3, {
             status: status.value,
             actions: actions.value,
@@ -7497,28 +7531,57 @@ const _hoisted_58 = {
 };
 const _hoisted_59 = { class: "errbox" };
 const _hoisted_60 = { class: "kv" };
-const _hoisted_61 = { class: "t" };
-const _hoisted_62 = { class: "t" };
-const _hoisted_63 = { class: "save-row" };
-const _hoisted_64 = ["disabled"];
-const _hoisted_65 = ["disabled"];
-const _hoisted_66 = { class: "kv" };
-const _hoisted_67 = { class: "t" };
-const _hoisted_68 = {
-  key: 0,
-  class: "t"
-};
-const _hoisted_69 = {
-  key: 0,
-  class: "ok"
-};
-const _hoisted_70 = { class: "errbox" };
-const _hoisted_71 = {
+const _hoisted_61 = {
   key: 2,
   class: "t"
 };
-const _hoisted_72 = { class: "t" };
-const _hoisted_73 = { class: "diff" };
+const _hoisted_62 = { class: "ok" };
+const _hoisted_63 = { class: "kv" };
+const _hoisted_64 = {
+  key: 0,
+  class: "cost"
+};
+const _hoisted_65 = { class: "t" };
+const _hoisted_66 = { class: "t" };
+const _hoisted_67 = { class: "save-row" };
+const _hoisted_68 = ["disabled"];
+const _hoisted_69 = ["disabled"];
+const _hoisted_70 = { class: "save-row" };
+const _hoisted_71 = ["disabled"];
+const _hoisted_72 = ["disabled"];
+const _hoisted_73 = {
+  key: 0,
+  class: "gen"
+};
+const _hoisted_74 = {
+  key: 1,
+  class: "ok"
+};
+const _hoisted_75 = {
+  key: 2,
+  class: "err"
+};
+const _hoisted_76 = {
+  key: 3,
+  class: "diff"
+};
+const _hoisted_77 = { class: "kv" };
+const _hoisted_78 = { class: "t" };
+const _hoisted_79 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_80 = {
+  key: 0,
+  class: "ok"
+};
+const _hoisted_81 = { class: "errbox" };
+const _hoisted_82 = {
+  key: 2,
+  class: "t"
+};
+const _hoisted_83 = { class: "t" };
+const _hoisted_84 = { class: "diff" };
 const _sfc_main$1 = {
   __name: "StudioView",
   props: {
@@ -7539,6 +7602,11 @@ const _sfc_main$1 = {
     const forkFrom = ref("");
     const chatInput = ref("");
     const chatBox = ref(null);
+    const packCost = ref(null);
+    const injection = ref(null);
+    const ackedInjection = ref(false);
+    const gate = ref(null);
+    const gateConfirm = ref("");
     const form = ref({
       name: "",
       source_text: "",
@@ -7679,7 +7747,100 @@ const _sfc_main$1 = {
         creator.hydrate(null);
         say(e.message, true);
       }
+      await loadPackCost(d.id);
+      await loadInjection(d.id);
       await scrollChat();
+    }
+    async function loadPackCost(name) {
+      packCost.value = null;
+      try {
+        const d = await api.packCost(name);
+        packCost.value = d.totals || null;
+      } catch {
+        packCost.value = null;
+      }
+    }
+    async function loadInjection(name) {
+      injection.value = null;
+      ackedInjection.value = false;
+      try {
+        const d = await api.packInjection(name);
+        const findings = [...d.injection || [], ...d.forbidden_overlap || []];
+        injection.value = findings.length ? findings : null;
+      } catch {
+        injection.value = null;
+      }
+    }
+    function publishClick() {
+      if (injection.value && !ackedInjection.value) {
+        ackedInjection.value = true;
+        say("已知悉注入提醒——再点一次「确认发布」就会发布（提醒不会阻止发布）。");
+        return;
+      }
+      publish();
+    }
+    async function gateClick(kind) {
+      if (!pickedDraft.value) return;
+      if (gateConfirm.value !== kind) {
+        gateConfirm.value = kind;
+        say(`「${gateKindLabel(kind)}」会真机调模型（${gateCost(kind)}）——再点一次就开始。`);
+        return;
+      }
+      gateConfirm.value = "";
+      try {
+        const d = await api.runGate(pickedDraft.value.id, kind, true);
+        gate.value = { gate_id: d.gate_id, kind, status: "running", output: "" };
+        say(`已起「${d.label}」（${d.cost}）——跑完会在这里显示结果。`);
+        await pollGate(d.gate_id);
+      } catch (e) {
+        say(e.message, true);
+      }
+    }
+    async function pollGate(id) {
+      for (let i = 0; i < 200; i += 1) {
+        await new Promise((r) => setTimeout(r, 3e3));
+        try {
+          const g = await api.gate(id);
+          gate.value = g;
+          if (g.status !== "running") {
+            say(g.status === "done" ? `门禁通过：${gateKindLabel(g.kind)}` : `门禁未通过（退出码 ${g.exit_code}）——结果在右栏。`, g.status !== "done");
+            return;
+          }
+        } catch (e) {
+          say(e.message, true);
+          return;
+        }
+      }
+      say("门禁还在跑（超过 10 分钟）——刷新页面后可以在右栏看到结果。", true);
+    }
+    function gateKindLabel(kind) {
+      return kind === "e1" ? "E1 判官灵敏度" : "真机冒烟（通关 + 审计）";
+    }
+    function gateCost(kind) {
+      return kind === "e1" ? "约 ¥0.1–0.3" : "约 ¥0.05–0.2";
+    }
+    function money(v) {
+      return v == null ? "—" : `¥${Number(v).toFixed(3)}`;
+    }
+    function purposeLabel(p2) {
+      return {
+        turn: "游玩回合",
+        judge: "语义校验",
+        factcheck: "事实核查",
+        extract: "事实提取",
+        compress: "历史压缩",
+        reflect: "关系洞察",
+        dedup: "语义去重",
+        plan: "计划",
+        import_world: "生成·世界",
+        import_npcs: "生成·角色",
+        import_schedule: "生成·日程",
+        import_nodes: "生成·主线",
+        import_events: "生成·事件",
+        import_endings: "生成·结局",
+        creator: "改卡对话",
+        aux: "辅助"
+      }[p2] || p2;
     }
     async function scrollChat() {
       await nextTick();
@@ -7772,7 +7933,7 @@ const _sfc_main$1 = {
             }, "← 回到选卡")
           ]),
           createBaseVNode("div", _hoisted_4$1, [
-            _cache[11] || (_cache[11] = createBaseVNode("h3", { class: "sec" }, "任务", -1)),
+            _cache[13] || (_cache[13] = createBaseVNode("h3", { class: "sec" }, "任务", -1)),
             !jobs.value.length ? (openBlock(), createElementBlock("p", _hoisted_5$1, "还没有生成任务。")) : createCommentVNode("", true),
             (openBlock(true), createElementBlock(Fragment, null, renderList(jobs.value, (j) => {
               return openBlock(), createElementBlock("button", {
@@ -7790,7 +7951,7 @@ const _sfc_main$1 = {
                 createBaseVNode("span", _hoisted_9, toDisplayString(j.job_id), 1)
               ], 10, _hoisted_6);
             }), 128)),
-            _cache[12] || (_cache[12] = createBaseVNode("h3", { class: "sec" }, "草稿（未发布）", -1)),
+            _cache[14] || (_cache[14] = createBaseVNode("h3", { class: "sec" }, "草稿（未发布）", -1)),
             !drafts.value.length ? (openBlock(), createElementBlock("p", _hoisted_10, " 还没有草稿。生成的包先落这里，过 check-worldpack 才允许发布。 ")) : createCommentVNode("", true),
             (openBlock(true), createElementBlock(Fragment, null, renderList(drafts.value, (d) => {
               return openBlock(), createElementBlock("button", {
@@ -7803,14 +7964,14 @@ const _sfc_main$1 = {
                 createBaseVNode("span", _hoisted_14, toDisplayString(d.id) + " · " + toDisplayString(d.npcs) + " 角色 · " + toDisplayString(d.nodes) + " 节点", 1)
               ], 10, _hoisted_11);
             }), 128)),
-            _cache[13] || (_cache[13] = createBaseVNode("h3", { class: "sec" }, "改一张现成的卡", -1)),
-            _cache[14] || (_cache[14] = createBaseVNode("p", { class: "t" }, " 把库里已发布的卡**复制**成草稿再改——原版原地不动（Agent 只改草稿）。 ", -1)),
+            _cache[15] || (_cache[15] = createBaseVNode("h3", { class: "sec" }, "改一张现成的卡", -1)),
+            _cache[16] || (_cache[16] = createBaseVNode("p", { class: "t" }, " 把库里已发布的卡**复制**成草稿再改——原版原地不动（Agent 只改草稿）。 ", -1)),
             createBaseVNode("div", _hoisted_15, [
               withDirectives(createBaseVNode("select", {
                 "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => forkFrom.value = $event),
                 disabled: props.busy
               }, [
-                _cache[10] || (_cache[10] = createBaseVNode("option", { value: "" }, "（选一张已发布的卡）", -1)),
+                _cache[12] || (_cache[12] = createBaseVNode("option", { value: "" }, "（选一张已发布的卡）", -1)),
                 (openBlock(true), createElementBlock(Fragment, null, renderList(__props.packs, (p2) => {
                   return openBlock(), createElementBlock("option", {
                     key: p2.id,
@@ -7841,13 +8002,13 @@ const _sfc_main$1 = {
               }, " 和 Agent 改这一版 ", 2)
             ]),
             tab.value === "generate" ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
-              _cache[21] || (_cache[21] = createBaseVNode("p", { class: "t" }, [
+              _cache[23] || (_cache[23] = createBaseVNode("p", { class: "t" }, [
                 createTextVNode(" 小说 / 剧本 / 大纲的正文都行（超长会自动截断到 30 万字）。 "),
                 createBaseVNode("strong", null, "接口只收文本、不收文件路径"),
                 createTextVNode("——这是安全边界，不是偷懒。 ")
               ], -1)),
               createBaseVNode("div", _hoisted_22, [
-                _cache[15] || (_cache[15] = createBaseVNode("label", null, "包名（只能是目录名：中文/字母/数字/下划线/连字符）", -1)),
+                _cache[17] || (_cache[17] = createBaseVNode("label", null, "包名（只能是目录名：中文/字母/数字/下划线/连字符）", -1)),
                 withDirectives(createBaseVNode("input", {
                   "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => form.value.name = $event),
                   type: "text",
@@ -7857,7 +8018,7 @@ const _sfc_main$1 = {
                 ])
               ]),
               createBaseVNode("div", _hoisted_23, [
-                _cache[16] || (_cache[16] = createBaseVNode("label", null, "素材正文", -1)),
+                _cache[18] || (_cache[18] = createBaseVNode("label", null, "素材正文", -1)),
                 withDirectives(createBaseVNode("textarea", {
                   "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => form.value.source_text = $event),
                   rows: "8",
@@ -7868,7 +8029,7 @@ const _sfc_main$1 = {
               ]),
               createBaseVNode("div", _hoisted_24, [
                 createBaseVNode("label", null, [
-                  _cache[17] || (_cache[17] = createTextVNode("修复轮次 ")),
+                  _cache[19] || (_cache[19] = createTextVNode("修复轮次 ")),
                   withDirectives(createBaseVNode("input", {
                     "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => form.value.rounds = $event),
                     type: "text",
@@ -7884,7 +8045,7 @@ const _sfc_main$1 = {
                   }, null, 512), [
                     [vModelCheckbox, form.value.with_corpus]
                   ]),
-                  _cache[18] || (_cache[18] = createTextVNode(" 同时生成 Judge 语料（多 12 次调用，更贵）"))
+                  _cache[20] || (_cache[20] = createTextVNode(" 同时生成 Judge 语料（多 12 次调用，更贵）"))
                 ])
               ]),
               createBaseVNode("div", _hoisted_25, [
@@ -7895,10 +8056,10 @@ const _sfc_main$1 = {
                   }, null, 512), [
                     [vModelCheckbox, form.value.offline]
                   ]),
-                  _cache[19] || (_cache[19] = createTextVNode(" 离线试跑（内嵌假模型，不花钱、不联网）"))
+                  _cache[21] || (_cache[21] = createTextVNode(" 离线试跑（内嵌假模型，不花钱、不联网）"))
                 ])
               ]),
-              form.value.offline ? (openBlock(), createElementBlock("p", _hoisted_26, ' 离线试跑产出的是一个**假世界**（"离线测试世界"），只用来看这条链通不通。 要真的从素材做出能玩的卡，取消上面的勾。 ')) : (openBlock(), createElementBlock("p", _hoisted_27, _cache[20] || (_cache[20] = [
+              form.value.offline ? (openBlock(), createElementBlock("p", _hoisted_26, ' 离线试跑产出的是一个**假世界**（"离线测试世界"），只用来看这条链通不通。 要真的从素材做出能玩的卡，取消上面的勾。 ')) : (openBlock(), createElementBlock("p", _hoisted_27, _cache[22] || (_cache[22] = [
                 createTextVNode(" ⚠️ 真实生成会调用模型：一次约 "),
                 createBaseVNode("strong", null, "¥0.1–0.3", -1),
                 createTextVNode("；勾了语料还要再贵一些。 生成是后台任务，可以边跑边看，也可以取消（取消点在块与块之间）。 ")
@@ -7914,7 +8075,7 @@ const _sfc_main$1 = {
                 }, "取消任务")) : createCommentVNode("", true),
                 unref(running) ? (openBlock(), createElementBlock("span", _hoisted_30, "已等 " + toDisplayString(elapsed.value) + " 秒…", 1)) : createCommentVNode("", true)
               ]),
-              _cache[22] || (_cache[22] = createBaseVNode("h3", { class: "sec" }, "进度", -1)),
+              _cache[24] || (_cache[24] = createBaseVNode("h3", { class: "sec" }, "进度", -1)),
               !pickedJobId.value ? (openBlock(), createElementBlock("p", _hoisted_31, "起一个任务，或在左栏点一个任务/草稿看它的进度。")) : (openBlock(), createElementBlock(Fragment, { key: 3 }, [
                 createBaseVNode("p", _hoisted_32, [
                   createTextVNode(" 任务 " + toDisplayString(pickedJobId.value) + " · ", 1),
@@ -7944,9 +8105,9 @@ const _sfc_main$1 = {
             ], 64)) : (openBlock(), createElementBlock(Fragment, { key: 1 }, [
               !pickedDraft.value ? (openBlock(), createElementBlock("p", _hoisted_39, " 先在左栏**选一张草稿**，或把一张已发布的卡复制成草稿。 创作 Agent 只改草稿——原始包在结构上只读。 ")) : (openBlock(), createElementBlock(Fragment, { key: 1 }, [
                 createBaseVNode("p", _hoisted_40, [
-                  _cache[23] || (_cache[23] = createTextVNode(" 正在改：")),
+                  _cache[25] || (_cache[25] = createTextVNode(" 正在改：")),
                   createBaseVNode("strong", null, toDisplayString(pickedDraft.value.name || pickedDraft.value.id), 1),
-                  _cache[24] || (_cache[24] = createTextVNode(" · Agent 会先读再改，每改一处都会跑 check-worldpack，报错会被它自己拿去修。 改完的 diff 在右栏，确认无误再发布。 "))
+                  _cache[26] || (_cache[26] = createTextVNode(" · Agent 会先读再改，每改一处都会跑 check-worldpack，报错会被它自己拿去修。 改完的 diff 在右栏，确认无误再发布。 "))
                 ]),
                 unref(creator).summary.value ? (openBlock(), createElementBlock("p", _hoisted_41, " Agent 看到的现状：" + toDisplayString(unref(creator).summary.value), 1)) : createCommentVNode("", true),
                 createBaseVNode("div", _hoisted_42, [
@@ -7980,10 +8141,10 @@ const _sfc_main$1 = {
                         createTextVNode(" " + toDisplayString(s.name) + " ", 1),
                         createBaseVNode("span", _hoisted_48, toDisplayString(s.status === "ok" ? "" : `（${s.status}）`), 1)
                       ], 64)) : s.type === "text" ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
-                        _cache[25] || (_cache[25] = createBaseVNode("span", { class: "mark" }, "💬", -1)),
+                        _cache[27] || (_cache[27] = createBaseVNode("span", { class: "mark" }, "💬", -1)),
                         createTextVNode(toDisplayString(s.text), 1)
                       ], 64)) : (openBlock(), createElementBlock(Fragment, { key: 2 }, [
-                        _cache[26] || (_cache[26] = createBaseVNode("span", { class: "mark" }, "✗", -1)),
+                        _cache[28] || (_cache[28] = createBaseVNode("span", { class: "mark" }, "✗", -1)),
                         createTextVNode(toDisplayString(s.text), 1)
                       ], 64))
                     ]);
@@ -8011,9 +8172,9 @@ const _sfc_main$1 = {
           ])
         ]),
         createBaseVNode("aside", _hoisted_54, [
-          _cache[45] || (_cache[45] = createBaseVNode("div", { class: "col-head" }, "校验报告（只读）", -1)),
+          _cache[53] || (_cache[53] = createBaseVNode("div", { class: "col-head" }, "校验报告（只读）", -1)),
           createBaseVNode("div", _hoisted_55, [
-            !pickedDraft.value && !report.value ? (openBlock(), createElementBlock("p", _hoisted_56, _cache[27] || (_cache[27] = [
+            !pickedDraft.value && !report.value ? (openBlock(), createElementBlock("p", _hoisted_56, _cache[29] || (_cache[29] = [
               createTextVNode(" 选一张草稿看它的校验报告。这一栏是"),
               createBaseVNode("strong", null, "呈现", -1),
               createTextVNode("，不是编辑器—— 改内容由创作者 Agent 负责（对话式），人负责确认与发布。 ")
@@ -8021,67 +8182,116 @@ const _sfc_main$1 = {
             pickedDraft.value ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
               createBaseVNode("h3", _hoisted_57, toDisplayString(pickedDraft.value.name || pickedDraft.value.id), 1),
               pickedDraft.value.playable ? (openBlock(), createElementBlock("p", _hoisted_58, "✓ 通过 check-worldpack")) : (openBlock(), createElementBlock(Fragment, { key: 1 }, [
-                _cache[28] || (_cache[28] = createBaseVNode("p", { class: "err" }, "✗ 未通过 check-worldpack（不能发布）", -1)),
+                _cache[30] || (_cache[30] = createBaseVNode("p", { class: "err" }, "✗ 未通过 check-worldpack（不能发布）", -1)),
                 createBaseVNode("pre", _hoisted_59, toDisplayString(pickedDraft.value.error), 1)
               ], 64)),
               createBaseVNode("div", _hoisted_60, [
                 createBaseVNode("div", null, [
-                  _cache[29] || (_cache[29] = createBaseVNode("span", null, "角色", -1)),
+                  _cache[31] || (_cache[31] = createBaseVNode("span", null, "角色", -1)),
                   createBaseVNode("b", null, toDisplayString(pickedDraft.value.npcs), 1)
                 ]),
                 createBaseVNode("div", null, [
-                  _cache[30] || (_cache[30] = createBaseVNode("span", null, "主线节点", -1)),
+                  _cache[32] || (_cache[32] = createBaseVNode("span", null, "主线节点", -1)),
                   createBaseVNode("b", null, toDisplayString(pickedDraft.value.nodes), 1)
                 ]),
                 createBaseVNode("div", null, [
-                  _cache[31] || (_cache[31] = createBaseVNode("span", null, "结局", -1)),
+                  _cache[33] || (_cache[33] = createBaseVNode("span", null, "结局", -1)),
                   createBaseVNode("b", null, toDisplayString(pickedDraft.value.endings), 1)
                 ]),
                 createBaseVNode("div", null, [
-                  _cache[32] || (_cache[32] = createBaseVNode("span", null, "世界书条目", -1)),
+                  _cache[34] || (_cache[34] = createBaseVNode("span", null, "世界书条目", -1)),
                   createBaseVNode("b", null, toDisplayString(pickedDraft.value.lore), 1)
                 ]),
                 createBaseVNode("div", null, [
-                  _cache[33] || (_cache[33] = createBaseVNode("span", null, "地点", -1)),
+                  _cache[35] || (_cache[35] = createBaseVNode("span", null, "地点", -1)),
                   createBaseVNode("b", null, toDisplayString(pickedDraft.value.locations), 1)
                 ])
               ]),
-              createBaseVNode("p", _hoisted_61, "内容指纹 " + toDisplayString((pickedDraft.value.digest || "").slice(0, 16)) + "…", 1),
-              createBaseVNode("p", _hoisted_62, toDisplayString(pickedDraft.value.path), 1),
-              createBaseVNode("div", _hoisted_63, [
+              _cache[39] || (_cache[39] = createBaseVNode("h3", { class: "sec" }, "这张卡的成本", -1)),
+              !packCost.value ? (openBlock(), createElementBlock("p", _hoisted_61, "（还没有记账——生成、游玩或改卡之后会出现）")) : (openBlock(), createElementBlock(Fragment, { key: 3 }, [
+                createBaseVNode("p", _hoisted_62, [
+                  _cache[36] || (_cache[36] = createTextVNode(" 累计 ")),
+                  createBaseVNode("strong", null, toDisplayString(money(packCost.value.cost_offpeak)), 1),
+                  createTextVNode(" · " + toDisplayString(packCost.value.calls) + " 次调用 ", 1)
+                ]),
+                createBaseVNode("div", _hoisted_63, [
+                  (openBlock(true), createElementBlock(Fragment, null, renderList(packCost.value.by_purpose, (row, p2) => {
+                    return openBlock(), createElementBlock("div", { key: p2 }, [
+                      createBaseVNode("span", null, toDisplayString(purposeLabel(p2)), 1),
+                      createBaseVNode("b", null, toDisplayString(row.calls) + " 次 · " + toDisplayString(money(row.cost)), 1)
+                    ]);
+                  }), 128))
+                ]),
+                packCost.value.unknown_price_calls ? (openBlock(), createElementBlock("p", _hoisted_64, " ⚠️ 有 " + toDisplayString(packCost.value.unknown_price_calls) + " 次调用用的模型不在价格表里， 上面这个数**偏低**。 ", 1)) : createCommentVNode("", true)
+              ], 64)),
+              createBaseVNode("p", _hoisted_65, "内容指纹 " + toDisplayString((pickedDraft.value.digest || "").slice(0, 16)) + "…", 1),
+              createBaseVNode("p", _hoisted_66, toDisplayString(pickedDraft.value.path), 1),
+              injection.value ? (openBlock(), createElementBlock(Fragment, { key: 4 }, [
+                _cache[37] || (_cache[37] = createBaseVNode("h3", { class: "sec" }, "⚠️ 注入提醒", -1)),
+                _cache[38] || (_cache[38] = createBaseVNode("p", { class: "cost" }, [
+                  createTextVNode(' 下面这些**作者内容会进系统提示**，而它们看起来像"对模型下的指令"。 '),
+                  createBaseVNode("strong", null, "这只是提醒，不是门禁"),
+                  createTextVNode("——命中了也能发布； 正则必然有误报，请自己看原文片段判断。 ")
+                ], -1)),
+                (openBlock(true), createElementBlock(Fragment, null, renderList(injection.value, (h, i) => {
+                  return openBlock(), createElementBlock("pre", {
+                    key: "inj" + i,
+                    class: "errbox"
+                  }, toDisplayString(`${h.where} · ${h.field}
+${h.kind || "写了本包禁用元素：" + h.token}
+…${h.snippet}…`), 1);
+                }), 128))
+              ], 64)) : createCommentVNode("", true),
+              createBaseVNode("div", _hoisted_67, [
                 createBaseVNode("button", {
                   disabled: !pickedDraft.value.playable,
                   onClick: playtest
-                }, "试玩这一版", 8, _hoisted_64),
+                }, "试玩这一版", 8, _hoisted_68),
                 createBaseVNode("button", {
                   disabled: !pickedDraft.value.playable,
-                  onClick: publish
-                }, "发布", 8, _hoisted_65),
+                  onClick: publishClick
+                }, toDisplayString(injection.value && !ackedInjection.value ? "确认发布（先看上面的提醒）" : "发布"), 9, _hoisted_69),
                 createBaseVNode("button", { onClick: remove2 }, "删除草稿")
               ]),
-              _cache[34] || (_cache[34] = createBaseVNode("p", { class: "t" }, " 试玩用**未发布**的草稿开局（会打「未发布」水印）。发布 = 把它变成别人也能玩的卡。 ", -1))
+              _cache[40] || (_cache[40] = createBaseVNode("h3", { class: "sec" }, "质量门禁", -1)),
+              _cache[41] || (_cache[41] = createBaseVNode("p", { class: "t" }, ' 这两道门都要**真机调模型**（不同于 `check-worldpack`——那个在加载期跑、免费， 已经作为发布闸门）。"想上精选"时再点。 ', -1)),
+              createBaseVNode("div", _hoisted_70, [
+                createBaseVNode("button", {
+                  disabled: !pickedDraft.value.playable || !!gateConfirm.value && gateConfirm.value !== "e1",
+                  onClick: _cache[10] || (_cache[10] = ($event) => gateClick("e1"))
+                }, toDisplayString(gateConfirm.value === "e1" ? `确认跑 E1（${gateCost("e1")}）` : "E1 判官灵敏度"), 9, _hoisted_71),
+                createBaseVNode("button", {
+                  disabled: !pickedDraft.value.playable || !!gateConfirm.value && gateConfirm.value !== "smoke",
+                  onClick: _cache[11] || (_cache[11] = ($event) => gateClick("smoke"))
+                }, toDisplayString(gateConfirm.value === "smoke" ? `确认跑冒烟（${gateCost("smoke")}）` : "真机冒烟（通关+审计）"), 9, _hoisted_72)
+              ]),
+              gate.value ? (openBlock(), createElementBlock(Fragment, { key: 5 }, [
+                gate.value.status === "running" ? (openBlock(), createElementBlock("p", _hoisted_73, "门禁运行中…（真机跑模型，几分钟）")) : gate.value.status === "done" ? (openBlock(), createElementBlock("p", _hoisted_74, " ✓ " + toDisplayString(gateKindLabel(gate.value.kind)) + " 通过 ", 1)) : (openBlock(), createElementBlock("p", _hoisted_75, " ✗ " + toDisplayString(gateKindLabel(gate.value.kind)) + " 未通过（退出码 " + toDisplayString(gate.value.exit_code) + "） ", 1)),
+                gate.value.output ? (openBlock(), createElementBlock("pre", _hoisted_76, toDisplayString(gate.value.output), 1)) : createCommentVNode("", true)
+              ], 64)) : createCommentVNode("", true),
+              _cache[42] || (_cache[42] = createBaseVNode("p", { class: "t" }, " 试玩用**未发布**的草稿开局（会打「未发布」水印）。发布 = 把它变成别人也能玩的卡。 ", -1))
             ], 64)) : createCommentVNode("", true),
             report.value ? (openBlock(), createElementBlock(Fragment, { key: 2 }, [
-              _cache[40] || (_cache[40] = createBaseVNode("h3", { class: "sec" }, "这次生成", -1)),
-              createBaseVNode("div", _hoisted_66, [
+              _cache[48] || (_cache[48] = createBaseVNode("h3", { class: "sec" }, "这次生成", -1)),
+              createBaseVNode("div", _hoisted_77, [
                 createBaseVNode("div", null, [
-                  _cache[35] || (_cache[35] = createBaseVNode("span", null, "修复轮次", -1)),
+                  _cache[43] || (_cache[43] = createBaseVNode("span", null, "修复轮次", -1)),
                   createBaseVNode("b", null, toDisplayString(report.value.repairs), 1)
                 ]),
                 createBaseVNode("div", null, [
-                  _cache[36] || (_cache[36] = createBaseVNode("span", null, "语料条数", -1)),
+                  _cache[44] || (_cache[44] = createBaseVNode("span", null, "语料条数", -1)),
                   createBaseVNode("b", null, toDisplayString(report.value.corpus_written), 1)
                 ]),
                 createBaseVNode("div", null, [
-                  _cache[37] || (_cache[37] = createBaseVNode("span", null, "走过阶段", -1)),
+                  _cache[45] || (_cache[45] = createBaseVNode("span", null, "走过阶段", -1)),
                   createBaseVNode("b", null, toDisplayString((report.value.stages || []).length), 1)
                 ])
               ]),
-              createBaseVNode("p", _hoisted_67, toDisplayString(report.value.summary), 1),
-              jobSnapshot.value && jobSnapshot.value.cost ? (openBlock(), createElementBlock("p", _hoisted_68, " 成本：" + toDisplayString(jobSnapshot.value.cost), 1)) : createCommentVNode("", true),
+              createBaseVNode("p", _hoisted_78, toDisplayString(report.value.summary), 1),
+              jobSnapshot.value && jobSnapshot.value.cost ? (openBlock(), createElementBlock("p", _hoisted_79, " 成本：" + toDisplayString(jobSnapshot.value.cost), 1)) : createCommentVNode("", true),
               repairLines.value.length ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
-                _cache[38] || (_cache[38] = createBaseVNode("h3", { class: "sec" }, "修复轮报错原文", -1)),
-                _cache[39] || (_cache[39] = createBaseVNode("p", { class: "t" }, "这些是 check-worldpack 当时拒绝的理由（工作台会拿它去喂模型修）。", -1)),
+                _cache[46] || (_cache[46] = createBaseVNode("h3", { class: "sec" }, "修复轮报错原文", -1)),
+                _cache[47] || (_cache[47] = createBaseVNode("p", { class: "t" }, "这些是 check-worldpack 当时拒绝的理由（工作台会拿它去喂模型修）。", -1)),
                 (openBlock(true), createElementBlock(Fragment, null, renderList(repairLines.value, (r, i) => {
                   return openBlock(), createElementBlock("pre", {
                     key: i,
@@ -8091,16 +8301,16 @@ const _sfc_main$1 = {
               ], 64)) : createCommentVNode("", true)
             ], 64)) : createCommentVNode("", true),
             pickedDraft.value && unref(creator).result.value ? (openBlock(), createElementBlock(Fragment, { key: 3 }, [
-              _cache[43] || (_cache[43] = createBaseVNode("h3", { class: "sec" }, "Agent 这一版的校验", -1)),
-              unref(creator).result.value.validate_ok ? (openBlock(), createElementBlock("p", _hoisted_69, "✓ check-worldpack 通过")) : (openBlock(), createElementBlock(Fragment, { key: 1 }, [
-                _cache[41] || (_cache[41] = createBaseVNode("p", { class: "err" }, "✗ check-worldpack 未通过（不能发布）", -1)),
-                createBaseVNode("pre", _hoisted_70, toDisplayString(unref(creator).result.value.validate_text), 1),
-                _cache[42] || (_cache[42] = createBaseVNode("p", { class: "t" }, "继续和 Agent 说「按这个报错修」——它拿到的就是这段原文。", -1))
+              _cache[51] || (_cache[51] = createBaseVNode("h3", { class: "sec" }, "Agent 这一版的校验", -1)),
+              unref(creator).result.value.validate_ok ? (openBlock(), createElementBlock("p", _hoisted_80, "✓ check-worldpack 通过")) : (openBlock(), createElementBlock(Fragment, { key: 1 }, [
+                _cache[49] || (_cache[49] = createBaseVNode("p", { class: "err" }, "✗ check-worldpack 未通过（不能发布）", -1)),
+                createBaseVNode("pre", _hoisted_81, toDisplayString(unref(creator).result.value.validate_text), 1),
+                _cache[50] || (_cache[50] = createBaseVNode("p", { class: "t" }, "继续和 Agent 说「按这个报错修」——它拿到的就是这段原文。", -1))
               ], 64)),
-              _cache[44] || (_cache[44] = createBaseVNode("h3", { class: "sec" }, "工作版 vs 会话基线", -1)),
-              !diffText.value ? (openBlock(), createElementBlock("p", _hoisted_71, "本次会话还没有改动。")) : (openBlock(), createElementBlock(Fragment, { key: 3 }, [
-                createBaseVNode("p", _hoisted_72, "改了：" + toDisplayString((unref(creator).result.value.changed || []).join("、")), 1),
-                createBaseVNode("pre", _hoisted_73, toDisplayString(diffText.value), 1)
+              _cache[52] || (_cache[52] = createBaseVNode("h3", { class: "sec" }, "工作版 vs 会话基线", -1)),
+              !diffText.value ? (openBlock(), createElementBlock("p", _hoisted_82, "本次会话还没有改动。")) : (openBlock(), createElementBlock(Fragment, { key: 3 }, [
+                createBaseVNode("p", _hoisted_83, "改了：" + toDisplayString((unref(creator).result.value.changed || []).join("、")), 1),
+                createBaseVNode("pre", _hoisted_84, toDisplayString(diffText.value), 1)
               ], 64))
             ], 64)) : createCommentVNode("", true)
           ])

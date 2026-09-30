@@ -38,6 +38,11 @@ const tab = ref('generate') // generate | agent
 const forkFrom = ref('')
 const chatInput = ref('')
 const chatBox = ref(null)
+const packCost = ref(null) // N5/C3：这张卡的累计成本
+const injection = ref(null) // C4：注入提醒（null = 没有命中）
+const ackedInjection = ref(false) // 作者已知悉（**只影响按钮文案，不阻止发布**）
+const gate = ref(null) // C5：当前/最近一道门禁的结果
+const gateConfirm = ref('') // 待确认的门禁类型（两步确认的第一步）
 
 const form = ref({
   name: '',
@@ -183,7 +188,7 @@ async function resetChat() {
   }
 }
 
-/** 切到某张草稿：拉它的创作会话现状（对话 + diff），并默认切到对话模式。 */
+/** 切到某张草稿：拉它的创作会话现状（对话 + diff）+ **这张卡的累计成本**。 */
 async function openDraft(d) {
   pickedDraft.value = d
   tab.value = 'agent'
@@ -198,7 +203,106 @@ async function openDraft(d) {
     creator.hydrate(null)
     say(e.message, true)
   }
+  await loadPackCost(d.id)
+  await loadInjection(d.id)
   await scrollChat()
+}
+
+/** N5/C3：这张卡**累计**花了多少钱（游玩 + 改卡 + 生成都在内，同一个 pack 轴）。 */
+async function loadPackCost(name) {
+  packCost.value = null
+  try {
+    const d = await api.packCost(name)
+    packCost.value = d.totals || null
+  } catch {
+    packCost.value = null  // 成本读不出来不该挡住别的功能
+  }
+}
+
+/** C4：注入**提醒**（不是门禁）。读不到就当没有——它是提醒，不能挡住任何操作。 */
+async function loadInjection(name) {
+  injection.value = null
+  ackedInjection.value = false
+  try {
+    const d = await api.packInjection(name)
+    const findings = [...(d.injection || []), ...(d.forbidden_overlap || [])]
+    injection.value = findings.length ? findings : null
+  } catch {
+    injection.value = null
+  }
+}
+
+/** 有提醒时，发布要点两次：第一次是"我看了"，第二次才真发。**这不阻止发布。** */
+function publishClick() {
+  if (injection.value && !ackedInjection.value) {
+    ackedInjection.value = true
+    say('已知悉注入提醒——再点一次「确认发布」就会发布（提醒不会阻止发布）。')
+    return
+  }
+  publish()
+}
+
+// ---- C5：质量门禁按钮（会花钱，所以先确认再跑）----
+
+/** 起一道门。**第一次点击只用来拿成本说明并要求确认**（服务端也会拦一次）。 */
+async function gateClick(kind) {
+  if (!pickedDraft.value) return
+  if (gateConfirm.value !== kind) {
+    gateConfirm.value = kind
+    say(`「${gateKindLabel(kind)}」会真机调模型（${gateCost(kind)}）——再点一次就开始。`)
+    return
+  }
+  gateConfirm.value = ''
+  try {
+    const d = await api.runGate(pickedDraft.value.id, kind, true)
+    gate.value = { gate_id: d.gate_id, kind, status: 'running', output: '' }
+    say(`已起「${d.label}」（${d.cost}）——跑完会在这里显示结果。`)
+    await pollGate(d.gate_id)
+  } catch (e) {
+    say(e.message, true)
+  }
+}
+
+async function pollGate(id) {
+  for (let i = 0; i < 200; i += 1) {   // 最多等 ~10 分钟
+    await new Promise((r) => setTimeout(r, 3000))
+    try {
+      const g = await api.gate(id)
+      gate.value = g
+      if (g.status !== 'running') {
+        say(g.status === 'done'
+          ? `门禁通过：${gateKindLabel(g.kind)}`
+          : `门禁未通过（退出码 ${g.exit_code}）——结果在右栏。`, g.status !== 'done')
+        return
+      }
+    } catch (e) {
+      say(e.message, true)
+      return
+    }
+  }
+  say('门禁还在跑（超过 10 分钟）——刷新页面后可以在右栏看到结果。', true)
+}
+
+function gateKindLabel(kind) {
+  return kind === 'e1' ? 'E1 判官灵敏度' : '真机冒烟（通关 + 审计）'
+}
+
+function gateCost(kind) {
+  return kind === 'e1' ? '约 ¥0.1–0.3' : '约 ¥0.05–0.2'
+}
+
+function money(v) {
+  return v == null ? '—' : `¥${Number(v).toFixed(3)}`
+}
+
+function purposeLabel(p) {
+  return {
+    turn: '游玩回合', judge: '语义校验', factcheck: '事实核查', extract: '事实提取',
+    compress: '历史压缩', reflect: '关系洞察', dedup: '语义去重', plan: '计划',
+    import_world: '生成·世界', import_npcs: '生成·角色', import_schedule: '生成·日程',
+    import_nodes: '生成·主线', import_events: '生成·事件', import_endings: '生成·结局',
+    creator: '改卡对话', aux: '辅助',
+  }[p] || p
 }
 
 async function scrollChat() {
@@ -519,14 +623,83 @@ onBeforeUnmount(stopTimer)
             <div><span>世界书条目</span><b>{{ pickedDraft.lore }}</b></div>
             <div><span>地点</span><b>{{ pickedDraft.locations }}</b></div>
           </div>
+
+          <!-- N5/C3：按卡累计成本（游玩 + 改卡 + 生成都在内） -->
+          <h3 class="sec">这张卡的成本</h3>
+          <p v-if="!packCost" class="t">（还没有记账——生成、游玩或改卡之后会出现）</p>
+          <template v-else>
+            <p class="ok">
+              累计 <strong>{{ money(packCost.cost_offpeak) }}</strong>
+              · {{ packCost.calls }} 次调用
+            </p>
+            <div class="kv">
+              <div
+                v-for="(row, p) in packCost.by_purpose"
+                :key="p"
+              >
+                <span>{{ purposeLabel(p) }}</span>
+                <b>{{ row.calls }} 次 · {{ money(row.cost) }}</b>
+              </div>
+            </div>
+            <p v-if="packCost.unknown_price_calls" class="cost">
+              ⚠️ 有 {{ packCost.unknown_price_calls }} 次调用用的模型不在价格表里，
+              上面这个数**偏低**。
+            </p>
+          </template>
           <p class="t">内容指纹 {{ (pickedDraft.digest || '').slice(0, 16) }}…</p>
           <p class="t">{{ pickedDraft.path }}</p>
 
+          <!-- C4：注入**提醒**（不是门禁——只标黄、要求确认，不阻止发布） -->
+          <template v-if="injection">
+            <h3 class="sec">⚠️ 注入提醒</h3>
+            <p class="cost">
+              下面这些**作者内容会进系统提示**，而它们看起来像"对模型下的指令"。
+              <strong>这只是提醒，不是门禁</strong>——命中了也能发布；
+              正则必然有误报，请自己看原文片段判断。
+            </p>
+            <pre v-for="(h, i) in injection" :key="'inj' + i" class="errbox">{{
+              `${h.where} · ${h.field}\n${h.kind || ('写了本包禁用元素：' + h.token)}\n…${h.snippet}…`
+            }}</pre>
+          </template>
+
           <div class="save-row">
             <button :disabled="!pickedDraft.playable" @click="playtest">试玩这一版</button>
-            <button :disabled="!pickedDraft.playable" @click="publish">发布</button>
+            <button :disabled="!pickedDraft.playable" @click="publishClick">
+              {{ injection && !ackedInjection ? '确认发布（先看上面的提醒）' : '发布' }}
+            </button>
             <button @click="remove">删除草稿</button>
           </div>
+
+          <!-- C5：质量门禁（手动、会花钱、成本前置确认） -->
+          <h3 class="sec">质量门禁</h3>
+          <p class="t">
+            这两道门都要**真机调模型**（不同于 `check-worldpack`——那个在加载期跑、免费，
+            已经作为发布闸门）。"想上精选"时再点。
+          </p>
+          <div class="save-row">
+            <button
+              :disabled="!pickedDraft.playable || !!gateConfirm && gateConfirm !== 'e1'"
+              @click="gateClick('e1')"
+            >
+              {{ gateConfirm === 'e1' ? `确认跑 E1（${gateCost('e1')}）` : 'E1 判官灵敏度' }}
+            </button>
+            <button
+              :disabled="!pickedDraft.playable || !!gateConfirm && gateConfirm !== 'smoke'"
+              @click="gateClick('smoke')"
+            >
+              {{ gateConfirm === 'smoke' ? `确认跑冒烟（${gateCost('smoke')}）` : '真机冒烟（通关+审计）' }}
+            </button>
+          </div>
+          <template v-if="gate">
+            <p v-if="gate.status === 'running'" class="gen">门禁运行中…（真机跑模型，几分钟）</p>
+            <p v-else-if="gate.status === 'done'" class="ok">
+              ✓ {{ gateKindLabel(gate.kind) }} 通过
+            </p>
+            <p v-else class="err">
+              ✗ {{ gateKindLabel(gate.kind) }} 未通过（退出码 {{ gate.exit_code }}）
+            </p>
+            <pre v-if="gate.output" class="diff">{{ gate.output }}</pre>
+          </template>
           <p class="t">
             试玩用**未发布**的草稿开局（会打「未发布」水印）。发布 = 把它变成别人也能玩的卡。
           </p>

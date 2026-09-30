@@ -824,11 +824,15 @@ async function main() {
       return true;
     })()`)
     check('草稿有「试玩这一版」入口', playtested)
-    await cdp.waitFor(`!!document.querySelector('#app .col-mid')`, { timeout: 8000, label: '进入草稿试玩' })
-    check(
-      '草稿试玩进入同一套三栏游戏屏且在顶栏打「未发布」水印',
-      await cdp.eval(`/未发布/.test(document.querySelector('#app .topbar')?.textContent || '')`),
+    // ⚠️ 这里**不能**等 `.col-mid`——工作台（StudioView）也有 `.col-left/.col-mid/.col-right`，
+    // 所以那个选择器**当下就成立**，等它等于没等：断言会在"还在工作台"的瞬间执行 →
+    // 偶发失败（本冒烟实测撞到过一次）。等**要断言的那个东西本身**（顶栏水印）。
+    // 这条与 N6 段"等异步草稿列表"是同一个教训：**waitFor 的选择器必须是"目标状态独有"的**。
+    const isDraftPlay = await cdp.waitFor(
+      `/未发布/.test(document.querySelector('#app .topbar')?.textContent || '')`,
+      { timeout: 8000, label: '草稿试玩的水印' },
     )
+    check('草稿试玩进入同一套三栏游戏屏且在顶栏打「未发布」水印', isDraftPlay)
 
     // =====================================================================
     // 创作者 Agent（N6）：和 Agent 对话改这一版

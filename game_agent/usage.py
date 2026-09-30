@@ -84,6 +84,82 @@ def _price_of(model: str, key: str) -> float:
     return PRICES.get(model, {}).get(key, 0.0)
 
 
+def entry_cost(entry: dict) -> tuple[float, bool]:
+    """一条账目的成本（元，空闲时段）与"价格是否已知"。
+
+    **把定价从 `cost_report` 里抽出来**（N5/C3）：聚合（每包累计）与报告必须走
+    **同一份定价**。各写一遍的后果是"界面显示 ¥0.23、报告写着 ¥0.31"，
+    而且没人知道哪个对——价格表本来就只有一处（`PRICES` + env 覆盖），
+    计算口径凭什么有两处。
+    """
+    model = str(entry.get("model", ""))
+    hit = int(entry.get("cache_hit_tokens") or 0)
+    miss = int(entry.get("cache_miss_tokens") or 0)
+    prompt = int(entry.get("prompt_tokens") or 0)
+    comp = int(entry.get("completion_tokens") or 0)
+    if not (hit or miss):
+        # 未回传缓存细分：整段 prompt 按"未命中"计价（保守，不假装有命中优惠）
+        miss = prompt
+    cost = (
+        hit * _price_of(model, "cache_hit")
+        + miss * _price_of(model, "cache_miss")
+        + comp * _price_of(model, "output")
+    ) / 1_000_000
+    return cost, model in PRICES
+
+
+def read_ledger(path: str | Path) -> list[dict]:
+    """读一个账本文件（坏行跳过——账本是运行时产物，一行坏掉不该毁掉整次汇总）。"""
+    p = Path(path)
+    if not p.is_file():
+        return []
+    out: list[dict] = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def aggregate(entries: list[dict]) -> dict[str, Any]:
+    """把一堆账目汇总成给界面看的数字（N5/C3：单局回显与每包累计共用）。
+
+    返回 `{calls, prompt, completion, cache_hit, cache_miss, cost_offpeak, cost_peak,
+    unknown_price_calls, by_purpose: {purpose: {calls, cost}}}`。
+
+    `unknown_price_calls` 必须**显式回传**：价格表里没有的模型（换模型/自建端点）
+    成本算不出来，静默当成 0 会让界面报出一个偏低而看不出问题的数字。
+    """
+    total: dict[str, Any] = {
+        "calls": 0, "prompt": 0, "completion": 0, "cache_hit": 0, "cache_miss": 0,
+        "cost_offpeak": 0.0, "cost_peak": 0.0, "unknown_price_calls": 0,
+        "by_purpose": {},
+    }
+    for e in entries:
+        cost, known = entry_cost(e)
+        purpose = str(e.get("purpose", "?"))
+        total["calls"] += 1
+        total["prompt"] += int(e.get("prompt_tokens") or 0)
+        total["completion"] += int(e.get("completion_tokens") or 0)
+        total["cache_hit"] += int(e.get("cache_hit_tokens") or 0)
+        total["cache_miss"] += int(e.get("cache_miss_tokens") or 0)
+        total["cost_offpeak"] += cost
+        total["cost_peak"] += cost * PEAK_FACTOR
+        if not known:
+            total["unknown_price_calls"] += 1
+        row = total["by_purpose"].setdefault(purpose, {"calls": 0, "cost": 0.0})
+        row["calls"] += 1
+        row["cost"] += cost
+    total["cost_offpeak"] = round(total["cost_offpeak"], 4)
+    total["cost_peak"] = round(total["cost_peak"], 4)
+    for row in total["by_purpose"].values():
+        row["cost"] = round(row["cost"], 4)
+    return total
+
+
 def usage_fields(resp: Any) -> dict[str, int] | None:
     """从 API 响应提取用量字段。缺失时返回 None（旧 provider / 测试 fake 容错）。"""
     usage = getattr(resp, "usage", None)
@@ -190,36 +266,38 @@ class UsageTracker:
         return out
 
     def cost_report(self) -> str:
-        """多行成本报告：token 精确值 + 空闲/高峰时段成本估算。"""
+        """多行成本报告：token 精确值 + 空闲/高峰时段成本估算。
+
+        N5/C3：定价改走 `entry_cost`（**同一份口径**，与界面上的聚合数字同源）。
+        此前这里自己算一遍 `hit*cache_hit + miss*cache_miss + comp*output`——
+        加上聚合又算一遍，就是两份口径，迟早出现"界面 ¥0.23 / 报告 ¥0.31"。
+        """
         lines = ["===== usage 成本报告 ====="]
-        total = {"offpeak": 0.0, "peak": 0.0, "prompt": 0, "completion": 0}
+        agg = self.aggregate()
         for key, row in sorted(self.summarize().items()):
             model, purpose = key.rsplit("@", 1)
             hit, miss = row["cache_hit"], row["cache_miss"]
-            prompt_tok = hit + miss if (hit or miss) else row["prompt"]
-            comp_tok = row["completion"]
-            off = (
-                hit * _price_of(model, "cache_hit")
-                + miss * _price_of(model, "cache_miss")
-                + comp_tok * _price_of(model, "output")
-            ) / 1_000_000
+            off = sum(
+                entry_cost(e)[0] for e in self.entries
+                if e.get("model") == model and e.get("purpose") == purpose
+            )
             known = model in PRICES
-            total["prompt"] += row["prompt"]
-            total["completion"] += row["completion"]
-            total["offpeak"] += off
-            total["peak"] += off * PEAK_FACTOR
             lines.append(
                 f"  {key:<40} 调用 {row['calls']:>4} 次 · "
                 f"入 {row['prompt']:>9,}（命中 {hit:,} / 未命中 {miss:,}）· "
-                f"出 {comp_tok:>8,}"
+                f"出 {row['completion']:>8,}"
                 + (f" · 约 ¥{off:.3f}（空闲）" if known else " · 价格未知")
             )
         lines.append(
-            f"  合计：入 {total['prompt']:,} · 出 {total['completion']:,} · "
-            f"成本约 ¥{total['offpeak']:.3f}（空闲时段）/ ¥{total['peak']:.3f}（高峰时段）"
+            f"  合计：入 {agg['prompt']:,} · 出 {agg['completion']:,} · "
+            f"成本约 ¥{agg['cost_offpeak']:.3f}（空闲时段）/ ¥{agg['cost_peak']:.3f}（高峰时段）"
         )
         lines.append("  注：价格快照 2026-09（峰谷分时），以 DeepSeek 最新公告为准。")
         return "\n".join(lines)
+
+    def aggregate(self) -> dict[str, Any]:
+        """本账本的结构化汇总（给界面用；与 `cost_report` 同一份定价）。"""
+        return aggregate(self.entries)
 
 
 class TokenCalibrator:

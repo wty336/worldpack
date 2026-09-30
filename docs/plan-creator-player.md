@@ -314,9 +314,9 @@ def _make_game(sid: str, pack_id: str | None = None) -> Game:
 | --- | --- | --- |
 | C1 | `manifest.yaml` + `promote` 硬闸门（未过 L1 拒绝） | `catalog.py` |
 | C2 | **修 G2**：存档带 `pack_id`/`pack_digest`，读档不一致明确拒绝 | `state.py` / `save.py` |
-| C3 | 成本可见：每包累计 + 单局回显 | `web.py` / `usage.py` |
-| C4 | 注入提醒扫描（§5 最小动作） | `worldgen.py` |
-| C5 | E1 / 冒烟门禁按钮（手动，成本前置确认） | `web.py` |
+| C3 | 成本可见：每包累计 + 单局回显 | `web.py` / `usage.py` | ✅ **已完成（2026-10）**——roadmap §2.8 |
+| C4 | 注入提醒扫描（§5 最小动作） | `worldgen.py` | ✅ **已完成（2026-10）**——`injection_report_from_pack`；**是提醒不是门禁**（8 张卡零误报） |
+| C5 | E1 / 冒烟门禁按钮（手动，成本前置确认） | `web.py` | ✅ **已完成（2026-10）**——`confirm=true` **服务端强制**，一次一道门 |
 
 **验收**：草稿未过 L1 时发布按钮拒绝并给出报告；过闸门后出现在市场；改版已发布剧本后，
 旧存档读档明确报"剧本已更新，存档不兼容"而非静默穿帮。

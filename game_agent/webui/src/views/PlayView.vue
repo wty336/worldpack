@@ -30,6 +30,7 @@ const view = ref({})
 const dock = ref(null)
 const timeline = ref([])         // N7：本局时间线（新的在前）
 const currentRev = ref(null)
+const cost = ref(null)           // N5/C3：本局成本汇总
 let timer = null
 
 const modeLabel = computed(() => (props.session.mode === 'free' ? '自由探索' : '跟着主线'))
@@ -65,6 +66,21 @@ async function refresh() {
   } catch (e) {
     emit('notice', { message: e.message, isError: true })
   }
+  await loadCost()
+}
+
+/** N5/C3：本局花了多少钱（**单局回显**）。失败静默——它不该挡住游玩。 */
+async function loadCost() {
+  try {
+    const d = await api.cost(props.session.sid)
+    cost.value = d.totals || null
+  } catch {
+    cost.value = null
+  }
+}
+
+function money(v) {
+  return v == null ? '—' : `¥${Number(v).toFixed(3)}`
 }
 
 onMounted(async () => {
@@ -173,6 +189,13 @@ defineExpose({ refresh })
         <p class="t">世界包：{{ session.pack_id }}</p>
         <p class="t">模式：{{ modeLabel }}</p>
         <p class="t">回合：{{ view.turn ?? 0 }} · 第 {{ actions.day ?? '?' }} 天</p>
+        <p v-if="cost" class="t">
+          本局成本：{{ money(cost.cost_offpeak) }}
+          <span>（{{ cost.calls }} 次调用·空闲时段价）</span>
+        </p>
+        <p v-if="cost && cost.unknown_price_calls" class="cost">
+          ⚠️ 有 {{ cost.unknown_price_calls }} 次调用用的模型不在价格表里，上面这个数**偏低**。
+        </p>
         <div v-if="view.turn" class="t">
           <span v-if="view.sub_turns > 1">本轮生成了 {{ view.sub_turns }} 次</span>
         </div>
