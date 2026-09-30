@@ -30,8 +30,11 @@ function label(p) {
 }
 function saveLabel(s) {
   const when = s.mtime ? new Date(s.mtime * 1000).toLocaleString() : ''
-  const pid = s.pack ? s.pack.id : '（旧档无身份戳）'
-  return `${s.path} — ${pid} · 第 ${s.day ?? '?'} 天 · ${s.turn_count ?? '?'} 回合 · ${when}`
+  // 有身份戳就用卡 id；**旧档没有戳**，退到状态里自报的世界名——
+  // 否则一列全是"（旧档无身份戳）"，玩家根本认不出哪个档属于哪张卡，
+  // 只能靠"读了被拒"来试（这正是实测里那次 500 的由来）。
+  const who = s.pack ? s.pack.id : (s.pack_name ? `旧档·${s.pack_name}` : '旧档·无标识')
+  return `${s.path} — ${who} · 第 ${s.day ?? '?'} 天 · ${s.turn_count ?? '?'} 回合 · ${when}`
 }
 function start() {
   if (picked.value) emit('start', { packId: picked.value.id, mode: mode.value })

@@ -377,3 +377,62 @@ def test_saves_endpoint_lists_summaries(tmp_path, monkeypatch):
     stamps = [r["mtime"] for r in d["saves"] if "mtime" in r]
     assert stamps == sorted(stamps, reverse=True)
     assert d["saves"][-1]["path"] == "broken.json"  # 无 mtime 的坏档落到末尾
+
+
+# ---------------------------------------------------------------------------
+# 4. 读档被拒（2026-10 实测：异包旧档 → 状态栏 KeyError → HTTP 500）
+# ---------------------------------------------------------------------------
+
+
+def _ancient_session(monkeypatch) -> tuple[TestClient, str]:
+    """开一局 ancient_jianghu（离线夹具），返回 (client, sid)。"""
+    _client(monkeypatch)
+    client = TestClient(web.app)
+    sid = client.post("/api/new", json={"pack_id": "ancient_jianghu"}).json()["sid"]
+    return client, sid
+
+
+def test_load_cross_pack_legacy_save_is_400_not_500(monkeypatch, tmp_path):
+    """**实测缺陷的守卫**：异包旧档必须被**拒绝**（400 + 可行动的理由），而不是 500。
+
+    复现路径：选《江湖旧梦》开局 → 去读一个《青槐高中》留下来的旧档（无身份戳）。
+    修复前：`state.stats` 里的 `grace` 在当前包里不存在 → 渲染状态栏时 KeyError
+    → HTTP 500，前端只显示"读取状态失败：HTTP 500"。
+    修复后：内容级校验把它变成一句能读懂、能照做的话，且**状态不被半应用**。
+    """
+    from game_agent.save import save_game
+
+    campus = load_worldpack(REPO / "world-packs" / "campus_otome")
+    legacy = tmp_path / "legacy_campus.json"
+    save_game(GameState.from_pack(campus), legacy)  # 无身份戳（G2 之前的格式）
+
+    client, sid = _ancient_session(monkeypatch)
+    # 存档必须落在 SAVE_ROOT 下才过 `_safe_save_path`（只允许裸文件名）
+    monkeypatch.setattr(web, "SAVE_ROOT", tmp_path)
+    before = client.get(f"/api/{sid}/status").json()["text"]
+
+    r = client.post(f"/api/{sid}/load", json={"path": legacy.name})
+    assert r.status_code == 400, f"应当是 400（可纠正的输入问题），实际 {r.status_code}"
+    detail = r.json()["detail"]
+    assert "读档被拒绝" in detail
+    assert campus.world.name in detail  # 说清存档自报的世界
+    assert "江湖旧梦" in detail  # 说清当前是哪张卡
+
+    # 关键：拒绝后状态**没有被半应用**（否则界面会进入一种半坏状态）
+    assert client.get(f"/api/{sid}/status").json()["text"] == before
+
+
+def test_status_endpoint_survives_and_reports_after_rejection(monkeypatch, tmp_path):
+    """被拒之后状态栏仍然可用——这是"500 之后整块右栏空白"的直接回归。"""
+    from game_agent.save import save_game
+
+    campus = load_worldpack(REPO / "world-packs" / "campus_otome")
+    legacy = tmp_path / "legacy.json"
+    save_game(GameState.from_pack(campus), legacy)
+    monkeypatch.setattr(web, "SAVE_ROOT", tmp_path)
+
+    client, sid = _ancient_session(monkeypatch)
+    client.post(f"/api/{sid}/load", json={"path": legacy.name})  # 被拒
+    st = client.get(f"/api/{sid}/status")
+    assert st.status_code == 200  # 不再是 500
+    assert st.json()["text"]

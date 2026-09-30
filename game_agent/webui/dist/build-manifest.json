@@ -12,11 +12,11 @@
     "src/composables/useTurnStream.js": "37a60590792d4796",
     "src/main.js": "e10645cfb1e3ccb9",
     "src/styles.css": "6b3b9e6d29773468",
-    "src/views/LibraryView.vue": "1ce3faa4bf616ed3",
+    "src/views/LibraryView.vue": "90bcb5b9aeb40d26",
     "src/views/PlayView.vue": "231abef83114c2e3",
     "vite.config.js": "12b50d34691fc71f"
   },
-  "sourceDigest": "c6b7041d1a6677fb",
+  "sourceDigest": "b9919ebee1c873b2",
   "count": 15,
   "generatedBy": "vite.config.js"
 }

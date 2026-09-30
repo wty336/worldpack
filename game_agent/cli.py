@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import load_settings, resolve_context_window
 from .game import Game, GameError, TurnView
 from .llm import LLMClient, LLMTurnError, build_tools
-from .save import load_game, load_history, save_game
+from .save import load_game, load_history, save_game, state_pack_mismatch
 from .scaffold import init_worldpack
 from .state import GameState
 from .storyline import FREE_INPUT_OPTION
@@ -338,16 +338,24 @@ def _handle_command(game: Game, raw: str, out: dict) -> str | None:
             print(f"  {i}. {a.label}")
     elif cmd == "/save":
         path = arg.strip() or DEFAULT_SAVE
-        save_game(game.state, path, game.history)
+        save_game(game.state, path, game.history, pack_meta=game.pack_meta)  # G2：带身份戳
         print(f"已存档 → {path}（数值、剧情状态与对话历史）")
     elif cmd == "/load":
         path = arg.strip() or DEFAULT_SAVE
         try:
-            game.state = load_game(path)
-            game.history = load_history(path)  # 恢复对话历史，NPC 不失忆
+            # G2：身份戳 + **内容级**双校验。后者覆盖没有身份戳的旧档——
+            # 否则"拿 A 卡的档读进 B 卡"会在渲染状态栏时 KeyError 崩掉整个 REPL。
+            state = load_game(path, pack_meta=game.pack_meta)
+            history = load_history(path)
+            mismatch = state_pack_mismatch(state, game.pack)
+            if mismatch:
+                print(f"[✗] 读档被拒绝：{mismatch}")
+                return None
         except (FileNotFoundError, ValueError) as e:
             print(f"[✗] 读档失败: {e}")
             return None
+        game.state = state
+        game.history = history  # 恢复对话历史，NPC 不失忆
         game.ending = None
         print(f"已读档 ← {path}（含对话历史）")
         return "action"

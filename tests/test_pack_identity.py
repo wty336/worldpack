@@ -25,7 +25,9 @@ from game_agent.save import (
     load_game,
     load_history,
     save_game,
+    save_summary,
     saved_pack_meta,
+    state_pack_mismatch,
 )
 from game_agent.state import GameState
 from game_agent.worldpack import load_worldpack, pack_digest, pack_meta
@@ -232,3 +234,70 @@ def test_real_pack_round_trip(tmp_path):
     )
     with pytest.raises(PackMismatchError):
         load_game(p, pack_meta=pack_meta(load_worldpack(root)))
+
+
+# ---------------------------------------------------------------------------
+# 3. 内容级兜底：**没有身份戳的旧档**（2026-10 实测 HTTP 500 的成因）
+# ---------------------------------------------------------------------------
+#
+# 身份戳比对对旧档无能为力（没有戳就无从比），而"只补不漏"又要求放行旧档。
+# 于是出现了这个洞：把 A 卡的旧档读进 B 卡 → state 里出现 B 卡不认识的键 →
+# `context.status_text()` 的 `self.pack.schedule.stats[k]` KeyError → **HTTP 500**。
+# 玩家看到"读取状态失败：HTTP 500"，真实原因却是"你拿错卡了"。
+# 下面这组守卫覆盖这条路径。
+
+CAMPUS_PACK = REPO / "world-packs" / "campus_otome"
+
+
+def _cross_pack_legacy_save(tmp_path: Path) -> Path:
+    """造一个**旧格式**（无 pack 身份戳）的存档，但它属于另一个包。"""
+    campus = load_worldpack(CAMPUS_PACK)
+    state = GameState.from_pack(campus)
+    assert state.pack_name == campus.world.name != load_worldpack(REAL_PACK).world.name
+    p = tmp_path / "legacy.json"
+    save_game(state, p)  # 不带 pack_meta = G2 之前的旧档
+    assert saved_pack_meta(p) is None
+    return p
+
+
+def test_state_pack_mismatch_accepts_matching_state():
+    pack = load_worldpack(REAL_PACK)
+    assert state_pack_mismatch(GameState.from_pack(pack), pack) is None
+
+
+def test_state_pack_mismatch_detects_foreign_stats(tmp_path):
+    """异包状态必须被认出来——这是那条 500 的根因。"""
+    pack = load_worldpack(REAL_PACK)
+    foreign = load_game(_cross_pack_legacy_save(tmp_path))  # 不校验，纯取状态
+    reason = state_pack_mismatch(foreign, pack)
+    assert reason is not None
+    # **结论先行**：第一句就要说清"该选哪张卡"，键名清单只作证据
+    assert reason.index(foreign.pack_name) < reason.index("对不上的内容")
+    assert pack.world.name in reason and foreign.pack_name in reason
+    assert "改选该卡" in reason
+
+
+def test_state_pack_mismatch_detects_unknown_npc():
+    """NPC 引用也要查：缺一个就会在渲染角色卡时炸。"""
+    pack = load_worldpack(REAL_PACK)
+    state = GameState.from_pack(pack)
+    state.affections["ghost_npc"] = 5.0
+    assert state_pack_mismatch(state, pack) is not None
+
+
+def test_legacy_identity_check_still_passes_but_content_check_catches(tmp_path):
+    """两道关的分工：身份戳放行旧档，**内容关**把异包旧档拦下。"""
+    pack = load_worldpack(REAL_PACK)
+    p = _cross_pack_legacy_save(tmp_path)
+    # 第一道：无戳 → 放行（"只补不漏"）
+    load_game(p, pack_meta=pack_meta(pack))
+    # 第二道：内容对不上 → 报因
+    assert state_pack_mismatch(load_game(p), pack) is not None
+
+
+def test_save_summary_reports_world_name_for_legacy_saves(tmp_path):
+    """旧档没有身份戳，列表里必须能看出它属于哪张卡（否则玩家只能靠"读了被拒"来试）。"""
+    p = _cross_pack_legacy_save(tmp_path)
+    s = save_summary(p)
+    assert s["pack"] is None  # 旧档确实没有戳
+    assert s["pack_name"] == load_worldpack(CAMPUS_PACK).world.name

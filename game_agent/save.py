@@ -106,6 +106,10 @@ def save_summary(path: str | Path) -> dict:
         "path": p.name,  # 只回裸文件名：Web 侧的存档路径本来就是裸名（`_safe_save_path`）
         "save_version": data.get("save_version"),
         "pack": _pack_meta_from(data),
+        # `pack_name` 是状态里自报的世界名。**旧档没有身份戳**（`pack` 为 None），
+        # 只靠 id 无从辨认它属于哪张卡——列出世界名是让玩家能自己认出来的最低成本，
+        # 也是"读档被拒"时把话说清楚所必需的（见 `state_pack_mismatch`）。
+        "pack_name": data.get("pack_name"),
         "turn_count": data.get("turn_count"),
         "day": data.get("day"),
         "scene": data.get("scene"),
@@ -113,6 +117,58 @@ def save_summary(path: str | Path) -> dict:
         "size": p.stat().st_size,
         "mtime": int(p.stat().st_mtime),
     }
+
+
+def state_pack_mismatch(state: GameState, pack) -> str | None:
+    """状态与当前世界包**内容级不兼容**的原因；兼容则返回 None。
+
+    **为什么光有身份戳不够**（2026-10 实测缺陷）：G2 之前的存档没有 `pack` 字段，
+    `check_pack_identity` 按"只补不漏"放行——于是把 A 包的档读进 B 包时，
+    `state.stats` 里的键（如 `charm` / `grace`）在 B 包的 `schedule.stats` 里不存在，
+    `context.status_text()` 的 `self.pack.schedule.stats[k]` 直接 **KeyError → HTTP 500**。
+    玩家看到的是一句"读取状态失败：HTTP 500"，而真正的原因是"拿 A 卡的档读了 B 卡"。
+
+    所以这里不看存档自报的身份，只看**内容能不能对上**——同时覆盖有戳的档（双保险）、
+    无戳的旧档、以及手工改过的档。
+
+    口径与 `audit.audit_stats` 一致（属性 / 好感 / 计数器 + NPC 引用），
+    避免"引用完整性"这一个概念出现两套判定。
+    """
+    reasons: list[str] = []
+
+    unknown_stats = sorted(set(state.stats) - set(pack.schedule.stats))
+    if unknown_stats:
+        reasons.append(f"属性 {unknown_stats}")
+    unknown_aff = sorted(set(state.affections) - set(pack.schedule.affections))
+    if unknown_aff:
+        reasons.append(f"好感对象 {unknown_aff}")
+    unknown_counters = sorted(set(state.counters) - set(pack.schedule.counters))
+    if unknown_counters:
+        reasons.append(f"计数器 {unknown_counters}")
+    unknown_items = sorted(set(state.items) - {i.id for i in pack.schedule.items})
+    if unknown_items:
+        reasons.append(f"物品 {unknown_items}")
+
+    # NPC 引用：好感/记忆/洞察/在场都以 npc id 为键，缺一个就会在渲染角色卡时炸
+    known_npcs = set(pack.npcs)
+    for label, keys in (
+        ("记忆中的角色", set(state.npc_memories)),
+        ("洞察中的角色", set(state.npc_insights)),
+        ("在场角色", set(state.present_npcs)),
+    ):
+        unknown = sorted(keys - known_npcs)
+        if unknown:
+            reasons.append(f"{label} {unknown}")
+
+    if not reasons:
+        return None
+    # 结论先行、证据随后：玩家第一眼要看到的是"该选哪张卡"，而不是一串键名。
+    return (
+        f"这个存档属于《{state.pack_name}》，而当前在玩《{pack.world.name}》——不是同一份内容"
+        f"（多半来自另一张卡，或是某张卡改版前的旧档）。"
+        f"对不上的内容：{'、'.join(reasons)}。"
+        f"请改选该卡后再读档，或另开新局。"
+    )
 
 
 def check_pack_identity(path: str | Path, pack_meta: dict[str, str] | None) -> None:

@@ -40,7 +40,14 @@ from . import catalog
 from .config import load_settings, resolve_context_window
 from .game import Game, GameError
 from .llm import LLMClient, LLMTurnError, build_tools
-from .save import PackMismatchError, load_game, load_history, save_game, save_summary
+from .save import (
+    PackMismatchError,
+    load_game,
+    load_history,
+    save_game,
+    save_summary,
+    state_pack_mismatch,
+)
 from .schedule import ScheduleError
 from .state import GameState
 from .storyline import FREE_INPUT_OPTION, StorylineError
@@ -568,6 +575,13 @@ def api_load(sid: str, req: SaveRequest) -> dict:
             # 校验发生在赋值之前，因此失败时不会留下半应用的状态。
             state = load_game(path, pack_meta=session.game.pack_meta)
             history = load_history(path)
+            # G2 补漏（内容级）：**旧档没有身份戳**，上面那道比对会放行（只补不漏）。
+            # 但"把 A 卡的档读进 B 卡"仍然会让 state 里出现当前包不认识的键，
+            # 之后 context.status_text() 直接 KeyError → 500。
+            # 这里用内容兜底，把它变成一句能读懂、能照做的拒绝。
+            mismatch = state_pack_mismatch(state, session.game.pack)
+            if mismatch:
+                raise PackMismatchError(mismatch)
         except FileNotFoundError as e:
             raise HTTPException(400, f"读档失败: 存档不存在（{e}）")
         except PackMismatchError as e:

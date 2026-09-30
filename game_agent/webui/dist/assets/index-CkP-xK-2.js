@@ -6396,8 +6396,8 @@ const _sfc_main$6 = {
     }
     function saveLabel(s) {
       const when = s.mtime ? new Date(s.mtime * 1e3).toLocaleString() : "";
-      const pid = s.pack ? s.pack.id : "（旧档无身份戳）";
-      return `${s.path} — ${pid} · 第 ${s.day ?? "?"} 天 · ${s.turn_count ?? "?"} 回合 · ${when}`;
+      const who = s.pack ? s.pack.id : s.pack_name ? `旧档·${s.pack_name}` : "旧档·无标识";
+      return `${s.path} — ${who} · 第 ${s.day ?? "?"} 天 · ${s.turn_count ?? "?"} 回合 · ${when}`;
     }
     function start() {
       if (picked.value) emit2("start", { packId: picked.value.id, mode: mode.value });
