@@ -442,10 +442,10 @@ send({ kind: 'end_day' }, { onDone: v => applyView(v) })
 | E-2 | **存档加剧本身份戳**：此前只有 `state.to_dict()` + `save_version` | 小 | 换包/改包后读旧档 | ✅ **已修**：`save_version` 2→3，落 `pack: {id, digest}`；读档不一致抛 `PackMismatchError`（**拒绝并提示**，且在构造 `GameState` 之前，不留半应用状态）。`tests/test_pack_identity.py`（14 项） |
 | E-3 | 新增 `catalog.py` + `GET /api/catalog` + `_make_game(sid, pack_id)` + `POST /api/new{pack_id}` | 小 | 能力 A | ✅ **已完成**：`game_agent/catalog.py`（坏包隔离 / 路径安全查表 / 签名缓存）；`GET /api/catalog`；`POST /api/new{pack_id}`（未知 id → 400）；`GET /api/{sid}/meta`。`tests/test_catalog.py`（15 项） |
 | E-4 | 会话级"自由/剧本"开关（跳过节点进入） | 小 | 能力 A | ✅ **已完成**：`StorylineEngine(mainline_enabled=)` + `POST /api/new{mode}`；语义刻意收窄为"不再进入新节点"（§2.2）。`tests/test_catalog.py`（4 项） |
-| E-5 | `import_story.py` → `game_agent/worldgen.py`（纯函数 + 薄 CLI） | 中 | 能力 B | ⬜ 未开始 |
-| E-6 | 后台任务表 + 进度 SSE（照抄 `_turn_stream` 的 queue+线程模式） | 中 | 能力 B | ⬜ 未开始 |
-| E-7 | 草稿区 `world-packs/_drafts/` + 发布闸门（过 `check_worldpack` 才能发布） | 小 | 能力 B/C | ⬜ 未开始 |
-| E-8 | 创作者 Agent：新 system prompt + 10 个工具 + `creator_model` 路由 + 修复循环 | 中 | 能力 C | ⬜ 未开始 |
+| E-5 | `import_story.py` → `game_agent/worldgen.py`（纯函数 + 薄 CLI） | 中 | 能力 B | ✅ **已完成**：`worldgen.py` 809 行（提示词/分块提取/物化/校验修复/语料/进度事件），CLI 851→**237 行**薄壳。等价性已证：重构前 vs 重构后离线跑，退出码相同、**8 个产出文件逐字节相同**、stdout 归一化后逐行相同。守卫 `tests/test_worldgen.py`（22 项） |
+| E-6 | 后台任务表 + 进度 SSE（照抄 `_turn_stream` 的 queue+线程模式） | 中 | 能力 B | ⬜ 见 `docs/roadmap.md` **N1** |
+| E-7 | 草稿区 `world-packs/_drafts/` + 发布闸门（过 `check_worldpack` 才能发布） | 小 | 能力 B/C | ⬜ 见 roadmap **N3** |
+| E-8 | 创作者 Agent：新 system prompt + 10 个工具 + `creator_model` 路由 + 修复循环 | 中 | 能力 C | ⬜ 见 roadmap **N6** |
 | E-9 | 会话列表 / 存档列表接口（`SESSIONS` 是无淘汰的内存 dict） | 小 | 前端左栏 | ✅ **已完成**：`GET /api/sessions`（pack/mode **由 game 推出**，不存第二份）+ `GET /api/saves`（只读顶层摘要 / 坏档隔离 / mtime 倒序）。`tests/test_catalog.py`（3 项） |
 
 > E-1 和 E-2 必须最先做：它们是 `plan-creator-player.md` 已认定的缺口（G1/G2），
@@ -619,27 +619,68 @@ Python 字符串里）拆成 `game_agent/webui/{index.html,app.css,app.js}` 三�
 而不是恰好通过。（第一次做这个探针时 `String.Replace` 因 CRLF/LF 不匹配而静默没生效，
 两条守卫"通过"了——**假绿**。探针必须断言"替换确实发生"，否则验证的是空气。）
 
+### 6.5 批次 4 执行记录（2026-10）：B1 生成管线提取（E-5）
+
+**交付**：`game_agent/worldgen.py`（809 行）+ `scripts/import_story.py` 变薄壳（851→237 行）
++ `tests/test_worldgen.py`（22 项）。
+
+**为什么必须搬**：那条管线原本整条锁在一个 945 行的 CLI 脚本里——提取、物化、修复循环、
+`print`、`subprocess` 混在一起。后果是**任何想复用的入口都得先 shell 出去**：
+Web 创作工作台要进度流、要结构化结果、要在后台线程里跑；CLI 只想要一行行日志。
+搬出来之后分工是：
+- **`worldgen.py`**：读素材 → 分块提取 → 物化 → 校验-修复 → 语料 → smoke_profile。
+  **不打印、不读环境、不起子进程**；进度与日志统一走 `on_progress` 回调。
+- **CLI**：参数解析 + 把事件渲染成人读文本 + `--live` 的真机门禁编排
+  （要 shell 出去跑 `judge_sensitivity.py` / `worldpack_smoke.py`，属运维编排不属"生成"）。
+
+**新接缝（B2/B3 的接口，现在钉住）**：`on_progress` 事件（`start/extract/retry/repair/
+validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、`GenerateOptions`、
+`GenerateResult`（含 `stages` 时间线与 `summary`）、可注入的 `SectionExtractor`、
+`build_llm(offline)`。
+
+**等价性怎么证的**（不是"我读了一遍觉得没问题"）：把**重构前的 CLI 从 git HEAD 取出来**
+与重构后的 CLI 各跑一遍离线管线，比对：
+- 退出码相同；**8 个产出文件逐字节相同**（YAML + NPC 卡 + 语料 + 冒烟档案）；
+- stdout 归一化后**逐行相同**。
+
+**两处有意的输出变化**（都写进模块 docstring，不静默）：
+1. **新增每块进度行**（`生成[world]` / `生成[npc1]` …）。重构前只在**重试**时打印，
+   于是几分钟的提取阶段终端一片空白——作者分不清"在跑"还是"卡住"。这些事件同时就是
+   B2 进度流的来源，所以它们必须是管线的一部分，而不是 CLI 的装饰。
+2. **语料条数由写死的 "30 条" 改为实测值**：离线假 LLM 实际产 25 条（对抗 3×5 + 正常 10），
+   真实路径才是 6×3 + 6×2 = 30。日志说 30 而实际 25 属于"日志撒谎"，排查时最费时间。
+
+**顺带**：修掉一处重复输出——管线的 `done` 事件与 CLI 的结束语会各打一遍
+"世界包已生成"；现在 CLI 抑制该事件（事件本身不带前导空行，那是给人读的排版）。
+
+**验证**：离线 **934 项全绿**；CLI `--offline --with-corpus` 端到端退出码 0 且产出可校验；
+`test_cli_is_a_thin_shell` 钉住提示词与管线函数不得回流到 CLI。
+
 ---
 
 ## 7. 交付顺序与工作量（人日，粗粒度）
+
+> ⚠️ **进度已并入 `docs/roadmap.md`**（2026-10）。那张表是"下一步做什么"的唯一答案；
+> 本表保留作**执行记录与验收口径**，不再单独维护状态。
 
 | 阶段 | 内容 | 估算 | 状态 |
 | --- | --- | --- | --- |
 | 0 | E-1 / E-2（两个已知缺陷） | 2–3 | ✅ **已完成** |
 | 1 | **Stage A 前端拆分** + E-3 / E-4 / E-9 | 3–4 | ✅ **已完成** |
 | 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + **Stage B/C 三栏界面** | 6–10 | ✅ **已完成**（真机冒烟 18/18） |
-| 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | ⬜ 未开始 |
-| 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ⬜ 未开始 |
-| 5 | 分发（entry point / `asset://` / MCP 加固） | 2–3 | ⬜ 未开始 |
+| 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | 🟡 **B1 已完成**（`game_agent/worldgen.py`）；B2/B3/B4 见 roadmap N1–N3 |
+| 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ⬜ 见 roadmap N6 |
+| 5 | 分发（entry point / `asset://` / MCP 加固） | 2–3 | ⬜ 见 roadmap N11 |
 
 **合计约 25–38 人日**，其中前端约占一半。**已完成约 11–15 人日**（阶段 0 + 1 + 2）。
 **能力 A 已经完整可用**：浏览器里选卡 → 选模式 → 开局 → 三栏游玩 → 存档 → 读档，
 前端有热更新开发模式与入库的构建产物。
 
 > **下一步只剩能力 B / C**（都在引擎侧，不必再动前端骨架）：
-> **B** = 把 `import_story.py` 提成服务 + 后台进度 SSE，让"绑定小说/剧本/大纲"可用；
+> **B** = 把生成管线接上 Web（B1 已完成提取，剩下后台任务 + 工作台）；
 > **C** = 创作者 Agent（对话式改人物设定与世界书）。
 > B 是"C 的前置"——没有"从素材生成卡"，创作者 Agent 就只能在手写包上空转。
+> **具体排期见 `docs/roadmap.md`。**
 
 ---
 
