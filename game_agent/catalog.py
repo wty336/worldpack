@@ -28,8 +28,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .worldpack import WorldPackError, load_worldpack, pack_digest
-
+from .worldpack import WorldPackError, load_worldpack, pack_digest, validate_name
 DEFAULT_PACK_ROOT = "world-packs"
 
 # 目录名白名单：与 `_safe_save_path` 同一姿态（宁可严，不可漏）。
@@ -208,3 +207,24 @@ def default_pack_id(root: str | Path = DEFAULT_PACK_ROOT) -> str | None:
         if e.id == "ancient_jianghu":
             return e.id
     return playable[0].id if playable else None
+
+
+def can_create(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> str | None:
+    """能否在 `root/<name>` 处新建一个包；不能则返回原因。
+
+    **这是 API 侧的护栏，CLI 没有它也不该有**：`import_story.py --name X` 是人手敲的，
+    覆盖自己的包是明确意图；而 `POST /api/packs/generate {name: "ancient_jianghu"}`
+    会**静默毁掉一个已发布的包**（`materialize` 先清空 `npcs/` 再写）。
+    一个可被脚本调用的接口不该有这种默认行为。
+
+    要迭代已存在的包，正确路径是草稿区（roadmap N3）——那里本来就是给反复改用的。
+    """
+    if (bad := validate_name(name)) is not None:
+        return bad
+    target = Path(root) / name
+    if target.exists():
+        return (
+            f"已存在同名世界包：{target}。为避免覆盖已发布内容，接口拒绝写入；"
+            f"换个名字，或直接改那个包的目录（草稿区见 roadmap N3）。"
+        )
+    return None

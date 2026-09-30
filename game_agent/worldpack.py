@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -387,6 +388,27 @@ class WorldPack:
     events: EventsSpec
     endings: EndingsSpec
     npcs: dict[str, NpcSpec]
+
+
+# ---------------------------------------------------------------------------
+# 包名（它同时是目录名）
+# ---------------------------------------------------------------------------
+
+NAME_PATTERN = re.compile(r"[A-Za-z0-9_\-]+")
+"""包目录名的白名单。
+
+放在 `worldpack` 而不是 `worldgen`：**目录层（catalog）、生成管线（worldgen）与 CLI
+都要用同一把尺子**，而 `worldpack` 是它们共同的下游依赖。尺子放在其中任何一个上层
+模块里，都会逼另一个去 import 一个它本不需要的重模块（`catalog` 为了一个正则去拉
+`llm`/`judge_corpus` 是荒谬的）。
+"""
+
+
+def validate_name(name: str) -> str | None:
+    """包名合法性（它同时是目录名）；不合法返回原因，合法返回 None。"""
+    if not NAME_PATTERN.fullmatch(name or ""):
+        return f"非法包名（仅允许字母/数字/_/-）: {name!r}"
+    return None
 
 
 # ---------------------------------------------------------------------------

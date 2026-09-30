@@ -36,9 +36,10 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import catalog
+from . import catalog, jobs
 from .config import load_settings, resolve_context_window
 from .game import Game, GameError
+from .jobs import GenerationJob
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import (
     PackMismatchError,
@@ -175,6 +176,12 @@ def session_mode(session: Session) -> str:
 
 SESSIONS: dict[str, Session] = {}
 
+# N1：后台生成任务表（进程级；见 `jobs.py` 的"为什么不能照抄 _turn_stream"）
+JOBS = jobs.JobRegistry()
+
+# 进度的终态事件：SSE 流收到它就收尾关流
+_TERMINAL_STAGES = {"done", "error", "cancelled"}
+
 
 # ---------------------------------------------------------------------------
 # 会话与视图序列化
@@ -261,6 +268,20 @@ class NewRequest(BaseModel):
     mode: str = MODE_STORY  # story = 沿主线推进；free = 自由游玩
 
 
+class GenerateRequest(BaseModel):
+    """N1：起一个后台生成任务。
+
+    **只收文本，不收路径**（见 `api_generate` 的说明）。`with_corpus` 默认关：
+    语料要多打 12 次调用，而草稿阶段通常不需要。
+    """
+
+    name: str
+    source_text: str
+    offline: bool = False  # 默认真机（与 CLI 一致）；离线是给回归/演示用的
+    with_corpus: bool = False
+    rounds: int = 4
+
+
 def _safe_save_path(raw: str) -> Path:
     """A-1（审查修复 C1）：存档路径约束——**严格拒绝**一切非裸文件名。
 
@@ -338,6 +359,114 @@ def api_saves() -> dict:
             out.append({"path": p.name, "error": f"{type(e).__name__}: {e}"})
     out.sort(key=lambda r: r.get("mtime", 0), reverse=True)
     return {"ok": True, "saves": out}
+
+
+# ---------------------------------------------------------------------------
+# N1：后台生成任务（素材 → 世界包）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/packs/generate", status_code=202)
+def api_generate(req: GenerateRequest) -> dict:
+    """起一个后台生成任务，立刻返回 `job_id`（生成要几分钟，不能塞在请求里）。
+
+    **只收 `source_text`，不收文件路径**。这不是简化，是安全边界：本端点若接受
+    `sources: ["../../.env"]`，就等于给任何能访问本服务的人一个**任意文件读取**洞
+    （`read_sources` 会老老实实读它并把内容喂给模型）。CLI 收路径没问题——那是本机
+    用户手敲的；HTTP 接口不行。将来要传文件，走带沙箱的工作区文件服务。
+
+    **成本提醒**：`offline=false`（默认，与 CLI 一致）会真的调用模型，
+    一次生成约 ¥0.1–0.3（`with_corpus=true` 更多，因为它多打 12 次调用）。
+    调用方（创作工作台）负责在点之前把这件事说清楚。
+
+    **拒绝覆盖已存在的包**（`catalog.can_create`）：`materialize` 会先清空 `npcs/`，
+    所以同名写入等于静默毁掉一个已发布的包。要迭代走草稿区（roadmap N3）。
+    """
+    if (bad := catalog.can_create(req.name, _pack_root())) is not None:
+        raise HTTPException(400, bad)
+    if not req.source_text.strip():
+        raise HTTPException(400, "素材为空：请提供 source_text（小说/大纲/设定的正文）")
+    if req.rounds < 1:
+        raise HTTPException(400, "rounds 至少为 1（没有任何修复轮次的生成不符合质量门口径）")
+
+    job = JOBS.create(
+        pack_name=req.name,
+        pack_dir=_pack_root() / req.name,
+        source_text=req.source_text,
+        offline=req.offline,
+        with_corpus=req.with_corpus,
+        rounds=req.rounds,
+    )
+    JOBS.run_in_background(job, req.source_text, jobs.default_runner)
+    return {"ok": True, **job.snapshot()}
+
+
+@app.get("/api/packs/generate")
+def api_generate_list() -> dict:
+    """任务列表（新的在前）——刷新页面后靠它找回正在跑的任务。"""
+    return {"ok": True, "jobs": [j.snapshot() for j in JOBS.list()]}
+
+
+@app.get("/api/packs/generate/{job_id}")
+def api_generate_get(job_id: str) -> dict:
+    return {"ok": True, **_get_job(job_id).snapshot()}
+
+
+@app.post("/api/packs/generate/{job_id}/cancel")
+def api_generate_cancel(job_id: str) -> dict:
+    """请求取消。**取消点是块与块之间**——一次 LLM 调用中途没法安全打断，
+    也不该打断（半截响应没有意义，而钱已经花了）。"""
+    job = _get_job(job_id)
+    accepted = job.request_cancel()
+    return {"ok": True, "cancelled": accepted, **job.snapshot()}
+
+
+def _get_job(job_id: str) -> GenerationJob:
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(404, f"任务不存在: {job_id}")
+    return job
+
+
+@app.get("/api/packs/generate/{job_id}/events")
+def api_generate_events(job_id: str) -> StreamingResponse:
+    """SSE 进度流：**先回放已发生的事件，再续播**。
+
+    回放是必需的（不是锦上添花）：生成是分钟级任务，刷新页面是常态。只做"从此刻起
+    的增量"，刷新一次就丢掉全部进度，而任务还在烧钱。
+
+    断线**不取消任务**（与 `_turn_stream` 的"锁的生存期与客户端是否在线无关"同一条
+    纪律）——分钟级任务被一次误刷新杀掉是不可接受的。
+    """
+    job = _get_job(job_id)
+    return StreamingResponse(_job_stream(job), media_type="text/event-stream")
+
+
+def _job_stream(job: GenerationJob):
+    q, snapshot = job.subscribe()
+    try:
+        yield _sse("start", json.dumps(job.snapshot(), ensure_ascii=False))
+        for ev in snapshot:  # 回放
+            yield _sse("progress", json.dumps(ev, ensure_ascii=False))
+            if ev.get("stage") in _TERMINAL_STAGES:
+                return
+        # 回放完毕、任务已终态却没有终态事件（理论上不该发生）：收流而不是挂死
+        if job.status in jobs.TERMINAL:
+            yield _sse("end", json.dumps(job.snapshot(), ensure_ascii=False))
+            return
+        while True:
+            try:
+                ev = q.get(timeout=15)
+            except queue.Empty:
+                # 心跳：一次 LLM 调用可能几十秒没有事件，没有心跳的话浏览器/中间层
+                # 会判定连接已死。SSE 注释帧是标准做法，客户端会忽略它。
+                yield ": keepalive\n\n"
+                continue
+            yield _sse("progress", json.dumps(ev, ensure_ascii=False))
+            if ev.get("stage") in _TERMINAL_STAGES:
+                return
+    finally:
+        job.unsubscribe(q)
 
 
 @app.post("/api/new")

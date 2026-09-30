@@ -41,13 +41,14 @@ import yaml
 from .judge_corpus import load_corpus
 from .llm import LLMClient
 from .usage import UsageTracker
-from .worldpack import WorldPackError, load_worldpack
+from .worldpack import WorldPackError, load_worldpack, validate_name  # noqa: F401 — 见下
+
+# `validate_name` 从 `worldpack` 再导出：包名尺子只有一个实现（catalog 与 CLI 也用同一个）。
+# 校验一次即可：`--name` 的合法性不因调用方是谁而不同。
 
 # 进度事件回调：{"stage": str, "message": str, ...}。服务端把它转成 SSE，CLI 打印它。
 # 用 dict 而不是固定签名，是为了让 B2 能透传额外字段（step/total/error）而不改这里。
 ProgressFn = Callable[[dict], None]
-
-NAME_PATTERN = re.compile(r"[A-Za-z0-9_\-]+")
 
 # 素材上限：提取主线足够；再长只会烧额度（超长时提示作者给大纲）
 MAX_SOURCE_CHARS = 300_000
@@ -77,6 +78,16 @@ class WorldgenError(Exception):
     """生成管线里**调用方需要处理**的失败（素材缺失、提取不可解析、校验未通过）。
 
     与 `WorldPackError` 分工：那个是"包内容不合法"，这个是"生成过程没走完"。
+    """
+
+
+class WorldgenCancelled(Exception):
+    """生成被调用方中止（用户点了"停止"）。
+
+    **不继承 `WorldgenError`**：取消不是失败。调用方若把两者混在一起，
+    日志里就会把"你主动停的"报成"跑挂了"，而这恰好是排查时第一个要看的信息。
+    取消检查点只在**块与块之间**——一次 LLM 调用中途没法安全打断，
+    也不该打断（半截的响应没有意义，而钱已经花了）。
     """
 
 
@@ -351,13 +362,6 @@ class OfflineLLM:
 # ---------------------------------------------------------------------------
 
 
-def validate_name(name: str) -> str | None:
-    """包名合法性（目录名）。不合法返回原因。"""
-    if not NAME_PATTERN.fullmatch(name or ""):
-        return f"非法包名（仅允许字母/数字/_/-）: {name!r}"
-    return None
-
-
 def read_sources(paths: list[str], on_progress: ProgressFn | None = None) -> str:
     """读素材（文件或目录里的 *.md/*.txt）拼成一段文本；超长截断并提示。"""
     parts = []
@@ -605,11 +609,18 @@ class SectionExtractor:
         *,
         offline: bool = False,
         on_progress: ProgressFn | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ):
         self.llm = llm
         self.source_text = source_text
         self.offline = offline
         self.on_progress = on_progress
+        self.should_cancel = should_cancel
+
+    def _check_cancel(self) -> None:
+        """块与块之间的取消检查点（见 `WorldgenCancelled` 的说明）。"""
+        if self.should_cancel is not None and self.should_cancel():
+            raise WorldgenCancelled("生成已取消")
 
     # -- 单次调用 ---------------------------------------------------------
 
@@ -653,6 +664,7 @@ class SectionExtractor:
 
     def extract_json(self, system: str, user: str, max_tokens: int, purpose: str, label: str) -> dict:
         """带重试的 JSON 提取（3 次 + 温度循环；预算 8000 后空输出根因已除，重试只兜偶发）。"""
+        self._check_cancel()
         for attempt, temperature in enumerate((0.7, 1.0, 1.3), start=1):
             last_raw = self.raw_call(
                 [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -836,18 +848,22 @@ def generate(
     options: GenerateOptions | None = None,
     offline: bool = False,
     on_progress: ProgressFn | None = None,
+    should_cancel: Callable[[], bool] | None = None,
     extractor: SectionExtractor | None = None,
 ) -> GenerateResult:
     """完整生成管线：提取 → 物料化 → 校验-修复 → 语料 → smoke_profile。
 
     **不打印、不读环境、不起子进程**：进度全部经 `on_progress`。
     `draft_only=True` 时只落 `draft.json` 并返回（作者确认理解无误后再正式生成）。
+    `should_cancel` 非空时在每个块之间检查，命中则抛 `WorldgenCancelled`（不是失败）。
 
     调用方（`scripts/import_story.py` 的 CLI，或 Web 创作工作台的后台任务）负责
     "把事件变成输出"这一层。
     """
     opts = options or GenerateOptions()
-    ext = extractor or SectionExtractor(llm, source_text, offline=offline, on_progress=on_progress)
+    ext = extractor or SectionExtractor(
+        llm, source_text, offline=offline, on_progress=on_progress, should_cancel=should_cancel
+    )
     result = GenerateResult(pack_dir=pack_dir, draft={})
 
     _emit(on_progress, "start", f"素材 {len(source_text)} 字 → 分块提取世界包草稿……")
