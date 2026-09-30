@@ -14,6 +14,10 @@
 7. 禁用表条目零 token → 世界观边界防线静默失效
 8. affection_stages 未连续覆盖实数区间 → 语气退化为「（无阶段定义）」
 9. memory_limit / stat range 无约束 → 记忆静默全灭、饱和变负数
+
+第 10 项（N12，2026-10 补）：**结局阈值没有任何可重复的增益路径** → "机制上够不着"。
+第 6 项只在结局带 `day` 门槛时才跑，而生成器写出来的结局恰好没有 day 门槛，
+于是整个可达性检查被跳过——真机实测"离线生成的卡好感只到 8、结局要 50、门禁放行"。
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from game_agent.schedule import ScheduleSystem
 from game_agent.state import GameState
 from game_agent.stats import StatsSystem
 from game_agent.storyline import StorylineEngine
+from game_agent import worldpack
 from game_agent.worldpack import (
     ENGINE_TOOL_NAMES,
     WorldPackError,
@@ -255,6 +260,166 @@ def test_shipped_packs_have_unique_ids():
     """现有 8 个包在新增唯一性校验下必须仍然通过（不留回归债）。"""
     for _name, _pack in _shipped_packs():
         pass  # `_shipped_packs()` 内部已经 load 过，不抛即通过
+
+
+# ---------------------------------------------------------------------------
+# 10：结局阈值**机制上够不着**（N12）
+# ---------------------------------------------------------------------------
+
+
+def _no_action_grants_affection(d: dict) -> None:
+    """把所有日程行动的好感增益抹掉（**三档都要抹**：effects / critical_effects / failure_effects）。
+
+    ⚠️ 只抹 `effects.affections` 是不够的：`ancient_jianghu` 的好感增益就在
+    `critical_effects` 与 `failure_effects` 里（赠礼行动，成功 +4 / 大成功 +6 / 失败 +2）。
+    第一版漏了这两档，于是"抹掉之后仍被判为有可重复路径"→ 核心断言 **DID NOT RAISE**。
+    """
+    for a in d.get("actions", []):
+        for slot in ("effects", "critical_effects", "failure_effects"):
+            eff = a.get(slot)
+            if isinstance(eff, dict):
+                eff.pop("affections", None)
+
+
+def _one_ending_requires(threshold: float, *, inside_any: bool = False):
+    """把 endings.yaml 换成一个"要求好感 ≥ threshold"的结局。
+
+    `inside_any=True` 时放进 `any` 的**一支**，另一支用 flag——**刻意不用 `day`**：
+    带 `day` 会唤醒步骤 6 那道旧检查（它只在有 day 门槛时才跑），于是测的就不是本判据了
+    （第一版就是这么写的，结果两条测试都在测旧检查）。
+    """
+    when = ({"any": [{"affection": {"shen_qingqiu": {"gte": threshold}}},
+                     {"flags": {"met_shen": True}}]}
+            if inside_any
+            else {"all": [{"affection": {"shen_qingqiu": {"gte": threshold}}}]})
+
+    def mutate(d: dict) -> None:
+        d["endings"] = [{"id": "e_probe", "title": "探针结局", "kind": "auto",
+                         "when": when, "text": "。"}]
+
+    return mutate
+
+
+def test_shipped_packs_have_a_repeatable_gain_path():
+    """**反向守卫（最重要的一条）**：新判据不许误伤现有 8 张卡。
+
+    判据只管"没有**可重复**增益路径"的情形。现有 8 张卡每个结局要求的维度都有
+    行动在涨它（`_repeatable_gain_paths` 非空），所以一条都不该被拒——
+    这条守的是"门禁过严"这个方向。实测拦下的是生成器写出来的那种卡
+    （结局要好感 ≥50，而唯一的好感来源是**一次性**的关键抉择 +3）。
+    """
+    for name, pack in _shipped_packs():
+        rep_s, rep_a = worldpack._repeatable_gain_paths(pack.schedule)
+        # 只要这个包有任一重复来源就算过（逐结局的细判由「不误伤」本身覆盖）
+        assert rep_s or rep_a, f"{name} 一个可重复增益来源都没有？"
+
+
+def test_ending_without_any_repeatable_gain_path_is_rejected():
+    """**核心断言**：结局要好感 ≥50，而行动都不涨好感、一次性来源只到 8 → 拒绝。
+
+    这是真机撞到的那个形状（离线生成的卡）。门禁原文必须说清**两件事**：
+    ① 判的是"机制上够不着"而不是"绝对不可达"（叙事者仍可用 change_stat）；
+    ② 两种改法（补增益路径 / 降阈值）——否则模型拿到报错也不知道怎么修。
+    """
+    tmp = _craft(
+        lambda d: (_no_action_grants_affection(d),),
+        rel="schedule.yaml",
+    )
+    try:
+        # 在同一个临时包里再改 endings.yaml
+        f = tmp / "endings.yaml"
+        d = yaml.safe_load(f.read_text(encoding="utf-8"))
+        _one_ending_requires(50.0)(d)
+        f.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+        err = _load_expect_error(tmp)
+        assert "机制上够不着" in err
+        assert "没有任何可重复的增益路径" in err
+        assert "50" in err and "8" in err, f"要说清阈值与一次性上界：{err[:200]}"
+        assert "change_stat" in err, "要如实说明叙事者那条自由裁量路径（不夸大成绝对不可达）"
+        assert "action" in err and "阈值降到" in err, "两种改法都要给出来"
+    finally:
+        _cleanup(tmp)
+
+
+def test_adding_a_repeatable_gain_makes_it_pass():
+    """同一个包，只要给一个行动加上好感增益 → 立刻通过（判据不是"结局阈值太高就拒"）。"""
+    def mutate(d: dict) -> None:
+        _no_action_grants_affection(d)
+        d["actions"][0].setdefault("effects", {}).setdefault("affections", {})[
+            "shen_qingqiu"
+        ] = {"base": 8}
+
+    tmp = _craft(mutate, rel="schedule.yaml")
+    try:
+        f = tmp / "endings.yaml"
+        d = yaml.safe_load(f.read_text(encoding="utf-8"))
+        _one_ending_requires(50.0)(d)
+        f.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        load_worldpack(tmp)  # 不抛 = 通过
+    finally:
+        _cleanup(tmp)
+
+
+def test_condition_inside_any_is_not_flagged():
+    """条件在 `any` 分支里 → **不判**：满足其一即可，那一支够不着不妨碍结局达成。
+
+    这条挡的是误报。`_numeric_conditions`（步骤 6 用的那个）会把 `any` 的分支也当要求，
+    对"要求"是保守的，但对"够不着"**会误报**——所以本判据另写了一个只走无条件路径的
+    收集器（`_hard_numeric_conditions`，跳过 `any` 与 `not`）。
+    """
+    tmp = _craft(_no_action_grants_affection, rel="schedule.yaml")
+    try:
+        f = tmp / "endings.yaml"
+        d = yaml.safe_load(f.read_text(encoding="utf-8"))
+        _one_ending_requires(50.0, inside_any=True)(d)
+        f.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        load_worldpack(tmp)  # `day >= 2` 那一支能满足 → 不该被拒
+    finally:
+        _cleanup(tmp)
+
+
+def test_one_shot_cap_covers_the_threshold_so_it_passes():
+    """一次性来源加满就够得着 → 通过（判据是"连一次性都够不着"才拒）。"""
+    tmp = _craft(_no_action_grants_affection, rel="schedule.yaml")
+    try:
+        f = tmp / "endings.yaml"
+        d = yaml.safe_load(f.read_text(encoding="utf-8"))
+        # 初始好感 5 + 关键抉择最大 +3 = 8 → 阈值取 8 应当通过
+        _one_ending_requires(8.0)(d)
+        f.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        load_worldpack(tmp)
+    finally:
+        _cleanup(tmp)
+
+
+def test_requirement_already_true_at_initial_is_not_flagged():
+    """开局就满足的阈值不构成"够不着"（阈值 ≤ 初始值 → 直接放行）。"""
+    tmp = _craft(_no_action_grants_affection, rel="schedule.yaml")
+    try:
+        f = tmp / "endings.yaml"
+        d = yaml.safe_load(f.read_text(encoding="utf-8"))
+        _one_ending_requires(1.0)(d)  # 初始 5 ≥ 1
+        f.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        load_worldpack(tmp)
+    finally:
+        _cleanup(tmp)
+
+
+def test_repair_router_sends_the_new_error_to_both_fix_sites():
+    """worldgen 的修复路由必须把这条错误同时指到 `endings` 与 `schedule/actions`。
+
+    为什么值得单独守：`repair_sections` 是**有序关键词**匹配，而这条错误的文本里
+    同时出现"结局"和"行动"。不特判的话会被 `行动` 抢走 → 只重生成 schedule，
+    模型永远想不到"也可以降阈值"（而被拒的包恰恰常常是阈值设得太高）。
+    """
+    from game_agent.worldgen import repair_sections
+
+    err = ("结局 'ending_stay'（留下）要求好感『lin』gte 50，但**没有任何可重复的增益路径**：\n"
+           "  改法二选一：① 给某个 action / 自定义工具加 'lin' 的增益；② 把阈值降到 ≤8")
+    targets = repair_sections(err)
+    assert "endings" in targets, f"降阈值那条路没被指到：{targets}"
+    assert "schedule" in targets and "actions" in targets, f"补增益那条路没被指到：{targets}"
 
 
 # ---------------------------------------------------------------------------

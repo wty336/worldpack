@@ -1258,6 +1258,168 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 "所以这里的每一条都是「确定不可达」，不是估算误差。"
             )
 
+    # 6.5) 数值**零可重复增益路径**（N12）：不需要预算也能判死的那一类。
+    #
+    # 上面步骤 6 被 `if _day_hits:` 包着——**只有某个结局带 day 门槛时才跑**。
+    # 而生成器写出来的结局常常没有 day 门槛（`when: {all: [{affection: {lin: {gte: 50}}}]}`），
+    # 于是那道门禁**整体跳过**：真机实测就是"离线生成的卡，好感只能到 8，结局要 50，
+    # 门禁放行，玩家永远打不出这个结局"（docs/roadmap.md §2.5 ③）。
+    #
+    # 判据（不需要天数预算）：
+    #   若某维度**没有任何可重复的增益来源**（日程行动 / 自定义工具都不涨它），
+    #   那么它的上界就是「初始值 + 一次性来源加满」（关键抉择每个只选一个、事件累加）。
+    #   这个上界 < 阈值 → **机制上够不着**。
+    #
+    # **为什么必须区分"可重复"与"一次性"**：关键抉择的 +3 是确定性来源，但用一次就没了。
+    # 只看"有没有来源"会让判据形同虚设——生成的那张卡正是这样漏过去的（5 → 8，要 50）。
+    #
+    # **口径要诚实**：这里判的是"**机制上够不着**"，不是"绝对不可达"——叙事者仍可逐轮用
+    # `change_stat` 调整（每次 ≤±5，见 `stats.AFFECTION_DELTA_MAX`），但那是模型的自由裁量，
+    # 不是"玩家照着玩法走就能到"。结局阈值应当由机制兜住，所以这里按错误处理。
+    _rep_stats, _rep_affs = _repeatable_gain_paths(schedule)
+    _once_stats, _once_affs = _one_shot_gains(mainline, events)
+    no_path: list[str] = []
+    for ending in endings.endings:
+        needs_stats: dict[str, list[tuple[str, float]]] = {}
+        needs_affs: dict[str, list[tuple[str, float]]] = {}
+        _hard_numeric_conditions(ending.when, "stat", needs_stats)
+        _hard_numeric_conditions(ending.when, "affection", needs_affs)
+        for label, table, repeatable, once in (
+            ("属性", schedule.stats, _rep_stats, _once_stats),
+            ("好感", schedule.affections, _rep_affs, _once_affs),
+        ):
+            for name, conds in (
+                (needs_stats if label == "属性" else needs_affs)
+            ).items():
+                if name not in table or name in repeatable:
+                    continue  # 未声明引用由步骤 2 报；有重复来源 → 天数够就能到
+                initial = float(table[name].initial)
+                cap = initial + float(once.get(name, 0.0))
+                for op, threshold in conds:
+                    if op not in ("gte", "gt"):
+                        continue
+                    if (initial > threshold) if op == "gt" else (initial >= threshold):
+                        continue  # 开局就满足，不构成"够不着"
+                    if cap + 1e-9 < threshold:
+                        no_path.append(
+                            f"  结局 '{ending.id}'（{ending.title}）要求{label}『{name}』"
+                            f"{op} {threshold:g}，但**没有任何可重复的增益路径**：\n"
+                            f"    · 日程行动与自定义工具都不提升它（初始 {initial:g}）\n"
+                            f"    · 一次性来源（关键抉择/事件）全部加满也只到 {cap:g}\n"
+                            f"    改法二选一：① 给某个 action / 自定义工具加 '{name}' 的增益"
+                            f"（推荐——玩家就有明确的推进路径了）；② 把阈值降到 ≤{cap:g}"
+                        )
+    if no_path:
+        raise WorldPackError(
+            "以下结局的数值阈值**机制上够不着**（没有可重复的增益路径）：\n"
+            + "\n".join(no_path)
+            + "\n  说明：这里判的不是「绝对不可达」——叙事者仍可逐轮用 change_stat 调整"
+            "（每次 ≤±5），但那是模型的自由裁量，不是「玩家照着玩法走就能到」。"
+            "结局阈值应当由机制兜住。"
+        )
+
+
+def _gain_of(value: Any) -> float:
+    """一个效果值的**名义正增益**（非正/看不懂 → 0）。
+
+    两种形状都要认：`EffectValue` 可能是 `{base, spread, decay_*}` 也可能是裸数字
+    （`_numeric_caps` 里同一处置）。`decay_*` 递减曲线这里**刻意忽略**——
+    本函数只回答"这个来源**能不能**涨它"，判据保守（少算 → 少报"够不着"）。
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) if float(value) > 0 else 0.0
+    if isinstance(value, dict):
+        base = value.get("base")
+        spread = value.get("spread")
+        total = 0.0
+        if isinstance(base, (int, float)):
+            total += float(base)
+        if isinstance(spread, (int, float)) and float(spread) > 0:
+            total += float(spread)  # 取上界：判"能不能涨"，不是算期望
+        return total if total > 0 else 0.0
+    base = getattr(value, "base", None)
+    spread = getattr(value, "spread", None)
+    total = float(base or 0)
+    if isinstance(spread, (int, float)) and float(spread) > 0:
+        total += float(spread)
+    return total if total > 0 else 0.0
+
+
+def _repeatable_gain_paths(schedule: ScheduleSpec) -> tuple[set[str], set[str]]:
+    """**可重复**的增益来源（花行动点就能再做一次）：日程行动 + 自定义工具。
+
+    特意**不含**关键抉择与事件：那些一次性。两者的区分是 N12 判据的核心——
+    只看"有没有来源"会让判据形同虚设（生成的那张卡唯一的好感来源是关键抉择 +3）。
+    """
+    stats: set[str] = set()
+    affs: set[str] = set()
+    for action in schedule.actions:
+        for eff in (action.effects, action.critical_effects, action.failure_effects):
+            if eff is None:
+                continue
+            stats |= {k for k, v in eff.stats.items() if _gain_of(v) > 0}
+            affs |= {k for k, v in eff.affections.items() if _gain_of(v) > 0}
+    for tool in schedule.tools:
+        stats |= {k for k, v in (tool.effects.get("stats") or {}).items() if _gain_of(v) > 0}
+        affs |= {k for k, v in (tool.effects.get("affections") or {}).items() if _gain_of(v) > 0}
+    return stats, affs
+
+
+def _one_shot_gains(
+    mainline: MainlineSpec, events: EventsSpec
+) -> tuple[dict[str, float], dict[str, float]]:
+    """**一次性**来源加满时的总增益：关键抉择每个只选一个（取最大），事件累加。"""
+    stats: dict[str, float] = {}
+    affs: dict[str, float] = {}
+    for node in mainline.nodes:
+        for choice in node.critical_choices:
+            best_stats: dict[str, float] = {}
+            best_affs: dict[str, float] = {}
+            for opt in choice.options:  # 一个抉择只能选一个 → 逐维度取最大
+                for k, v in (opt.effects.get("stats") or {}).items():
+                    best_stats[k] = max(best_stats.get(k, 0.0), _gain_of(v))
+                for k, v in (opt.effects.get("affections") or {}).items():
+                    best_affs[k] = max(best_affs.get(k, 0.0), _gain_of(v))
+            for k, v in best_stats.items():
+                stats[k] = stats.get(k, 0.0) + v
+            for k, v in best_affs.items():
+                affs[k] = affs.get(k, 0.0) + v
+    for ev in events.events:  # 事件各自触发 → 累加
+        for k, v in (ev.effects.get("stats") or {}).items():
+            stats[k] = stats.get(k, 0.0) + _gain_of(v)
+        for k, v in (ev.effects.get("affections") or {}).items():
+            affs[k] = affs.get(k, 0.0) + _gain_of(v)
+    return stats, affs
+
+
+def _hard_numeric_conditions(
+    node: Any, kind: str, out: dict[str, list[tuple[str, float]]]
+) -> None:
+    """只收集**无条件**路径上的数值要求：走 `all` / 根 / 列表，**跳过 `any` 与 `not`**。
+
+    为什么不能直接用 `_numeric_conditions`：那个为了判"门槛够不够得着"把所有分支
+    （含 `any`）都当要求收——对**要求**是保守的，但对"够不着"**会误报**：
+    `any: [affection ≥50, day ≥3]` 里好感那一支够不着并不妨碍结局达成。
+    本判据只对"无论满足哪个分支都必须成立"的条件下结论。
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in ("not", "any"):
+                continue
+            if key == kind and isinstance(value, dict):
+                for name, spec in value.items():
+                    if isinstance(spec, dict):
+                        for op, threshold in spec.items():
+                            if op in ("gte", "gt", "lte", "lt") and isinstance(
+                                threshold, (int, float)
+                            ):
+                                out.setdefault(name, []).append((op, float(threshold)))
+            else:
+                _hard_numeric_conditions(value, kind, out)
+    elif isinstance(node, list):
+        for item in node:
+            _hard_numeric_conditions(item, kind, out)
+
 
 def _numeric_caps(schedule: ScheduleSpec, days: int) -> tuple[dict[str, float], dict[str, float]]:
     """数值可达上限（校验批步骤 6 的核心）：该维度**独占全部行动点**时的理论上界。

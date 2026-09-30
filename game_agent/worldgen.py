@@ -264,7 +264,13 @@ def _offline_pieces():
         {"id": "work", "label": "接单", "cost": 1,
          "effects": {"stats": {"credits": {"base": 15, "spread": 5}}},
          "scene": "测试城·广场", "present": []},
-        {"id": "visit_lin", "label": "拜访林", "cost": 1, "effects": {},
+        # N12：这个行动**必须有增益**。它原先写作 `"effects": {}`，而结局要 `lin >= 50`
+        # ——于是这份 fixture 里就长着"结局机制上够不着"那个缺陷，新门禁一加，
+        # worldgen 自己的 20 条测试全红（**门禁是对的、fixture 是坏的**）。
+        # 修 fixture 而不是放宽门禁：真实提取器产出的"拜访某人"行动本来就带好感增益，
+        # 空 effects 才是异常形状。
+        {"id": "visit_lin", "label": "拜访林", "cost": 1,
+         "effects": {"affections": {"lin": {"base": 8, "spread": 2}}},
          "scene": "测试城·诊所", "present": ["lin"]},
     ]
     nodes = [{
@@ -486,6 +492,65 @@ def write_corpus(pack_dir: Path, draft: dict) -> None:
     )
 
 
+def _numeric_needs(node, out: set[tuple[str, str]]) -> None:
+    """收集条件里"要涨"的维度（gte/gt）。跳过 `not` 与 `any`——与
+    `worldpack._hard_numeric_conditions` 同一口径（取反的不算要求，any 的满足其一即可）。"""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in ("not", "any"):
+                continue
+            if key in ("stat", "affection") and isinstance(value, dict):
+                kind = "stats" if key == "stat" else "affections"
+                for name, spec in value.items():
+                    if isinstance(spec, dict) and any(
+                        op in ("gte", "gt") for op in spec
+                    ):
+                        out.add((kind, name))
+            else:
+                _numeric_needs(value, out)
+    elif isinstance(node, list):
+        for item in node:
+            _numeric_needs(item, out)
+
+
+def _gain_positive(value) -> bool:
+    if isinstance(value, dict):
+        return float(value.get("base") or 0) > 0 or float(value.get("spread") or 0) > 0
+    try:
+        return float(value) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _action_toward(draft: dict) -> str:
+    """挑一个**能推进目标结局**的行动作为冒烟的主线动作（挑不到就回落第一个）。
+
+    原先一律取 `actions[0]`，于是档案与目标**天然可能不自洽**：目标结局要"好感 ≥50"，
+    而第一个行动只给信用点——冒烟跑满天数也到不了，`worldpack_smoke` 永远报
+    "未达成结局"（2026-10 实测 26 天好感恒为 8，见 docs/roadmap.md §2.5 ③）。
+
+    这不是纯测试问题：**它决定"给冒烟的目标"能不能被"冒烟的动作"达到**。
+    按结局条件里要涨的维度去挑，才让"生成卡可通关"这件事在离线冒烟里可验证。
+    """
+    actions = draft["schedule"].get("actions", [])
+    if not actions:
+        return ""
+    endings = draft.get("endings") or []
+    if not endings:
+        return actions[0]["id"]
+    needs: set[tuple[str, str]] = set()
+    for e in endings:
+        _numeric_needs(e.get("when") or {}, needs)
+    if not needs:
+        return actions[0]["id"]
+    for a in actions:
+        eff = a.get("effects") or {}
+        for kind, name in needs:
+            if _gain_positive((eff.get(kind) or {}).get(name)):
+                return a["id"]
+    return actions[0]["id"]
+
+
 def smoke_profile(draft: dict) -> dict:
     """给 `worldpack_smoke.py` 的冒烟档案（选项/行动/天数/台词/禁表/目标结局）。"""
     picks = {
@@ -493,12 +558,11 @@ def smoke_profile(draft: dict) -> dict:
         for node in draft["mainline"]["nodes"]
         for choice in node.get("critical_choices", [])
     }
-    actions = draft["schedule"].get("actions", [])
     npc_name = next(iter(draft["npcs"].values()))["name"] if draft.get("npcs") else "同伴"
     endings = draft["endings"]
     return {
         "picks": picks,
-        "action": actions[0]["id"] if actions else "",
+        "action": _action_toward(draft),
         "days": 8,
         "lines": [
             "（观察四周，向人打听消息）",
@@ -549,6 +613,12 @@ def summary(draft: dict) -> str:
 
 def repair_sections(err: str) -> list[str]:
     """按校验错误关键词路由到需要重生成的小块（只重生成相关块，不整包重来）。"""
+    # N12：数值可达性错误（"阈值够不着 / 机制上够不着"）有**两处可修**——
+    # 降阈值（endings）或补增益路径（schedule/actions）。必须在通用关键词**之前**判：
+    # 否则会被下面的 "行动" 抢走，只重生成 schedule，模型永远想不到"也可以降阈值"。
+    # 而这两条路里，"给行动加增益"通常是更好的那个（玩家有了明确的推进路径）。
+    if "够不着" in err or "增益路径" in err:
+        return ["endings", "schedule", "actions"]
     if "lore" in err or "world.yaml" in err:
         return ["world", "world_extra"]
     if "角色卡" in err or "/npcs" in err:

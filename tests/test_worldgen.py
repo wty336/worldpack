@@ -26,6 +26,7 @@ import pytest
 import yaml
 
 from game_agent import worldgen
+from game_agent.worldpack import load_worldpack
 from game_agent.worldgen import (
     ALL_SECTIONS,
     GenerateOptions,
@@ -83,6 +84,52 @@ def test_repair_loop_fires_and_converges(tmp_path):
     result = _run(tmp_path)
     assert result.repairs >= 1, "离线假 LLM 首轮必坏，修复轮次不该是 0"
     assert "validate" in result.stages
+
+
+def test_n12_lint_drives_a_repair_round_and_routes_to_both_fix_sites(tmp_path):
+    """**N12 的 (b) 半**：生成器拿到"机制上够不着"这条 lint 会真的去修，且路由指对地方。
+
+    做法：用可注入的 `extractor` 缝，首轮交回一份带 N12 缺陷的草稿（抹掉行动的**三档**
+    好感增益 + 把阈值抬到 50），修复轮交回正常草稿。断言：
+
+    ① **修复轮被触发**（`repairs >= 1`）——若门禁不含这条判据，首轮就直接通过、repairs=0；
+    ② 修复轮看到的那条错误文本里同时出现"结局"与"行动"，而 `repair_sections` 必须把它
+       路由到 `endings` **和** `schedule/actions`——只指 schedule 的话，模型永远想不到
+       "也可以降阈值"，而被拒的包恰恰常常就是阈值设得太高；
+    ③ 最终包可加载（循环真的收敛了）。
+    """
+    llm, _ = worldgen.build_llm(offline=True)
+    src = "# 环形都市\n\n调查员在城里醒来，身上只有一张写着「林」的名片。\n"
+    captured: dict = {}
+
+    class _DefectiveFirst(worldgen.SectionExtractor):
+        def generate_sections(self, prior=None, err=None):
+            draft = super().generate_sections(prior, err)
+            if err:
+                captured["err"] = err
+                return draft  # 修复轮：交回正常草稿
+            for a in draft.get("schedule", {}).get("actions", []):
+                for slot in ("critical_effects", "failure_effects"):
+                    a.pop(slot, None)
+                (a.setdefault("effects", {})).pop("affections", None)
+            draft["endings"] = [{
+                "id": "ending_stay", "title": "留下", "kind": "auto",
+                "when": {"all": [{"affection": {"lin": {"gte": 50}}}]}, "text": "你留下了。",
+            }]
+            return draft
+
+    ext = _DefectiveFirst(llm, src, offline=True)
+    result = worldgen.generate(tmp_path / "probe", src, llm, offline=True, extractor=ext)
+
+    assert result.repairs >= 1, "N12 缺陷没有被门禁抓住 → 修复轮没触发"
+    err = captured.get("err") or ""
+    assert "机制上够不着" in err, f"修复轮拿到的不是这条 lint：{err[:160]}"
+    targets = set(worldgen.repair_sections(err))
+    assert {"endings", "schedule", "actions"} <= targets, (
+        f"路由没同时指到两处修法（实际 {sorted(targets)}）——"
+        f"只指 schedule 的话，模型想不到「也可以降阈值」"
+    )
+    load_worldpack(result.pack_dir)  # 收敛：最终包可加载
 
 
 def test_draft_only_does_not_materialize(tmp_path):
@@ -232,10 +279,29 @@ def test_smoke_profile_shape(tmp_path):
     # smoke_profile 是 **YAML**（`worldpack_smoke.py` 用 yaml.safe_load 读它）
     prof = yaml.safe_load((result.pack_dir / "smoke_profile.yaml").read_text(encoding="utf-8"))
     assert prof["picks"] == {"help": 0}
-    assert prof["action"] == "work"
+    # N12：冒烟动作必须**能推进目标结局**——目标要"好感 ≥50"，就得挑能涨好感的行动。
+    # 原先一律取 `actions[0]`（`work`，只给信用点），于是"目标"与"动作"天然可能不自洽，
+    # 冒烟跑满天数也到不了结局（实测 26 天好感恒为 8）。见 docs/roadmap.md §2.5 ③。
+    assert prof["action"] == "visit_lin", "冒烟动作要朝着目标结局挑，不能一律取第一个"
     assert prof["days"] == 8
     assert prof["forbidden_scan"]  # 禁表扫词不能为空，否则冒烟等于没扫
     assert len(prof["lines"]) == 3
+
+
+def test_smoke_action_falls_back_when_nothing_advances_the_target(tmp_path):
+    """挑不到"能推进目标"的行动时回落第一个——**不许因为挑不到就报错或给空**。"""
+    draft = {
+        "schedule": {"actions": [{"id": "a1", "effects": {"stats": {"gold": {"base": 1}}}}]},
+        "npcs": {"n": {"name": "某人"}},
+        "mainline": {"nodes": []},
+        # 结局要好感，而没有行动给好感 → 回落 actions[0]
+        "endings": [{"title": "走", "when": {"all": [{"affection": {"x": {"gte": 9}}}]}}],
+    }
+    assert worldgen._action_toward(draft) == "a1"
+    # 完全没有行动 → 空串（冒烟脚本对空 action 有自己的处理）
+    assert worldgen._action_toward({**draft, "schedule": {"actions": []}}) == ""
+    # 没有结局 → 回落第一个
+    assert worldgen._action_toward({**draft, "endings": []}) == "a1"
 
 
 def test_forbidden_tokens_strips_parenthetical_and_enumeration():
