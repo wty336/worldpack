@@ -70,18 +70,27 @@ def test_dist_entry_and_assets_exist():
 
 
 def test_index_html_references_existing_assets():
-    """入口页引用的每个资源都必须存在。
+    """入口页引用的每个资源都必须存在，且路径形态是预期的两种之一。
 
     这条看着多余，其实不然：Vite 的 `base` 配错（默认 `/assets/` 而不是 `/static/assets/`）
     时**文件都在、路径却 404**，服务端与其它测试都发现不了——只有浏览器会白屏。
+
+    允许两种引用（白名单而不是"必须以 /static/ 开头"）：
+    - `/static/...`：由 FastAPI 托管，**必须存在**；
+    - `data:`：内联（favicon 就是），没有可检查的文件。
+    其它任何形态（`http://` 外链、`/assets/...`、相对路径）都是配置漂移的信号
+    ——第一版只允许 `/static/`，于是加上内联 favicon 后这条守卫自己红了；
+    收紧是对的，但白名单要写全，否则守卫会拦住合法的实现方式。
     """
     html = (DIST / "index.html").read_text(encoding="utf-8")
     refs = re.findall(r'(?:src|href)="([^"]+)"', html)
     assert refs, "入口页没有任何资源引用——构建异常"
     for ref in refs:
+        if ref.startswith("data:"):
+            continue  # 内联资源：无文件可查
         assert ref.startswith("/static/"), (
-            f"资源路径 {ref!r} 未以 /static/ 开头：FastAPI 在 /static 下托管 dist，"
-            " 说明 vite.config.js 的 base 配错了"
+            f"资源路径 {ref!r} 既不是内联 data: 也不是 /static/ 开头："
+            " FastAPI 在 /static 下托管 dist，说明 vite.config.js 的 base 配错了"
         )
         rel = ref[len("/static/"):]
         assert (DIST / rel).is_file(), f"入口页引用了不存在的资源：{ref}"

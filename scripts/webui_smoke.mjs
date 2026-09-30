@@ -280,6 +280,13 @@ async function main() {
     // ---- 选卡屏 ----
     await cdp.waitFor(`!!document.querySelector('#app .library')`, { label: '选卡屏渲染' })
     check('Vue 挂载并渲染出选卡屏', true)
+    // 卡片是**异步**取回 `/api/catalog` 之后才渲染的：`.library` 会先出现（空列表），
+    // 所以要等卡片本身，而不是等容器。第一版直接数 `.pack`，在真机（8 个包、
+    // 首次列举要跑 8 次 load_worldpack）上偶发数到 0——那会把测试的竞态
+    // 报成产品缺陷。
+    await cdp.waitFor(`document.querySelectorAll('#app .pack').length >= 2`, {
+      label: '卡片列表加载完成',
+    })
     const packCount = await cdp.eval(`document.querySelectorAll('#app .pack').length`)
     check('卡片列表渲染出全部包（含坏包）', packCount === 2, `渲染 ${packCount} 张`)
     const brokenDisabled = await cdp.eval(

@@ -1,6 +1,6 @@
 {
   "files": {
-    "index.html": "3dc8ff4eb06c2758",
+    "index.html": "8ec801c0619a85de",
     "package.json": "f4b51107785fefe2",
     "src/App.vue": "c1ce01f50b4e193c",
     "src/api/client.js": "16a7bdbba3712d68",
@@ -16,7 +16,7 @@
     "src/views/PlayView.vue": "231abef83114c2e3",
     "vite.config.js": "12b50d34691fc71f"
   },
-  "sourceDigest": "31fc7c4ff04552bf",
+  "sourceDigest": "c6b7041d1a6677fb",
   "count": 15,
   "generatedBy": "vite.config.js"
 }
