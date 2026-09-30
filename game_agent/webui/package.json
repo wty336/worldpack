@@ -1,0 +1,19 @@
+{
+  "name": "game-agent-webui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "game-agent Web 前端（Stage B：Vite + Vue 3 三栏重写）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.2.1",
+    "vite": "6.0.7"
+  }
+}

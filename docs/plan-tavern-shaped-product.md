@@ -283,34 +283,36 @@ game_agent/webui/          ← 注意：不能叫 web/（与 web.py 同名会让
 **这一步不改变任何行为，但它是后面所有工作的前提**，而且当场就让你能用
 CSS Grid 摆出三栏布局（`display:grid; grid-template-columns: 240px 1fr 320px`）。
 
-**Stage B（3–6 天，引入 Vite + Vue 3，⬜ 未开始）**
+**Stage B（✅ 已完成，2026-10）—— Vite + Vue 3 三栏重写**
 ```
 game_agent/webui/
-  index.html
-  vite.config.js         ← 配 server.proxy 把 /api 转发到 127.0.0.1:8000
+  index.html             ← Vite 入口（挂载点 #app）
+  vite.config.js         ← base:'/static/' + build-manifest 插件 + dev proxy
+  package.json           ← 依赖只有 vue / vite / @vitejs/plugin-vue
   src/
     main.js
-    App.vue
-    api/client.js        ← 7 个端点的薄封装
-    composables/useTurnStream.js   ← ← 最关键的一个文件，见 5.4
+    App.vue              ← 骨架：拿 config/catalog/saves → 选卡 → 进游戏
+    styles.css           ← 三栏 grid + 窄屏塌成单栏
+    api/client.js        ← 端点薄封装（唯一知道端点形状的地方）
+    composables/useTurnStream.js   ← POST+SSE（见 5.4）
     components/
-      ProseStream.vue    ← 正文流 + 流式光标 + 生成计时
-      ChoiceList.vue     ← 候选项 / 关键抉择（两种状态）
-      StatusPanel.vue    ← 右侧：直接渲染 status_text() + actions
-      InputDock.vue      ← 自由输入 + 发言/回顾/存档/读档
-      EndingCard.vue     ← 结局
+      NoticeBar.vue      ← 非阻塞提示条（替换 alert）
+      ProseStream.vue    ← 正文流 + 流式光标 + 回顾切换 + 恢复痕迹
+      ChoiceList.vue     ← 候选项 / 关键抉择 / 结局 / 生成计时
+      StatusPanel.vue    ← 右栏：直接渲染 status_text() + 行动区
+      InputDock.vue      ← 自由输入 + 发言/存档/换卡
     views/
-      PlayView.vue       ← 游戏主界面（上面那张三栏图）
-      LibraryView.vue    ← 卡片/包库（GET /api/catalog）
-      WorkbenchView.vue  ← 编辑器（对话 + 字段 + 校验报告）
+      LibraryView.vue    ← 选卡屏（卡片 + 模式 + 读档）
+      PlayView.vue       ← 三栏游戏屏
+  dist/                  ← **入库的构建产物**（CI 不跑 npm，服务端直接托管）
+    build-manifest.json  ← 源文件内容哈希（守卫据此发现"改了没重建"）
 ```
 开发时 `npm run dev`（Vite 跑 5173，proxy 转 `/api` 到你的 8000），
 `uvicorn` 照常跑——**两边热更新，互不干扰，没有 CORS 问题**。
 
-**Stage C（1 天，部署，⬜ 未开始）**
-`npm run build` 产出 `dist/`，FastAPI 挂载 `dist/` 作为静态目录，
-`GET /` 返回 `dist/index.html`。**一个进程部署**，沿用你现在的 `python -m game_agent web`。
-Vite 只在开发时需要，运行期不需要 Node。
+**Stage C（✅ 已完成，2026-10）**
+`npm run build` 产出 `dist/`，FastAPI 挂载 `dist/` 作为静态目录。
+**一个进程部署**，运行期不需要 Node（`python -m game_agent web`）。
 
 ### 5.4 唯一一个你必须知道的坑：POST + SSE
 
@@ -529,27 +531,76 @@ Python 字符串里）拆成 `game_agent/webui/{index.html,app.css,app.js}` 三�
 **编码核对**：`/api/catalog` 的字节是合法 UTF-8 且 `ancient_jianghu → 江湖旧梦` 断言通过
 （此前控制台看到的乱码是 PowerShell 的解码，不是接口问题）。
 
+### 6.3 批次 3 执行记录（2026-10）：Stage B/C 前端三栏重写
+
+**交付**：Vite + Vue 3 三栏前端（左本局 · 中正文+输入 · 右状态栏）+ 构建产物入库 + 真机冒烟脚本。
+
+**为什么把 `dist/` 入库**：CI 只跑 pytest、不跑 npm，服务端直接托管 dist——这是参照实现
+（dsh-tavern 提交 `lib/client.js`）的同一种取舍。代价是"源码改了但忘了重新构建"这个风险，
+故配两条守卫：`vite.config.js` 的 `build-manifest` 插件把每个源文件的内容哈希写进
+`dist/build-manifest.json`；`tests/test_webui_build.py` 重算源哈希比对。
+**用内容哈希而不是 mtime**——全新 clone 里所有文件 mtime 都是检出时间，比不出先后。
+（已实测：改一个 `.vue` 不重建，守卫必红并指名到文件；重建后恢复绿。）
+
+**三处容易漏的东西**（都是"文件都在、只是不对"的类型）：
+1. **`base: '/static/'`**：Vite 默认输出 `/assets/...`，而 FastAPI 在 `/static` 下托管 dist。
+   配错时文件都存在、服务端与测试都发现不了，**只有浏览器白屏**。守卫直接断言
+   `dist/index.html` 的每个引用都以 `/static/` 开头且文件存在。
+2. **`/api/config` 取代了服务端占位符替换**：`dist/index.html` 是构建产物，服务端再去改写它
+   会让"dist 是否与源码一致"的判定失去意义。自由输入文案改由运行时下发，单一真源不变。
+3. **POST + SSE 的契约**（§5.4）：`EventSource` 只支持 GET 且**断线会自动重连 = 把回合重跑一遍**，
+   故用 `fetch` + `ReadableStream`；`delta` 的 data 是**裸 JSON 字符串**（写成 `payload.text`
+   会静默拿到 undefined，表现为"正文空白但状态栏正常"）；`done.narration` 才是真值。
+
+**守卫结构整体重写了一次**（值得记下原因）：Stage A 期间前端是内嵌字符串/原生 JS，
+测试只能对**产物文本做子串断言**（`"function startGen" in html`）。Vue 重写后这类断言
+要么失效、要么与被测行为无关。现在分三层：
+- **接口契约层**（`test_web_frontend.py` 上半）：视图载荷与引擎的分流/拒绝行为，不碰前端实现；
+- **源码结构层**（同文件下半）：读 `src/**` 钉住"写错了不报错、只表现为怪现象"的契约
+  （选项按 `choice_prompt` 分流、`new EventSource` 不得出现、`done.narration` 覆盖草稿…）；
+- **跨层一致性**：从 `api/client.js` 解析出端点清单，与 `web.app` 的路由表逐个核对
+  ——端点改名时前端会**静默 404**，这条把它变成测试失败。
+
+**新增 `scripts/webui_smoke.mjs`：真机驱动界面的冒烟**（不依赖 API Key、不花钱）。
+自带桩后端 + 走 CDP 驱动无头 Edge/Chrome（Node 22 自带全局 `WebSocket`，零 npm 依赖），
+断言 18 项：选卡屏渲染、坏包以禁用态可见、三栏出现、开局叙事/关键抉择/候选项、
+右栏渲染引擎状态栏原文、走通一个回合（delta 流式 → done 提交 → 草稿被终稿接管）、
+行动区随阶段变化、恢复痕迹对玩家可见。
+
+> **这个脚本当场抓出了两个我自己写的真 bug**（pytest 全绿也发现不了）：
+> ① `App.vue` 把 `POST /api/new` 返回的 **opening view 丢掉了**——三栏都渲染出来，
+> 但正文与候选全空、右栏一直"等待开局"；② `PlayView` **从不在挂载时取
+> status/actions**，右栏永远空白。
+> 它自己也先后犯了三个错并当场暴露：按 DOM 顺序选按钮（命中了「剧情回顾」而不是「发言」）、
+> 一次性断言流式中间态（`done` 先写草稿、`streaming` 到 finally 才落回，存在假红窗口）、
+> 以及桩后端的回合序号差一（第一个 turn 又返回了开局视图，导致断言"通过"得毫无意义）。
+> **桩自己的状态机错了比没有桩更危险**——这三处都写进注释留档。
+
+**验证**：离线 **905 项全绿**；前端真机冒烟 **18/18 通过**；
+`node --check` 通过；8 个世界包 `check-worldpack` 全通过；
+构建产物完整性守卫（入口/资源/哈希/陈旧度/依赖未入库）5 项全绿。
+
 ---
 
 ## 7. 交付顺序与工作量（人日，粗粒度）
 
 | 阶段 | 内容 | 估算 | 状态 |
 | --- | --- | --- | --- |
-| 0 | E-1 / E-2（两个已知缺陷） | 2–3 | ✅ **已完成**（875 项全绿） |
-| 1 | **Stage A 前端拆分**（半天，无新工具链）+ E-3 / E-4 / E-9 | 3–4 | ✅ **已完成**（898 项全绿） |
-| 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + Stage B 游戏主界面 | 6–10 | 🟡 **引擎侧已完成、选卡屏已可用**；Stage B（Vite+Vue 三栏）未开始 |
+| 0 | E-1 / E-2（两个已知缺陷） | 2–3 | ✅ **已完成** |
+| 1 | **Stage A 前端拆分** + E-3 / E-4 / E-9 | 3–4 | ✅ **已完成** |
+| 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + **Stage B/C 三栏界面** | 6–10 | ✅ **已完成**（真机冒烟 18/18） |
 | 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | ⬜ 未开始 |
 | 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ⬜ 未开始 |
-| 5 | Stage C 构建部署 + 存档名/提示条等打磨 | 2–3 | ⬜ 未开始 |
+| 5 | 分发（entry point / `asset://` / MCP 加固） | 2–3 | ⬜ 未开始 |
 
-**合计约 25–38 人日**，其中前端约占一半。**已完成约 6–8 人日**（阶段 0 + 阶段 1 + 阶段 2 的引擎侧）。
-**"选一张卡自由游玩"现在端到端可用**（选卡 → 开局 → 对话/行动 → 存档 → 读档），
-只是界面仍是原生 JS 的单栏布局，没有三栏与状态栏分栏。
+**合计约 25–38 人日**，其中前端约占一半。**已完成约 11–15 人日**（阶段 0 + 1 + 2）。
+**能力 A 已经完整可用**：浏览器里选卡 → 选模式 → 开局 → 三栏游玩 → 存档 → 读档，
+前端有热更新开发模式与入库的构建产物。
 
-> **下一步二选一**：
-> ① **能力 B（阶段 3）**——把 `import_story.py` 提成服务 + 后台进度，让"绑定小说/剧本/大纲"可用；
-> ② **Stage B（阶段 2 的前端部分）**——Vite + Vue 三栏重写，把已经选好的卡玩得更像样。
-> 选 ① 是补功能，选 ② 是补体验；两者互不阻塞，且都不需要动引擎的回合循环。
+> **下一步只剩能力 B / C**（都在引擎侧，不必再动前端骨架）：
+> **B** = 把 `import_story.py` 提成服务 + 后台进度 SSE，让"绑定小说/剧本/大纲"可用；
+> **C** = 创作者 Agent（对话式改人物设定与世界书）。
+> B 是"C 的前置"——没有"从素材生成卡"，创作者 Agent 就只能在手写包上空转。
 
 ---
 

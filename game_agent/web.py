@@ -357,6 +357,24 @@ def api_new(req: NewRequest | None = None) -> dict:
     }
 
 
+@app.get("/api/config")
+def api_config() -> dict:
+    """前端启动配置。
+
+    **为什么要有这个端点**（Stage B 的一个简化）：Stage A 靠服务端把
+    `storyline.FREE_INPUT_OPTION` 替换进 `index.html` 的占位符；换成 Vite 构建后
+    `dist/index.html` 是**构建产物**，服务端再去改它既别扭（改了就不等于构建输出、
+    "dist 是否过期"的判定也失去意义）又易错。改为构建产物**只读**、配置**运行时拉取**：
+    单一真源仍在引擎常量，但注入点从"服务端改写 HTML"移到"一个 JSON 字段"。
+    """
+    return {
+        "ok": True,
+        "free_input": FREE_INPUT_OPTION,
+        "default_mode": MODE_STORY,
+        "app": "game-agent",
+    }
+
+
 @app.get("/api/{sid}/meta")
 def api_meta(sid: str) -> dict:
     """本会话的绑定信息（前端刷新后重新对齐标题/卡/模式）。"""
@@ -565,39 +583,43 @@ def api_load(sid: str, req: SaveRequest) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 前端（Stage A：真实文件，不是内嵌字符串）
+# 前端（Stage B：Vite + Vue 3 构建产物，FastAPI 只负责托管）
 # ---------------------------------------------------------------------------
 #
-# 拆分理由见 docs/plan-tavern-shaped-product.md §5.3：内嵌字符串让"改一行 CSS"
-# 也要动 Python，且无法被前端工具链消化。拆开后 web.py 只负责**服务与注入**。
+# 演进：内嵌字符串（Stage A 之前）→ 拆分出的真实文件（Stage A）→ Vite 构建产物（Stage B）。
+# web.py 的职责一路收窄到"托管 + 给一个配置端点"，这是对的：
+# 前端怎么组织、怎么构建，不该由服务端知道。
+
+
+def dist_dir() -> Path:
+    return WEBUI_DIR / "dist"
 
 
 def index_html() -> str:
-    """渲染入口页：把自由输入文案注入占位符。
+    """读构建产物的入口页。
 
-    每次请求都读盘（本地单用户应用，一次文件读可忽略）：这样改前端不必重启服务，
-    迭代体感与"热更新"接近。文案仍来自引擎常量 `FREE_INPUT_OPTION`，单一真源。
+    **不再做占位符替换**（Stage A 的遗留）：`dist/index.html` 是构建输出，
+    服务端去改写它会让"dist 是否与源码一致"的判定失去意义。自由输入文案改由
+    `GET /api/config` 运行时下发（见 `api_config`），单一真源不变。
+
+    构建产物缺失时给出**可行动的**错误，而不是让 StaticFiles 抛出难懂的异常。
     """
-    html = (WEBUI_DIR / "index.html").read_text(encoding="utf-8")
-    return html.replace("__FREE_INPUT__", FREE_INPUT_OPTION)
+    entry = dist_dir() / "index.html"
+    if not entry.is_file():
+        raise HTTPException(
+            500,
+            "前端尚未构建：缺少 game_agent/webui/dist/index.html。"
+            "请在 game_agent/webui/ 下运行 `npm install && npm run build`。"
+            "（开发模式可直接用 `npm run dev`，Vite 会把 /api 代理到本服务。）",
+        )
+    return entry.read_text(encoding="utf-8")
 
 
-def frontend_bundle() -> str:
-    """渲染后的 HTML + CSS + JS 拼接（**供结构守卫用**）。
-
-    Stage A 之前 `INDEX_HTML` 是一个字符串，前端结构断言直接对它做子串检查。
-    拆成三个文件后，那些守卫（选项按 choice_prompt 分流、生成态、结束今天、恢复
-    痕迹、回顾切换）需要同一个可断言的整体——本函数就是那个整体，
-    语义等价于拆分前的 `INDEX_HTML`（占位符已替换）。
-    """
-    return "\n".join([
-        index_html(),
-        (WEBUI_DIR / "app.css").read_text(encoding="utf-8"),
-        (WEBUI_DIR / "app.js").read_text(encoding="utf-8"),
-    ])
-
-
-app.mount("/static", StaticFiles(directory=str(WEBUI_DIR)), name="static")
+# 挂载构建产物。`html=True` 让 /static/ 下的目录请求也能落到 index.html。
+# 构建产物不存在时不挂载——否则 StaticFiles 会在导入期直接抛错，
+# 连"前端未构建"这个可执行的提示都来不及给。
+if dist_dir().is_dir():
+    app.mount("/static", StaticFiles(directory=str(dist_dir())), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)

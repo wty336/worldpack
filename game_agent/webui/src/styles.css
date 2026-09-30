@@ -1,0 +1,173 @@
+/**
+ * 全局样式：三栏布局（左：卡/存档 · 中：正文 · 右：状态栏）。
+ *
+ * 配色沿用 Stage A 的暖纸色，避免"重写一次换了张脸"——玩家反馈过的
+ * 布局与可读性（生成计时、非阻塞提示、默认只看本轮）全部保留。
+ */
+
+:root {
+  --paper: #faf6ef;
+  --card: #fff;
+  --line: #e6dcc8;
+  --line-soft: #eee2cc;
+  --ink: #333;
+  --ink-dim: #777;
+  --ink-faint: #999;
+  --accent: #8a6d3b;
+  --accent-bg: #efe3c8;
+  --btn: #f7efe0;
+  --btn-line: #d9c9a8;
+  --ok-bg: #f2f7ef;
+  --ok-line: #cfe0c4;
+  --ok-ink: #4a6b3a;
+  --err-bg: #fdf1f1;
+  --err-line: #e0b4b4;
+  --err-ink: #a94442;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+button {
+  background: var(--btn);
+  border: 1px solid var(--btn-line);
+  border-radius: 6px;
+  padding: 7px 12px;
+  margin: 0 6px 6px 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.95em;
+  color: inherit;
+}
+button:hover:not(:disabled) { background: var(--accent-bg); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.chosen { background: var(--accent-bg); border-color: #c9b183; }
+
+input[type="text"], select {
+  padding: 7px 9px;
+  border: 1px solid var(--btn-line);
+  border-radius: 6px;
+  font: inherit;
+  background: var(--card);
+  color: inherit;
+}
+
+.t { color: var(--ink-faint); font-size: 0.8em; }
+.dim { color: var(--ink-dim); }
+
+/* ---------- 应用骨架 ---------- */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+.topbar h1 { font-size: 1.1em; margin: 0; font-weight: 600; }
+.topbar .mode { font-size: 0.8em; color: var(--accent); }
+
+/* 三栏：左 240 · 中 1fr · 右 320（窄屏退化为单栏，见下方 media） */
+.columns {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 320px;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+}
+.col { min-height: 0; display: flex; flex-direction: column; }
+.col-left { border-right: 1px solid var(--line); background: var(--card); }
+.col-right { border-left: 1px solid var(--line); background: var(--card); }
+.col-mid { padding: 0 16px; }
+
+.col-head {
+  padding: 10px 12px; border-bottom: 1px solid var(--line-soft);
+  font-size: 0.85em; color: var(--ink-dim); flex: 0 0 auto;
+}
+.col-body { overflow-y: auto; padding: 10px 12px; flex: 1 1 auto; }
+
+/* ---------- 卡片列表（左栏 / 选卡屏） ---------- */
+.pack-list { display: grid; gap: 10px; }
+.pack-list.grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.pack {
+  display: block; width: 100%; text-align: left;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; padding: 11px 13px; margin: 0;
+}
+.pack .pname { display: block; font-weight: 600; margin-bottom: 2px; }
+.pack .pera { display: block; color: var(--accent); font-size: 0.85em; margin-bottom: 5px; }
+.pack .pmeta { display: block; color: var(--ink-faint); font-size: 0.76em; }
+.pack.broken { background: var(--err-bg); border-color: var(--err-line); }
+.pack.broken .pera { color: var(--err-ink); }
+.pack.current { border-color: #c9b183; background: #fdfaf3; }
+
+/* ---------- 正文流 ---------- */
+.prose {
+  white-space: pre-wrap; line-height: 1.9; font-size: 1.02em;
+  padding: 4px 0 12px;
+}
+.prose .entry { padding: 4px 0 12px; border-bottom: 1px dashed var(--line-soft); }
+.prose .entry:last-child { border-bottom: none; }
+.prose.only-current .entry:not(:last-child) { display: none; }
+.prose .recovery { color: var(--accent); font-size: 0.86em; }
+.caret::after { content: "▮"; animation: blink 1.1s infinite; }
+@keyframes blink { 0%, 100% { opacity: 0.15; } 50% { opacity: 1; } }
+
+.gen { color: var(--accent); font-size: 0.9em; padding: 4px 0; }
+
+.prompt-card {
+  margin: 8px 0; padding: 10px 12px; border-left: 3px solid var(--accent);
+  background: #fdfaf3; white-space: pre-wrap;
+}
+.prompt-card.ending { border-left-color: #b1836b; background: #fdf6f3; }
+.prompt-card .label { color: var(--accent); font-size: 0.82em; display: block; margin-bottom: 4px; }
+
+.choices { margin: 6px 0 12px; }
+
+/* ---------- 输入区 ---------- */
+.input-dock {
+  display: flex; gap: 6px; padding: 10px 0 14px;
+  border-top: 1px solid var(--line-soft); flex-wrap: wrap;
+}
+.input-dock input[type="text"] { flex: 1 1 220px; }
+
+/* 回顾切换：独立一类（不与 .input-dock 混用——见 ProseStream.vue 的注释） */
+.history-bar { padding: 6px 0 10px; }
+
+/* ---------- 状态栏（右栏） ---------- */
+.status-text {
+  white-space: pre-wrap; font-size: 0.84em; color: var(--ink-dim);
+  line-height: 1.7;
+}
+.status-actions { padding: 10px 0; border-top: 1px dashed var(--line); margin-top: 10px; }
+
+/* ---------- 提示条（非阻塞） ---------- */
+.notice {
+  margin: 8px 16px; padding: 8px 12px; border-radius: 6px;
+  background: var(--ok-bg); border: 1px solid var(--ok-line); color: var(--ok-ink);
+  font-size: 0.88em;
+}
+.notice.err { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
+
+/* ---------- 选卡屏 ---------- */
+.library { max-width: 1000px; margin: 0 auto; padding: 18px 16px 40px; }
+.library h2 { font-size: 1.05em; margin: 18px 0 8px; }
+.mode-row { margin: 10px 0; font-size: 0.9em; color: var(--ink-dim); }
+.mode-row label { margin-right: 16px; white-space: nowrap; }
+.save-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.save-row select { max-width: 520px; }
+
+/* 窄屏：三栏塌成单栏（内容按"正文 → 输入 → 状态"的阅读顺序堆叠） */
+@media (max-width: 900px) {
+  .columns { grid-template-columns: 1fr; }
+  .col-left, .col-right { border: none; border-top: 1px solid var(--line); }
+  .col-left { order: 3; }
+  .col-right { order: 4; }
+  .col-mid { order: 1; }
+  .app { height: auto; }
+}

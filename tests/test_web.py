@@ -9,6 +9,7 @@ import json
 import threading
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from game_agent import web as web_module
@@ -110,23 +111,34 @@ def _sse_payload(body: bytes) -> list[tuple[str, str]]:
 
 
 def test_index_page_served():
-    """F1（M3）：页面静态文案不含任何世界内容（标题由 /api/new 返回的包名动态渲染）。
+    """F1（M3）：页面静态文案不含任何世界内容（标题由前端按包名动态渲染）。
 
-    Stage A 起 JS 移到 `/static/app.js`，于是**"页面"是两个东西**：
-    - `GET /`（HTML 外壳）——只该有通用文案与挂载点；
-    - `frontend_bundle()`（外壳+CSS+JS）——`api/new` 这类动态渲染证据在这里。
-    断言按这个分工拆开，否则"N 年前建的守卫"会因为文件搬家而假红。
+    Stage B 起 `/` 返回的是 **Vite 构建产物**：一个挂载点 + 带哈希的资源引用，
+    标题/卡名/模式全部由 Vue 运行时渲染。所以这条断言的落点从
+    "Stage A 的 `#game-title` 挂载点"变成"`#app` 挂载点 + 正确的 /static 资源引用"。
     """
     with TestClient(web_module.app) as client:
         r = client.get("/")
         assert r.status_code == 200
-        assert "文字养成游戏" in r.text  # 通用标题（非世界内容）
+        assert 'id="app"' in r.text  # Vue 挂载点
+        assert "文字养成游戏" in r.text  # 通用 <title>（非世界内容）
         assert "江湖旧梦" not in r.text  # 静态文案不含世界内容
-        assert "game-title" in r.text  # 标题挂载点，JS 用 d.name 填充
-        assert "/static/app.js" in r.text  # 外壳必须挂到真实脚本
-    # 动态渲染证据（在脚本里，不在外壳里）
-    bundle = web_module.frontend_bundle()
-    assert "api/new" in bundle and "d.name" in bundle
+        assert "/static/assets/" in r.text  # 资源由 /static 托管（base 配对的产物）
+
+
+def test_index_html_without_build_gives_actionable_error(monkeypatch, tmp_path):
+    """未构建时给**可执行的**提示，而不是 StaticFiles 的难懂异常。
+
+    这是新开发者最容易撞上的第一个错（clone 下来没跑 npm），
+    所以错误信息里必须直接写着要跑什么命令。
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(web_module, "WEBUI_DIR", tmp_path)  # 空目录 = 没有 dist
+    with pytest.raises(HTTPException) as ei:
+        web_module.index_html()
+    assert "尚未构建" in str(ei.value.detail)
+    assert "npm run build" in str(ei.value.detail)
 
 
 def test_pack_path_env_override(monkeypatch):

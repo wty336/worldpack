@@ -70,3 +70,13 @@ saves/smoke-trace/
 #   git -C .st-inspect checkout 06bde93
 .st-inspect/
 
+# ---- 前端（Stage B：Vite + Vue 3，源码在 game_agent/webui/）----
+# 依赖目录不入库（31 个包；版本已由 package-lock.json 锁定）
+game_agent/webui/node_modules/
+# 构建产物**必须入库**：CI 只跑 pytest、不跑 npm，服务端直接托管 dist/。
+# 上面第 5 行的 `dist/`（Python 打包目录）会把 webui/dist 一并忽略，故在此显式放行。
+# 顺序要紧：否定规则必须在 `dist/` 之后。
+# "源码改了但忘了重新构建"由 tests/test_webui_build.py 读 dist/build-manifest.json
+# 的**内容哈希**发现——不依赖 mtime，因此在全新 clone 里同样成立。
+!game_agent/webui/dist/
+

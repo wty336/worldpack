@@ -1,0 +1,22 @@
+{
+  "files": {
+    "index.html": "3dc8ff4eb06c2758",
+    "package.json": "f4b51107785fefe2",
+    "src/App.vue": "c1ce01f50b4e193c",
+    "src/api/client.js": "16a7bdbba3712d68",
+    "src/components/ChoiceList.vue": "8bceb199a1598da0",
+    "src/components/InputDock.vue": "313f598f3fe20e69",
+    "src/components/NoticeBar.vue": "259d4eb7727f5d0a",
+    "src/components/ProseStream.vue": "3193662353328e55",
+    "src/components/StatusPanel.vue": "0800524f9bae3ca6",
+    "src/composables/useTurnStream.js": "37a60590792d4796",
+    "src/main.js": "e10645cfb1e3ccb9",
+    "src/styles.css": "6b3b9e6d29773468",
+    "src/views/LibraryView.vue": "1ce3faa4bf616ed3",
+    "src/views/PlayView.vue": "231abef83114c2e3",
+    "vite.config.js": "12b50d34691fc71f"
+  },
+  "sourceDigest": "31fc7c4ff04552bf",
+  "count": 15,
+  "generatedBy": "vite.config.js"
+}
