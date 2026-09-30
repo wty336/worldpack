@@ -146,6 +146,68 @@ input[type="text"], select {
 }
 .status-actions { padding: 10px 0; border-top: 1px dashed var(--line); margin-top: 10px; }
 
+/* ---------- 创作工作台（N2a） ---------- */
+/* 沿用游戏那套三栏骨架（左：对象列表 · 中：动作与过程 · 右：真值面），
+   不另造一套布局——作者在两个屏之间切换时不该重新学一遍方向感。 */
+.studio .sec {
+  font-size: 0.86em; color: var(--ink-dim); font-weight: 600;
+  margin: 14px 0 6px; padding-top: 10px; border-top: 1px dashed var(--line-soft);
+}
+.studio .sec:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+.studio .col-head button { margin: 0; }
+.studio .pack { margin-bottom: 6px; }
+.studio .pack .pera { margin-bottom: 3px; }
+
+.field { margin: 10px 0; }
+.field > label { display: block; font-size: 0.82em; color: var(--ink-dim); margin-bottom: 4px; }
+.field.row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.field.row > label { display: inline-flex; gap: 5px; align-items: center; margin: 0; }
+.field textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--btn-line); border-radius: 6px;
+  font: inherit; font-size: 0.92em; line-height: 1.7; background: var(--card); color: inherit;
+  resize: vertical;
+}
+.field input[type="text"] { width: 100%; }
+.field input.tiny { width: 56px; }
+
+.cost {
+  background: #fdf6f3; border: 1px solid #e8cbb8; color: #96603f;
+  border-radius: 6px; padding: 8px 11px; font-size: 0.85em; line-height: 1.7;
+}
+
+/* 进度时间线：等宽、可滚动、长日志不挤走输入区 */
+.log {
+  border: 1px solid var(--line-soft); border-radius: 6px; background: var(--card);
+  max-height: 42vh; overflow-y: auto; padding: 8px 10px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.8em;
+}
+.log-line { display: flex; gap: 7px; padding: 2px 0; line-height: 1.6; }
+.log-line .mark { flex: 0 0 10px; color: var(--accent); }
+.log-line .stage { flex: 0 0 66px; color: var(--ink-faint); }
+.log-line .msg { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; }
+
+/* 右栏：只读呈现（真值面）。这里**不该出现输入框**——见 StudioView.vue 文件头 */
+.kv { margin: 10px 0; }
+.kv > div {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 3px 0; border-bottom: 1px dotted var(--line-soft); font-size: 0.86em;
+}
+.kv > div span { color: var(--ink-dim); }
+.ok { color: var(--ok-ink); background: var(--ok-bg); border: 1px solid var(--ok-line);
+      border-radius: 6px; padding: 7px 10px; font-size: 0.86em; }
+.err { color: var(--err-ink); background: var(--err-bg); border: 1px solid var(--err-line);
+       border-radius: 6px; padding: 7px 10px; font-size: 0.86em; }
+.errbox {
+  white-space: pre-wrap; word-break: break-word; background: var(--err-bg);
+  border: 1px solid var(--err-line); color: var(--err-ink); border-radius: 6px;
+  padding: 8px 10px; font-size: 0.78em; line-height: 1.65; margin: 6px 0;
+}
+
+.badge-draft {
+  font-size: 0.78em; color: #96603f; background: #fdf6f3;
+  border: 1px solid #e8cbb8; border-radius: 4px; padding: 2px 7px;
+}
+
 /* ---------- 提示条（非阻塞） ---------- */
 .notice {
   margin: 8px 16px; padding: 8px 12px; border-radius: 6px;

@@ -76,6 +76,56 @@ const VIEW_DAILY = {
 /** 流式增量：与 done.narration 同源（真实引擎就是这个形状）。 */
 const DELTAS = ['她侧身让开半步，', '随即记下了你的名字。', '天色渐晚。']
 
+// ---- 创作工作台（N2a）桩 ----
+//
+// 为什么这一屏也必须有真机冒烟：工作台的价值全在"Vue 真的把进度流画出来了吗"——
+// 端点对不对、源码里有没有 `getReader()`，都拦不住一个写反的 `v-if`。
+// 桩里刻意留了一条 `repair` 事件与一份坏草稿，好让"修复轮报错原文"与
+// "闸门不过要说清"这两块可被观察。
+const JOB_ID = 'job_smoke1'
+const JOB_EVENTS = [
+  { stage: 'start', message: '开始生成：smoke_draft', ts: 1 },
+  { stage: 'extract', message: '生成[world]', ts: 2 },
+  { stage: 'extract', message: '生成[npc1]', ts: 3 },
+  { stage: 'repair', message: '[修复 1] 主线节点 n2 的 flag 没有任何路径可写', ts: 4 },
+  { stage: 'validate', message: '[✓] check-worldpack 通过（修复 1 轮）', ts: 5 },
+  { stage: 'done', message: '[✓] 世界包已生成 → world-packs/_drafts/smoke_draft', ts: 6 },
+]
+const JOB_FINAL = {
+  job_id: JOB_ID,
+  pack_name: 'smoke_draft',
+  status: 'done',
+  error: null,
+  result: {
+    pack_dir: 'world-packs/_drafts/smoke_draft',
+    pack_name: 'smoke_draft',
+    repairs: 1,
+    corpus_written: 0,
+    stages: ['start', 'extract', 'repair', 'validate', 'done'],
+    summary: '离线测试世界 · 2 角色 · 3 主线节点 · 2 结局',
+  },
+  cost: '¥0.012（12 次调用）',
+}
+const mkDraft = (id, name, extra = {}) => ({
+  id, name, era: '架空', npcs: 2, nodes: 3, endings: 2, lore: 4, locations: 2,
+  digest: 'b'.repeat(16), draft: true, playable: true, error: '',
+  path: `world-packs/_drafts/${id}`, ...extra,
+})
+const DRAFTS = [
+  mkDraft('smoke_draft', '草稿·过校验的一版'),
+  // 列表里是好的、发布时才发现坏了——这不是构造出来的场景：草稿就在文件系统上，
+  // 作者（或创作者 Agent）随时可能在两次请求之间改动它。这一条用来验"被拒时
+  // 报错原文有没有真的显示给作者"。
+  mkDraft('race_draft', '草稿·发布时才发现坏了'),
+  mkDraft('broken_draft', '草稿·没通过校验', {
+    playable: false, error: '缺少文件: world-packs/_drafts/broken_draft/mainline.yaml',
+  }),
+]
+const PUBLISH_REJECTED =
+  '草稿未通过 check-worldpack，不能发布：\n' +
+  '缺少文件: world-packs/_drafts/race_draft/mainline.yaml\n' +
+  '（web 创作工作台会把这段报错原文给模型去修；也可以在草稿目录里手工改）'
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css; charset=utf-8', '.json': 'application/json' }
 
 function serveDist(res, rel) {
@@ -91,6 +141,18 @@ function serveDist(res, rel) {
 
 function startStub() {
   const state = { turns: 0 }
+  const readBody = (req) =>
+    new Promise((resolve) => {
+      let b = ''
+      req.on('data', (c) => (b += c))
+      req.on('end', () => {
+        try {
+          resolve(JSON.parse(b || '{}'))
+        } catch {
+          resolve({})
+        }
+      })
+    })
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1')
     const path = url.pathname
@@ -98,6 +160,40 @@ function startStub() {
       res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify(o))
     }
+    // ---- 创作工作台（N2a）----
+    if (path === '/api/packs/drafts' && req.method === 'GET')
+      return json({ ok: true, drafts: DRAFTS })
+    if (path === '/api/packs/generate' && req.method === 'POST')
+      return json({ ok: true, job_id: JOB_ID, pack_name: 'smoke_draft', status: 'queued' }, 202)
+    if (path === '/api/packs/generate' && req.method === 'GET')
+      return json({ ok: true, jobs: [JOB_FINAL] })
+    if (path === `/api/packs/generate/${JOB_ID}`) return json({ ok: true, ...JOB_FINAL })
+    if (path === `/api/packs/generate/${JOB_ID}/events`) {
+      // 事件之间留间隔：好让"边跑边看"（日志一行行长出来）真的可被观察，
+      // 而不是所有事件挤在一帧里——后者会掩盖"其实是攒完再一次性画"的退化。
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' })
+      res.write(`event: start\ndata: ${JSON.stringify({ job_id: JOB_ID, status: 'running' })}\n\n`)
+      let i = 0
+      const tick = setInterval(() => {
+        if (i < JOB_EVENTS.length) {
+          res.write(`event: progress\ndata: ${JSON.stringify(JOB_EVENTS[i++])}\n\n`)
+          return
+        }
+        clearInterval(tick)
+        res.end()
+      }, 100)
+      return
+    }
+    if (path === '/api/packs/publish') {
+      void readBody(req).then((body) => {
+        if (body.name === 'race_draft') return json({ detail: PUBLISH_REJECTED }, 400)
+        json({ ok: true, pack: { ...mkDraft(body.name, body.name), draft: false } })
+      })
+      return
+    }
+    if (path.startsWith('/api/packs/drafts/') && req.method === 'DELETE')
+      return json({ ok: true, deleted: decodeURIComponent(path.split('/').pop()) })
+
     if (path === '/') return void serveDist(res, 'index.html')
     if (path.startsWith('/static/')) return void serveDist(res, path.slice('/static/'.length))
     if (path === '/api/config') return json({ ok: true, free_input: FREE_INPUT, default_mode: 'story' })
@@ -114,7 +210,18 @@ function startStub() {
     if (path === '/api/sessions') return json({ ok: true, sessions: [] })
     if (path === '/api/new') {
       state.turns = 0
-      return json({ sid: 'smoke1', name: '演示世界', pack_id: 'demo_world', mode: 'story', view: VIEW_OPENING })
+      // 草稿试玩：`draft` 选项（§3.2 ③）——回包里带 `draft: true`，
+      // 前端据此在顶栏打「未发布」水印。
+      return void readBody(req).then((body) =>
+        json({
+          sid: 'smoke1',
+          name: body.draft ? '草稿·过校验的一版' : '演示世界',
+          pack_id: body.draft || 'demo_world',
+          mode: body.mode || 'story',
+          draft: Boolean(body.draft),
+          view: VIEW_OPENING,
+        }),
+      )
     }
     if (/^\/api\/[^/]+\/status$/.test(path))
       return json({ text: '【场景】长安城·沈府门前\n【属性】charm 10 · martial 21\n【在场角色】沈清秋（好感 16）', ending: false })
@@ -393,6 +500,149 @@ async function main() {
     )
 
     const dump = await cdp.eval(`document.documentElement.outerHTML`)
+
+    // =====================================================================
+    // 创作工作台（N2a）：素材 → 进度 → 校验报告 → 试玩 → 发布
+    // =====================================================================
+    // 重新载入回到选卡屏（会话是内存态，刷新即回到未开局）
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/` })
+    await cdp.waitFor(`!!document.querySelector('#app .library')`, { label: '重载回选卡屏' })
+
+    const toStudio = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app button')]
+        .find(x => x.textContent.includes('创作工作台'));
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`)
+    check('选卡屏有「创作工作台」入口', toStudio)
+    await cdp.waitFor(`!!document.querySelector('#app .studio')`, { label: '工作台渲染' })
+    check('工作台渲染', true)
+    const studioCols = await cdp.eval(
+      `['.col-left','.col-mid','.col-right']
+         .filter(s => document.querySelector('#app .studio ' + s)).length`,
+    )
+    check('工作台是三栏（左：任务/草稿 · 中：素材+进度 · 右：只读报告）', studioCols === 3,
+      `找到 ${studioCols}/3`)
+
+    // 草稿列表：好的 + 坏的都在（坏草稿要看得见，而不是消失）
+    await cdp.waitFor(`document.querySelectorAll('#app .studio .col-left .pack').length >= 3`, {
+      label: '草稿列表加载',
+    })
+    check(
+      '草稿列表渲染出未通过校验的草稿（看得见，且标出失败）',
+      await cdp.eval(`!!document.querySelector('#app .studio .col-left .pack.broken')`),
+    )
+
+    // **默认不花钱**：这是最该被钉住的一条默认值
+    const offlineChecked = await cdp.eval(`(() => {
+      const l = [...document.querySelectorAll('#app .studio label')]
+        .find(x => x.textContent.includes('离线试跑'));
+      return l ? l.querySelector('input[type=checkbox]').checked : null;
+    })()`)
+    check('离线试跑默认勾选（真实生成一次约 ¥0.1–0.3，默认花钱是错的默认值）',
+      offlineChecked === true, String(offlineChecked))
+
+    // ---- 坏草稿：报告栏给原文，发布按钮禁用 ----
+    await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio .col-left .pack')]
+        .find(x => x.textContent.includes('没通过校验'));
+      b.click();
+    })()`)
+    await cdp.waitFor(`/未通过 check-worldpack/.test(document.querySelector('#app .studio .col-right').textContent)`,
+      { label: '坏草稿报告' })
+    check('闸门不过时右栏明确说清（而不是只灰掉一个按钮）', true)
+    check(
+      '右栏显示 check-worldpack 的**报错原文**（工作台拿它去喂模型修）',
+      await cdp.eval(`/缺少文件/.test(document.querySelector('#app .studio .col-right .errbox')?.textContent || '')`),
+    )
+    check(
+      '坏草稿的「发布」被禁用（闸门在服务端，UI 不给出注定失败的入口）',
+      await cdp.eval(`(() => {
+        const b = [...document.querySelectorAll('#app .studio .col-right button')]
+          .find(x => x.textContent.trim() === '发布');
+        return !!b && b.disabled;
+      })()`),
+    )
+    check(
+      '右栏是呈现不是表单（没有任何输入框）',
+      await cdp.eval(`document.querySelectorAll('#app .studio .col-right input, #app .studio .col-right textarea').length === 0`),
+    )
+
+    // ---- 贴素材 → 生成 → 进度流 ----
+    await cdp.eval(`(() => {
+      const setv = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+      setv(document.querySelector('#app .studio .field input[type=text]'), 'smoke_draft');
+      setv(document.querySelector('#app .studio textarea'), '# 素材\\n\\n某人在城里醒来，身上只有一张名片。');
+    })()`)
+    const started = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio button')]
+        .find(x => x.textContent.trim() === '开始生成');
+      if (!b || b.disabled) return false;
+      b.click();
+      return true;
+    })()`)
+    check('填好素材后「开始生成」可用并被点到', started)
+
+    await cdp.waitFor(`document.querySelectorAll('#app .studio .log-line').length >= 1`, {
+      timeout: 8000,
+      label: '进度日志出现第一行',
+    })
+    check('进度流渲染出事件行（边跑边看）', true)
+    await cdp.waitFor(`/check-worldpack 通过/.test(document.querySelector('#app .studio .log')?.textContent || '')`,
+      { timeout: 8000, label: '进度走到校验阶段' })
+    const logLines = await cdp.eval(`document.querySelectorAll('#app .studio .log-line').length`)
+    check('进度日志逐条累积（不是攒完再一次性画）', logLines >= 4, `${logLines} 行`)
+
+    // ---- 终态：报告 + 修复轮报错原文 ----
+    await cdp.waitFor(`!!document.querySelector('#app .studio .col-right .kv')`, {
+      timeout: 8000,
+      label: '生成报告渲染',
+    })
+    await cdp.waitFor(`/修复轮报错原文/.test(document.querySelector('#app .studio .col-right').textContent)`,
+      { timeout: 8000, label: '修复轮原文渲染' })
+    check(
+      '修复轮的报错原文出现在报告里（来自事件留档的 repair 事件）',
+      await cdp.eval(`/flag 没有任何路径可写/.test(document.querySelector('#app .studio .col-right').textContent)`),
+    )
+    check(
+      '报告显示成本（花钱的事必须回显）',
+      await cdp.eval(`/¥0\\.012/.test(document.querySelector('#app .studio .col-right').textContent)`),
+    )
+
+    // ---- 发布被拒：原文要出现在提示条里 ----
+    await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio .col-left .pack')]
+        .find(x => x.textContent.includes('发布时才发现坏了'));
+      b.click();
+    })()`)
+    const pubClicked = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio .col-right button')]
+        .find(x => x.textContent.trim() === '发布');
+      if (!b || b.disabled) return false;
+      b.click();
+      return true;
+    })()`)
+    check('可发布的草稿「发布」按钮可用', pubClicked)
+    await cdp.waitFor(`/未通过 check-worldpack，不能发布/.test(document.querySelector('#app .notice')?.textContent || '')`,
+      { timeout: 8000, label: '发布被拒的提示' })
+    check('发布被拒时提示条显示后端原文（不是"发布失败"）', true)
+
+    // ---- 草稿试玩：进游戏屏 + 「未发布」水印 ----
+    const playtested = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio .col-right button')]
+        .find(x => x.textContent.trim() === '试玩这一版');
+      if (!b || b.disabled) return false;
+      b.click();
+      return true;
+    })()`)
+    check('草稿有「试玩这一版」入口', playtested)
+    await cdp.waitFor(`!!document.querySelector('#app .col-mid')`, { timeout: 8000, label: '进入草稿试玩' })
+    check(
+      '草稿试玩进入同一套三栏游戏屏且在顶栏打「未发布」水印',
+      await cdp.eval(`/未发布/.test(document.querySelector('#app .topbar')?.textContent || '')`),
+    )
+
     if (keep) {
       const p = join(ROOT, 'webui-smoke-dom.html')
       writeFileSync(p, dump)

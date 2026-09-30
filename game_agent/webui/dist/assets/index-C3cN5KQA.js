@@ -6173,6 +6173,61 @@ const vModelText = {
     el.value = newValue;
   }
 };
+const vModelCheckbox = {
+  // #4096 array checkboxes need to be deep traversed
+  deep: true,
+  created(el, _, vnode) {
+    el[assignKey] = getModelAssigner(vnode);
+    addEventListener(el, "change", () => {
+      const modelValue = el._modelValue;
+      const elementValue = getValue(el);
+      const checked = el.checked;
+      const assign = el[assignKey];
+      if (isArray(modelValue)) {
+        const index = looseIndexOf(modelValue, elementValue);
+        const found = index !== -1;
+        if (checked && !found) {
+          assign(modelValue.concat(elementValue));
+        } else if (!checked && found) {
+          const filtered = [...modelValue];
+          filtered.splice(index, 1);
+          assign(filtered);
+        }
+      } else if (isSet(modelValue)) {
+        const cloned = new Set(modelValue);
+        if (checked) {
+          cloned.add(elementValue);
+        } else {
+          cloned.delete(elementValue);
+        }
+        assign(cloned);
+      } else {
+        assign(getCheckboxValue(el, checked));
+      }
+    });
+  },
+  // set initial checked on mount to wait for true-value/false-value
+  mounted: setChecked,
+  beforeUpdate(el, binding, vnode) {
+    el[assignKey] = getModelAssigner(vnode);
+    setChecked(el, binding, vnode);
+  }
+};
+function setChecked(el, { value, oldValue }, vnode) {
+  el._modelValue = value;
+  let checked;
+  if (isArray(value)) {
+    checked = looseIndexOf(value, vnode.props.value) > -1;
+  } else if (isSet(value)) {
+    checked = value.has(vnode.props.value);
+  } else {
+    if (value === oldValue) return;
+    checked = looseEqual(value, getCheckboxValue(el, true));
+  }
+  if (el.checked !== checked) {
+    el.checked = checked;
+  }
+}
 const vModelRadio = {
   created(el, { value }, vnode) {
     el.checked = looseEqual(value, vnode.props.value);
@@ -6253,6 +6308,10 @@ function setSelected(el, value) {
 function getValue(el) {
   return "_value" in el ? el._value : el.value;
 }
+function getCheckboxValue(el, checked) {
+  const key = checked ? "_trueValue" : "_falseValue";
+  return key in el ? el[key] : checked;
+}
 const keyNames = {
   esc: "escape",
   space: " ",
@@ -6319,7 +6378,7 @@ function normalizeContainer(container) {
   }
   return container;
 }
-const _sfc_main$7 = {
+const _sfc_main$8 = {
   __name: "NoticeBar",
   props: {
     message: { type: String, default: "" },
@@ -6348,29 +6407,30 @@ const _sfc_main$7 = {
     };
   }
 };
-const _hoisted_1$6 = { class: "library" };
-const _hoisted_2$6 = { class: "t" };
-const _hoisted_3$6 = ["disabled"];
-const _hoisted_4$6 = { class: "pack-list grid" };
-const _hoisted_5$4 = ["disabled", "onClick"];
-const _hoisted_6$3 = { class: "pname" };
-const _hoisted_7$3 = { class: "pera" };
-const _hoisted_8$2 = { class: "pmeta" };
-const _hoisted_9$1 = { class: "mode-row" };
-const _hoisted_10$1 = { class: "save-row" };
-const _hoisted_11$1 = ["disabled"];
-const _hoisted_12$1 = ["disabled"];
-const _hoisted_13 = {
+const _hoisted_1$7 = { class: "library" };
+const _hoisted_2$7 = { class: "t" };
+const _hoisted_3$7 = ["disabled"];
+const _hoisted_4$7 = ["disabled"];
+const _hoisted_5$6 = { class: "pack-list grid" };
+const _hoisted_6$4 = ["disabled", "onClick"];
+const _hoisted_7$4 = { class: "pname" };
+const _hoisted_8$3 = { class: "pera" };
+const _hoisted_9$2 = { class: "pmeta" };
+const _hoisted_10$2 = { class: "mode-row" };
+const _hoisted_11$2 = { class: "save-row" };
+const _hoisted_12$2 = ["disabled"];
+const _hoisted_13$1 = ["disabled"];
+const _hoisted_14$1 = {
   key: 0,
   value: ""
 };
-const _hoisted_14 = ["value"];
-const _hoisted_15 = ["disabled"];
-const _hoisted_16 = {
+const _hoisted_15$1 = ["value"];
+const _hoisted_16$1 = ["disabled"];
+const _hoisted_17$1 = {
   key: 0,
   class: "t"
 };
-const _sfc_main$6 = {
+const _sfc_main$7 = {
   __name: "LibraryView",
   props: {
     packs: { type: Array, default: () => [] },
@@ -6378,7 +6438,7 @@ const _sfc_main$6 = {
     defaultMode: { type: String, default: "story" },
     busy: { type: Boolean, default: false }
   },
-  emits: ["start", "load", "refresh"],
+  emits: ["start", "load", "refresh", "studio"],
   setup(__props, { emit: __emit }) {
     const props = __props;
     const emit2 = __emit;
@@ -6409,17 +6469,21 @@ const _sfc_main$6 = {
       emit2("load", { path, packId: ((_a = picked.value) == null ? void 0 : _a.id) || null, mode: mode.value });
     }
     return (_ctx, _cache) => {
-      return openBlock(), createElementBlock("div", _hoisted_1$6, [
-        _cache[8] || (_cache[8] = createBaseVNode("h2", null, "选一张卡", -1)),
-        createBaseVNode("p", _hoisted_2$6, [
+      return openBlock(), createElementBlock("div", _hoisted_1$7, [
+        _cache[9] || (_cache[9] = createBaseVNode("h2", null, "选一张卡", -1)),
+        createBaseVNode("p", _hoisted_2$7, [
           createTextVNode(" 共 " + toDisplayString(__props.packs.length) + " 张卡（可玩 " + toDisplayString(playable.value.length) + "）。 ", 1),
           createBaseVNode("button", {
             class: "t",
             disabled: __props.busy,
             onClick: _cache[0] || (_cache[0] = ($event) => emit2("refresh"))
-          }, "重新读取", 8, _hoisted_3$6)
+          }, "重新读取", 8, _hoisted_3$7),
+          createBaseVNode("button", {
+            disabled: __props.busy,
+            onClick: _cache[1] || (_cache[1] = ($event) => emit2("studio"))
+          }, "创作工作台：从素材做一张新卡 →", 8, _hoisted_4$7)
         ]),
-        createBaseVNode("div", _hoisted_4$6, [
+        createBaseVNode("div", _hoisted_5$6, [
           (openBlock(true), createElementBlock(Fragment, null, renderList(__props.packs, (p2) => {
             return openBlock(), createElementBlock("button", {
               key: p2.id,
@@ -6427,88 +6491,88 @@ const _sfc_main$6 = {
               disabled: !p2.playable || __props.busy,
               onClick: ($event) => picked.value = p2
             }, [
-              createBaseVNode("span", _hoisted_6$3, toDisplayString(p2.name || p2.id), 1),
-              createBaseVNode("span", _hoisted_7$3, toDisplayString(p2.playable ? p2.era || "" : `无法加载：${p2.error}`), 1),
-              createBaseVNode("span", _hoisted_8$2, toDisplayString(p2.playable ? label(p2) : p2.id), 1)
-            ], 10, _hoisted_5$4);
+              createBaseVNode("span", _hoisted_7$4, toDisplayString(p2.name || p2.id), 1),
+              createBaseVNode("span", _hoisted_8$3, toDisplayString(p2.playable ? p2.era || "" : `无法加载：${p2.error}`), 1),
+              createBaseVNode("span", _hoisted_9$2, toDisplayString(p2.playable ? label(p2) : p2.id), 1)
+            ], 10, _hoisted_6$4);
           }), 128))
         ]),
-        createBaseVNode("div", _hoisted_9$1, [
-          _cache[6] || (_cache[6] = createBaseVNode("span", { class: "t" }, "游玩模式：", -1)),
+        createBaseVNode("div", _hoisted_10$2, [
+          _cache[7] || (_cache[7] = createBaseVNode("span", { class: "t" }, "游玩模式：", -1)),
           createBaseVNode("label", null, [
             withDirectives(createBaseVNode("input", {
-              "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => mode.value = $event),
+              "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => mode.value = $event),
               type: "radio",
               value: "story"
             }, null, 512), [
               [vModelRadio, mode.value]
             ]),
-            _cache[4] || (_cache[4] = createTextVNode(" 跟着主线走（关键节点由引擎接管）"))
+            _cache[5] || (_cache[5] = createTextVNode(" 跟着主线走（关键节点由引擎接管）"))
           ]),
           createBaseVNode("label", null, [
             withDirectives(createBaseVNode("input", {
-              "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => mode.value = $event),
+              "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => mode.value = $event),
               type: "radio",
               value: "free"
             }, null, 512), [
               [vModelRadio, mode.value]
             ]),
-            _cache[5] || (_cache[5] = createTextVNode(" 自由探索（不触发主线节点）"))
+            _cache[6] || (_cache[6] = createTextVNode(" 自由探索（不触发主线节点）"))
           ])
         ]),
-        createBaseVNode("div", _hoisted_10$1, [
+        createBaseVNode("div", _hoisted_11$2, [
           createBaseVNode("button", {
             disabled: !picked.value || __props.busy,
             onClick: start
-          }, toDisplayString(picked.value ? `开始《${picked.value.name || picked.value.id}》` : "开始这一局"), 9, _hoisted_11$1),
-          _cache[7] || (_cache[7] = createBaseVNode("span", { class: "t" }, "或读取存档：", -1)),
+          }, toDisplayString(picked.value ? `开始《${picked.value.name || picked.value.id}》` : "开始这一局"), 9, _hoisted_12$2),
+          _cache[8] || (_cache[8] = createBaseVNode("span", { class: "t" }, "或读取存档：", -1)),
           withDirectives(createBaseVNode("select", {
-            "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => savePath.value = $event),
+            "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => savePath.value = $event),
             disabled: !usableSaves.value.length || __props.busy
           }, [
-            !usableSaves.value.length ? (openBlock(), createElementBlock("option", _hoisted_13, "（还没有存档）")) : createCommentVNode("", true),
+            !usableSaves.value.length ? (openBlock(), createElementBlock("option", _hoisted_14$1, "（还没有存档）")) : createCommentVNode("", true),
             (openBlock(true), createElementBlock(Fragment, null, renderList(usableSaves.value, (s) => {
               return openBlock(), createElementBlock("option", {
                 key: s.path,
                 value: s.path
-              }, toDisplayString(saveLabel(s)), 9, _hoisted_14);
+              }, toDisplayString(saveLabel(s)), 9, _hoisted_15$1);
             }), 128))
-          ], 8, _hoisted_12$1), [
+          ], 8, _hoisted_13$1), [
             [vModelSelect, savePath.value]
           ]),
           createBaseVNode("button", {
             disabled: !usableSaves.value.length || __props.busy,
             onClick: load
-          }, "读取", 8, _hoisted_15)
+          }, "读取", 8, _hoisted_16$1)
         ]),
-        __props.saves.length && !usableSaves.value.length ? (openBlock(), createElementBlock("p", _hoisted_16, "存档目录里没有可读的档。")) : createCommentVNode("", true)
+        __props.saves.length && !usableSaves.value.length ? (openBlock(), createElementBlock("p", _hoisted_17$1, "存档目录里没有可读的档。")) : createCommentVNode("", true)
       ]);
     };
   }
 };
-const _hoisted_1$5 = {
+const _hoisted_1$6 = {
   key: 0,
   class: "gen"
 };
-const _hoisted_2$5 = {
+const _hoisted_2$6 = {
   key: 1,
   class: "prompt-card"
 };
-const _hoisted_3$5 = {
+const _hoisted_3$6 = {
   key: 2,
   class: "prompt-card"
 };
-const _hoisted_4$5 = {
+const _hoisted_4$6 = {
   key: 3,
   class: "prompt-card ending"
 };
-const _hoisted_5$3 = { class: "label" };
-const _hoisted_6$2 = {
+const _hoisted_5$5 = { class: "label" };
+const _hoisted_6$3 = {
   key: 4,
   class: "choices"
 };
-const _hoisted_7$2 = ["disabled", "onClick"];
-const _sfc_main$5 = {
+const _hoisted_7$3 = ["disabled", "onClick"];
+const _sfc_main$6 = {
   __name: "ChoiceList",
   props: {
     /** _view() 的载荷 */
@@ -6532,37 +6596,37 @@ const _sfc_main$5 = {
     }
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", null, [
-        __props.streaming ? (openBlock(), createElementBlock("div", _hoisted_1$5, " 模型思考中（已等 " + toDisplayString(__props.elapsed) + " 秒，回答将逐字流式输出） ", 1)) : createCommentVNode("", true),
-        critical.value ? (openBlock(), createElementBlock("div", _hoisted_2$5, [
+        __props.streaming ? (openBlock(), createElementBlock("div", _hoisted_1$6, " 模型思考中（已等 " + toDisplayString(__props.elapsed) + " 秒，回答将逐字流式输出） ", 1)) : createCommentVNode("", true),
+        critical.value ? (openBlock(), createElementBlock("div", _hoisted_2$6, [
           _cache[0] || (_cache[0] = createBaseVNode("span", { class: "label" }, "【关键抉择】", -1)),
           createTextVNode(toDisplayString(__props.view.choice_prompt.prompt), 1)
-        ])) : __props.view.briefing ? (openBlock(), createElementBlock("div", _hoisted_3$5, [
+        ])) : __props.view.briefing ? (openBlock(), createElementBlock("div", _hoisted_3$6, [
           _cache[1] || (_cache[1] = createBaseVNode("span", { class: "label" }, "【本轮背景】", -1)),
           createTextVNode(toDisplayString(__props.view.briefing), 1)
         ])) : createCommentVNode("", true),
-        ending.value ? (openBlock(), createElementBlock("div", _hoisted_4$5, [
-          createBaseVNode("span", _hoisted_5$3, "『" + toDisplayString(ending.value.title) + "』", 1),
+        ending.value ? (openBlock(), createElementBlock("div", _hoisted_4$6, [
+          createBaseVNode("span", _hoisted_5$5, "『" + toDisplayString(ending.value.title) + "』", 1),
           createTextVNode(toDisplayString(ending.value.text), 1)
         ])) : createCommentVNode("", true),
-        !ending.value && choices.value.length ? (openBlock(), createElementBlock("div", _hoisted_6$2, [
+        !ending.value && choices.value.length ? (openBlock(), createElementBlock("div", _hoisted_6$3, [
           (openBlock(true), createElementBlock(Fragment, null, renderList(choices.value, (c, i) => {
             return openBlock(), createElementBlock("button", {
               key: i,
               disabled: __props.streaming,
               onClick: ($event) => onChoice(c, i)
-            }, toDisplayString(c), 9, _hoisted_7$2);
+            }, toDisplayString(c), 9, _hoisted_7$3);
           }), 128))
         ])) : createCommentVNode("", true)
       ]);
     };
   }
 };
-const _hoisted_1$4 = { class: "input-dock" };
-const _hoisted_2$4 = ["disabled"];
-const _hoisted_3$4 = ["disabled"];
-const _hoisted_4$4 = ["disabled"];
-const _hoisted_5$2 = ["disabled"];
-const _sfc_main$4 = {
+const _hoisted_1$5 = { class: "input-dock" };
+const _hoisted_2$5 = ["disabled"];
+const _hoisted_3$5 = ["disabled"];
+const _hoisted_4$5 = ["disabled"];
+const _hoisted_5$4 = ["disabled"];
+const _sfc_main$5 = {
   __name: "InputDock",
   props: {
     streaming: { type: Boolean, default: false }
@@ -6585,7 +6649,7 @@ const _sfc_main$4 = {
     }
     __expose({ focus });
     return (_ctx, _cache) => {
-      return openBlock(), createElementBlock("div", _hoisted_1$4, [
+      return openBlock(), createElementBlock("div", _hoisted_1$5, [
         withDirectives(createBaseVNode("input", {
           ref_key: "input",
           ref: input,
@@ -6594,39 +6658,39 @@ const _sfc_main$4 = {
           placeholder: "说些什么……（回车发送）",
           disabled: __props.streaming,
           onKeydown: withKeys(submit, ["enter"])
-        }, null, 40, _hoisted_2$4), [
+        }, null, 40, _hoisted_2$5), [
           [vModelText, text.value]
         ]),
         createBaseVNode("button", {
           disabled: __props.streaming,
           onClick: submit
-        }, "发言", 8, _hoisted_3$4),
+        }, "发言", 8, _hoisted_3$5),
         createBaseVNode("button", {
           disabled: __props.streaming,
           onClick: _cache[1] || (_cache[1] = ($event) => emit2("save"))
-        }, "存档", 8, _hoisted_4$4),
+        }, "存档", 8, _hoisted_4$5),
         createBaseVNode("button", {
           disabled: __props.streaming,
           onClick: _cache[2] || (_cache[2] = ($event) => emit2("leave"))
-        }, "换一张卡", 8, _hoisted_5$2)
+        }, "换一张卡", 8, _hoisted_5$4)
       ]);
     };
   }
 };
-const _hoisted_1$3 = {
+const _hoisted_1$4 = {
   key: 0,
   class: "recovery"
 };
-const _hoisted_2$3 = {
+const _hoisted_2$4 = {
   key: 0,
   class: "entry"
 };
-const _hoisted_3$3 = {
+const _hoisted_3$4 = {
   key: 1,
   class: "entry recovery"
 };
-const _hoisted_4$3 = { class: "history-bar" };
-const _sfc_main$3 = {
+const _hoisted_4$4 = { class: "history-bar" };
+const _sfc_main$4 = {
   __name: "ProseStream",
   props: {
     /** 已提交的分段（终稿正文），每项 { text, recovery } */
@@ -6675,15 +6739,15 @@ const _sfc_main$3 = {
               class: "entry"
             }, [
               createBaseVNode("span", null, toDisplayString(e.text), 1),
-              e.recovery ? (openBlock(), createElementBlock("span", _hoisted_1$3, toDisplayString(e.recovery), 1)) : createCommentVNode("", true)
+              e.recovery ? (openBlock(), createElementBlock("span", _hoisted_1$4, toDisplayString(e.recovery), 1)) : createCommentVNode("", true)
             ]);
           }), 128)),
-          __props.streaming && __props.draft ? (openBlock(), createElementBlock("div", _hoisted_2$3, [
+          __props.streaming && __props.draft ? (openBlock(), createElementBlock("div", _hoisted_2$4, [
             createBaseVNode("span", null, toDisplayString(__props.draft), 1),
             _cache[1] || (_cache[1] = createBaseVNode("span", { class: "caret" }, null, -1))
-          ])) : __props.streaming && liveNote.value ? (openBlock(), createElementBlock("div", _hoisted_3$3, toDisplayString(liveNote.value), 1)) : createCommentVNode("", true)
+          ])) : __props.streaming && liveNote.value ? (openBlock(), createElementBlock("div", _hoisted_3$4, toDisplayString(liveNote.value), 1)) : createCommentVNode("", true)
         ], 2),
-        createBaseVNode("div", _hoisted_4$3, [
+        createBaseVNode("div", _hoisted_4$4, [
           createBaseVNode("button", {
             class: normalizeClass({ chosen: fullHistory.value }),
             onClick: _cache[0] || (_cache[0] = ($event) => fullHistory.value = !fullHistory.value)
@@ -6693,24 +6757,24 @@ const _sfc_main$3 = {
     };
   }
 };
-const _hoisted_1$2 = { class: "col-body" };
-const _hoisted_2$2 = { class: "status-text" };
-const _hoisted_3$2 = {
+const _hoisted_1$3 = { class: "col-body" };
+const _hoisted_2$3 = { class: "status-text" };
+const _hoisted_3$3 = {
   key: 0,
   class: "status-actions"
 };
-const _hoisted_4$2 = {
+const _hoisted_4$3 = {
   key: 1,
   class: "status-actions"
 };
-const _hoisted_5$1 = { class: "t" };
-const _hoisted_6$1 = ["disabled", "onClick"];
-const _hoisted_7$1 = ["disabled"];
-const _hoisted_8$1 = {
+const _hoisted_5$3 = { class: "t" };
+const _hoisted_6$2 = ["disabled", "onClick"];
+const _hoisted_7$2 = ["disabled"];
+const _hoisted_8$2 = {
   key: 0,
   class: "t"
 };
-const _sfc_main$2 = {
+const _sfc_main$3 = {
   __name: "StatusPanel",
   props: {
     status: { type: String, default: "" },
@@ -6726,26 +6790,26 @@ const _sfc_main$2 = {
           createTextVNode(" 状态栏"),
           createBaseVNode("span", { class: "t" }, "（引擎真值 · 与模型看到的同源）")
         ], -1)),
-        createBaseVNode("div", _hoisted_1$2, [
-          createBaseVNode("div", _hoisted_2$2, toDisplayString(__props.status || "（等待开局……）"), 1),
-          __props.actions.critical ? (openBlock(), createElementBlock("div", _hoisted_3$2, _cache[1] || (_cache[1] = [
+        createBaseVNode("div", _hoisted_1$3, [
+          createBaseVNode("div", _hoisted_2$3, toDisplayString(__props.status || "（等待开局……）"), 1),
+          __props.actions.critical ? (openBlock(), createElementBlock("div", _hoisted_3$3, _cache[1] || (_cache[1] = [
             createBaseVNode("div", { class: "t" }, "[关键抉择进行中] 行动暂不可用——先用中间区域的固定选项完成剧情。", -1)
-          ]))) : __props.actions.day ? (openBlock(), createElementBlock("div", _hoisted_4$2, [
-            createBaseVNode("div", _hoisted_5$1, " [第 " + toDisplayString(__props.actions.day) + " 天 · 行动点 " + toDisplayString(__props.actions.action_points_left) + "] 今日行动（消耗行动点 = 推进时间；新剧情按天数条件自动触发）： ", 1),
+          ]))) : __props.actions.day ? (openBlock(), createElementBlock("div", _hoisted_4$3, [
+            createBaseVNode("div", _hoisted_5$3, " [第 " + toDisplayString(__props.actions.day) + " 天 · 行动点 " + toDisplayString(__props.actions.action_points_left) + "] 今日行动（消耗行动点 = 推进时间；新剧情按天数条件自动触发）： ", 1),
             createBaseVNode("div", null, [
               (openBlock(true), createElementBlock(Fragment, null, renderList(__props.actions.actions || [], (a) => {
                 return openBlock(), createElementBlock("button", {
                   key: a.id,
                   disabled: __props.streaming,
                   onClick: ($event) => emit2("act", a.id)
-                }, toDisplayString(a.label), 9, _hoisted_6$1);
+                }, toDisplayString(a.label), 9, _hoisted_6$2);
               }), 128)),
               createBaseVNode("button", {
                 disabled: __props.streaming,
                 onClick: _cache[0] || (_cache[0] = ($event) => emit2("end-day"))
-              }, "结束今天 →", 8, _hoisted_7$1)
+              }, "结束今天 →", 8, _hoisted_7$2)
             ]),
-            __props.actions.action_points_left <= 0 ? (openBlock(), createElementBlock("div", _hoisted_8$1, " 行动点已用完——点「结束今天」进入下一天。 ")) : createCommentVNode("", true)
+            __props.actions.action_points_left <= 0 ? (openBlock(), createElementBlock("div", _hoisted_8$2, " 行动点已用完——点「结束今天」进入下一天。 ")) : createCommentVNode("", true)
           ])) : createCommentVNode("", true)
         ])
       ], 64);
@@ -6776,20 +6840,38 @@ const post = (url, body) => fetch(url, {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body ?? {})
 });
+const del = (url) => fetch(url, { method: "DELETE" });
 const api = {
   /** 前端配置（自由输入文案来自引擎常量，避免前后端各写一份而漂移）。 */
   config: () => fetch("/api/config").then((r) => jsonOrThrow(r, "读取配置")),
   catalog: () => fetch("/api/catalog").then((r) => jsonOrThrow(r, "读取世界包目录")),
   saves: () => fetch("/api/saves").then((r) => jsonOrThrow(r, "读取存档列表")),
   sessions: () => fetch("/api/sessions").then((r) => jsonOrThrow(r, "读取会话列表")),
-  /** 开局：pack_id 选卡，mode 选"跟主线走 / 自由探索"。 */
-  newGame: (packId, mode) => post("/api/new", { pack_id: packId, mode }).then((r) => jsonOrThrow(r, "开局")),
+  /** 开局：pack_id 选卡，mode 选"跟主线走 / 自由探索"，draft 试玩未发布的草稿。
+   *
+   *  `draft` 与 `pack_id` 互斥（后端优先 draft）。草稿试玩**必须**走这个入参而不是
+   *  `pack_id`：`/api/catalog` 里根本没有草稿，硬塞进 pack_id 会被后端以"未知的世界包"拒绝。
+   */
+  newGame: (packId, mode, draft = null) => post("/api/new", { pack_id: packId, mode, draft }).then((r) => jsonOrThrow(r, "开局")),
   meta: (sid) => fetch(`/api/${sid}/meta`).then((r) => jsonOrThrow(r, "读取会话信息")),
   status: (sid) => fetch(`/api/${sid}/status`).then((r) => jsonOrThrow(r, "读取状态")),
   actions: (sid) => fetch(`/api/${sid}/actions`).then((r) => jsonOrThrow(r, "读取行动")),
   cost: (sid) => fetch(`/api/${sid}/cost`).then((r) => jsonOrThrow(r, "读取成本")),
   save: (sid, path) => post(`/api/${sid}/save`, { path }).then((r) => jsonOrThrow(r, "存档")),
   load: (sid, path) => post(`/api/${sid}/load`, { path }).then((r) => jsonOrThrow(r, "读档")),
+  // ---- 创作工作台（N2a）----
+  /** 起一个后台生成任务（立刻返回 job_id；进度看 SSE）。会**真的花钱**，除非 offline。 */
+  generate: (body) => post("/api/packs/generate", body).then((r) => jsonOrThrow(r, "起生成任务")),
+  /** 任务列表（新的在前）——刷新页面后靠它找回正在跑的任务。 */
+  jobs: () => fetch("/api/packs/generate").then((r) => jsonOrThrow(r, "读取任务列表")),
+  /** 任务终态快照：`result`（stages/repairs/summary…）与 `cost` 只有它带得全。 */
+  job: (jobId) => fetch(`/api/packs/generate/${jobId}`).then((r) => jsonOrThrow(r, "读取任务")),
+  cancelJob: (jobId) => post(`/api/packs/generate/${jobId}/cancel`).then((r) => jsonOrThrow(r, "取消任务")),
+  /** 草稿列表（含未通过校验的，带 `error` 原文）。**已发布的卡不在这里**。 */
+  drafts: () => fetch("/api/packs/drafts").then((r) => jsonOrThrow(r, "读取草稿列表")),
+  /** 发布到已发布区。**闸门 = check_worldpack**，不过则 400 且 detail 是报错原文。 */
+  publish: (name) => post("/api/packs/publish", { name }).then((r) => jsonOrThrow(r, "发布")),
+  deleteDraft: (name) => del(`/api/packs/drafts/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, "删除草稿")),
   /** 回合请求体（kind 决定后端分发哪个 Game 方法）。 */
   turnBody: {
     say: (text) => ({ kind: "say", text }),
@@ -6869,22 +6951,22 @@ function useTurnStream() {
   }
   return { streaming, draft, error, recovered, subTurns, send };
 }
-const _hoisted_1$1 = { class: "columns" };
-const _hoisted_2$1 = { class: "col col-left" };
-const _hoisted_3$1 = { class: "col-body" };
-const _hoisted_4$1 = { class: "t" };
-const _hoisted_5 = { class: "t" };
-const _hoisted_6 = { class: "t" };
-const _hoisted_7 = {
+const _hoisted_1$2 = { class: "columns" };
+const _hoisted_2$2 = { class: "col col-left" };
+const _hoisted_3$2 = { class: "col-body" };
+const _hoisted_4$2 = { class: "t" };
+const _hoisted_5$2 = { class: "t" };
+const _hoisted_6$1 = { class: "t" };
+const _hoisted_7$1 = {
   key: 0,
   class: "t"
 };
-const _hoisted_8 = { key: 0 };
-const _hoisted_9 = { class: "status-actions" };
-const _hoisted_10 = ["disabled"];
-const _hoisted_11 = { class: "col col-mid" };
-const _hoisted_12 = { class: "col col-right" };
-const _sfc_main$1 = {
+const _hoisted_8$1 = { key: 0 };
+const _hoisted_9$1 = { class: "status-actions" };
+const _hoisted_10$1 = ["disabled"];
+const _hoisted_11$1 = { class: "col col-mid" };
+const _hoisted_12$1 = { class: "col col-right" };
+const _sfc_main$2 = {
   __name: "PlayView",
   props: {
     session: { type: Object, required: true },
@@ -6970,36 +7052,36 @@ const _sfc_main$1 = {
     });
     __expose({ refresh });
     return (_ctx, _cache) => {
-      return openBlock(), createElementBlock("div", _hoisted_1$1, [
-        createBaseVNode("aside", _hoisted_2$1, [
+      return openBlock(), createElementBlock("div", _hoisted_1$2, [
+        createBaseVNode("aside", _hoisted_2$2, [
           _cache[8] || (_cache[8] = createBaseVNode("div", { class: "col-head" }, "本局", -1)),
-          createBaseVNode("div", _hoisted_3$1, [
+          createBaseVNode("div", _hoisted_3$2, [
             createBaseVNode("p", null, [
               createBaseVNode("strong", null, toDisplayString(__props.session.name), 1)
             ]),
-            createBaseVNode("p", _hoisted_4$1, "世界包：" + toDisplayString(__props.session.pack_id), 1),
-            createBaseVNode("p", _hoisted_5, "模式：" + toDisplayString(modeLabel.value), 1),
-            createBaseVNode("p", _hoisted_6, "回合：" + toDisplayString(view.value.turn ?? 0) + " · 第 " + toDisplayString(actions.value.day ?? "?") + " 天", 1),
-            view.value.turn ? (openBlock(), createElementBlock("div", _hoisted_7, [
-              view.value.sub_turns > 1 ? (openBlock(), createElementBlock("span", _hoisted_8, "本轮生成了 " + toDisplayString(view.value.sub_turns) + " 次", 1)) : createCommentVNode("", true)
+            createBaseVNode("p", _hoisted_4$2, "世界包：" + toDisplayString(__props.session.pack_id), 1),
+            createBaseVNode("p", _hoisted_5$2, "模式：" + toDisplayString(modeLabel.value), 1),
+            createBaseVNode("p", _hoisted_6$1, "回合：" + toDisplayString(view.value.turn ?? 0) + " · 第 " + toDisplayString(actions.value.day ?? "?") + " 天", 1),
+            view.value.turn ? (openBlock(), createElementBlock("div", _hoisted_7$1, [
+              view.value.sub_turns > 1 ? (openBlock(), createElementBlock("span", _hoisted_8$1, "本轮生成了 " + toDisplayString(view.value.sub_turns) + " 次", 1)) : createCommentVNode("", true)
             ])) : createCommentVNode("", true),
-            createBaseVNode("div", _hoisted_9, [
+            createBaseVNode("div", _hoisted_9$1, [
               createBaseVNode("button", {
                 disabled: unref(streaming),
                 onClick: _cache[0] || (_cache[0] = ($event) => emit2("leave"))
-              }, "换一张卡", 8, _hoisted_10)
+              }, "换一张卡", 8, _hoisted_10$1)
             ])
           ])
         ]),
-        createBaseVNode("section", _hoisted_11, [
-          createVNode(_sfc_main$3, {
+        createBaseVNode("section", _hoisted_11$1, [
+          createVNode(_sfc_main$4, {
             entries: entries.value,
             draft: unref(draft),
             streaming: unref(streaming),
             recovered: unref(recovered),
             "sub-turns": unref(subTurns)
           }, null, 8, ["entries", "draft", "streaming", "recovered", "sub-turns"]),
-          createVNode(_sfc_main$5, {
+          createVNode(_sfc_main$6, {
             view: view.value,
             "free-input": __props.freeInput,
             streaming: unref(streaming),
@@ -7008,7 +7090,7 @@ const _sfc_main$1 = {
             onSay: _cache[2] || (_cache[2] = (t) => turn(unref(api).turnBody.say(t))),
             onFocusInput: _cache[3] || (_cache[3] = () => dock.value && dock.value.focus())
           }, null, 8, ["view", "free-input", "streaming", "elapsed"]),
-          createVNode(_sfc_main$4, {
+          createVNode(_sfc_main$5, {
             ref_key: "dock",
             ref: dock,
             streaming: unref(streaming),
@@ -7017,14 +7099,581 @@ const _sfc_main$1 = {
             onLeave: _cache[5] || (_cache[5] = ($event) => emit2("leave"))
           }, null, 8, ["streaming"])
         ]),
-        createBaseVNode("aside", _hoisted_12, [
-          createVNode(_sfc_main$2, {
+        createBaseVNode("aside", _hoisted_12$1, [
+          createVNode(_sfc_main$3, {
             status: status.value,
             actions: actions.value,
             streaming: unref(streaming),
             onAct: _cache[6] || (_cache[6] = (id) => turn(unref(api).turnBody.act(id))),
             onEndDay: _cache[7] || (_cache[7] = () => turn(unref(api).turnBody.endDay()))
           }, null, 8, ["status", "actions", "streaming"])
+        ])
+      ]);
+    };
+  }
+};
+const TERMINAL_STAGES = ["done", "error", "cancelled"];
+const MAX_RECONNECT = 3;
+const RECONNECT_DELAY_MS = 1200;
+function useJobStream() {
+  const events = ref([]);
+  const running = ref(false);
+  const disconnected = ref(false);
+  const error = shallowRef("");
+  let currentJob = null;
+  let attempts = 0;
+  function isTerminal(ev) {
+    return TERMINAL_STAGES.includes(ev && ev.stage);
+  }
+  async function snapshot(jobId) {
+    const res = await fetch(`/api/packs/generate/${jobId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+  async function watch2(jobId) {
+    currentJob = jobId;
+    attempts = 0;
+    running.value = true;
+    disconnected.value = false;
+    error.value = "";
+    events.value = [];
+    return connect();
+  }
+  async function connect() {
+    const jobId = currentJob;
+    try {
+      const res = await fetch(`/api/packs/generate/${jobId}/events`);
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let sawTerminal = false;
+      for (; ; ) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) !== -1) {
+          const block = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const { event, data } of parseSseChunk(block)) {
+            if (event !== "progress") continue;
+            const payload = JSON.parse(data);
+            events.value.push(payload);
+            if (isTerminal(payload)) sawTerminal = true;
+          }
+        }
+      }
+      if (sawTerminal) {
+        running.value = false;
+        return await snapshot(jobId);
+      }
+      if (attempts < MAX_RECONNECT) {
+        attempts += 1;
+        events.value = [];
+        await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS));
+        return connect();
+      }
+      disconnected.value = true;
+      running.value = false;
+      error.value = "进度连接已断开（任务仍在服务端运行，可刷新页面重新接上）";
+      return await snapshot(jobId);
+    } catch (e) {
+      if (attempts < MAX_RECONNECT) {
+        attempts += 1;
+        events.value = [];
+        await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS));
+        return connect();
+      }
+      disconnected.value = true;
+      running.value = false;
+      error.value = `进度流中断：${(e == null ? void 0 : e.message) || e}`;
+      return null;
+    }
+  }
+  function stop() {
+    currentJob = null;
+    attempts = MAX_RECONNECT;
+    running.value = false;
+  }
+  return { events, running, disconnected, error, watch: watch2, stop, snapshot };
+}
+const _hoisted_1$1 = { class: "columns studio" };
+const _hoisted_2$1 = { class: "col col-left" };
+const _hoisted_3$1 = { class: "col-head" };
+const _hoisted_4$1 = { class: "col-body" };
+const _hoisted_5$1 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_6 = ["onClick"];
+const _hoisted_7 = { class: "pname" };
+const _hoisted_8 = { class: "pera" };
+const _hoisted_9 = { class: "pmeta" };
+const _hoisted_10 = {
+  key: 1,
+  class: "t"
+};
+const _hoisted_11 = ["onClick"];
+const _hoisted_12 = { class: "pname" };
+const _hoisted_13 = { class: "pera" };
+const _hoisted_14 = { class: "pmeta" };
+const _hoisted_15 = { class: "col col-mid" };
+const _hoisted_16 = { class: "col-body" };
+const _hoisted_17 = { class: "field" };
+const _hoisted_18 = { class: "field" };
+const _hoisted_19 = { class: "field row" };
+const _hoisted_20 = { class: "field row" };
+const _hoisted_21 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_22 = {
+  key: 1,
+  class: "cost"
+};
+const _hoisted_23 = { class: "save-row" };
+const _hoisted_24 = ["disabled"];
+const _hoisted_25 = {
+  key: 1,
+  class: "gen"
+};
+const _hoisted_26 = {
+  key: 2,
+  class: "t"
+};
+const _hoisted_27 = { class: "t" };
+const _hoisted_28 = {
+  key: 0,
+  class: "cost"
+};
+const _hoisted_29 = { class: "log" };
+const _hoisted_30 = { class: "mark" };
+const _hoisted_31 = { class: "stage" };
+const _hoisted_32 = { class: "msg" };
+const _hoisted_33 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_34 = { class: "col col-right" };
+const _hoisted_35 = { class: "col-body" };
+const _hoisted_36 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_37 = { class: "sec" };
+const _hoisted_38 = {
+  key: 0,
+  class: "ok"
+};
+const _hoisted_39 = { class: "errbox" };
+const _hoisted_40 = { class: "kv" };
+const _hoisted_41 = { class: "t" };
+const _hoisted_42 = { class: "t" };
+const _hoisted_43 = { class: "save-row" };
+const _hoisted_44 = ["disabled"];
+const _hoisted_45 = ["disabled"];
+const _hoisted_46 = { class: "kv" };
+const _hoisted_47 = { class: "t" };
+const _hoisted_48 = {
+  key: 0,
+  class: "t"
+};
+const _sfc_main$1 = {
+  __name: "StudioView",
+  props: {
+    busy: { type: Boolean, default: false }
+  },
+  emits: ["notice", "playtest", "back", "published"],
+  setup(__props, { emit: __emit }) {
+    const emit2 = __emit;
+    const props = __props;
+    const drafts = ref([]);
+    const jobs = ref([]);
+    const pickedDraft = ref(null);
+    const pickedJobId = ref("");
+    const jobSnapshot = ref(null);
+    const elapsed = ref(0);
+    const form = ref({
+      name: "",
+      source_text: "",
+      rounds: 4,
+      with_corpus: false,
+      offline: true
+      // 见文件头：默认不花钱
+    });
+    const { events, running, disconnected, error: streamError, watch: watch2 } = useJobStream();
+    let timer = null;
+    computed(() => jobs.value.find((j) => j.job_id === pickedJobId.value) || null);
+    const repairLines = computed(
+      () => events.value.filter((e) => e.stage === "repair").map((e) => e.message)
+    );
+    const report = computed(() => jobSnapshot.value && jobSnapshot.value.result || null);
+    const canSubmit = computed(() => form.value.name.trim() && form.value.source_text.trim());
+    function say(message, isError = false) {
+      emit2("notice", { message, isError });
+    }
+    async function refresh() {
+      try {
+        const [d, j] = await Promise.all([api.drafts(), api.jobs()]);
+        drafts.value = d.drafts || [];
+        jobs.value = j.jobs || [];
+        if (pickedDraft.value && !drafts.value.some((x) => x.id === pickedDraft.value.id)) {
+          pickedDraft.value = null;
+        } else if (pickedDraft.value) {
+          pickedDraft.value = drafts.value.find((x) => x.id === pickedDraft.value.id);
+        }
+      } catch (e) {
+        say(e.message, true);
+      }
+    }
+    async function submit() {
+      if (!canSubmit.value) return;
+      try {
+        const d = await api.generate({
+          name: form.value.name.trim(),
+          source_text: form.value.source_text,
+          rounds: Number(form.value.rounds) || 4,
+          with_corpus: form.value.with_corpus,
+          offline: form.value.offline
+        });
+        pickedJobId.value = d.job_id;
+        jobSnapshot.value = null;
+        elapsed.value = 0;
+        startTimer();
+        say(`已起任务 ${d.job_id}（${form.value.offline ? "离线试跑" : "真机生成"}）`);
+        await refresh();
+        const fin = await watch2(d.job_id);
+        stopTimer();
+        jobSnapshot.value = fin;
+        await refresh();
+        if (fin && fin.status === "done") {
+          pickedDraft.value = drafts.value.find((x) => x.id === fin.pack_name) || null;
+          say(
+            fin.result && fin.result.repairs ? `生成完成，修了 ${fin.result.repairs} 轮——左栏草稿已可试玩或发布。` : "生成完成——左栏草稿已可试玩或发布。"
+          );
+        } else if (fin && fin.status === "cancelled") {
+          say("任务已取消（草稿可能停在半成品状态，试玩前先看校验报告）。");
+        } else {
+          say(`任务结束：${fin && fin.status || "未知"} ${fin && fin.error || ""}`, true);
+        }
+      } catch (e) {
+        stopTimer();
+        say(e.message, true);
+      }
+    }
+    async function resume(jobId) {
+      pickedJobId.value = jobId;
+      jobSnapshot.value = null;
+      elapsed.value = 0;
+      startTimer();
+      const fin = await watch2(jobId);
+      stopTimer();
+      jobSnapshot.value = fin;
+      await refresh();
+    }
+    async function cancel() {
+      if (!pickedJobId.value) return;
+      try {
+        await api.cancelJob(pickedJobId.value);
+        say("已请求取消——当前这次模型调用会跑完，之后在块之间停下。");
+        await refresh();
+      } catch (e) {
+        say(e.message, true);
+      }
+    }
+    function pickDraft(d) {
+      pickedDraft.value = d;
+      const j = jobs.value.find((x) => x.pack_name === d.id);
+      if (j) {
+        pickedJobId.value = j.job_id;
+        jobSnapshot.value = j.status === "done" ? j : null;
+      }
+    }
+    function pickJob(j) {
+      pickedJobId.value = j.job_id;
+      jobSnapshot.value = j.status === "done" ? j : null;
+    }
+    async function publish() {
+      if (!pickedDraft.value) return;
+      try {
+        const r = await api.publish(pickedDraft.value.id);
+        say(`已发布《${r.pack.name}》——现在它会出现在选卡屏里。`);
+        pickedDraft.value = null;
+        await refresh();
+        emit2("published");
+      } catch (e) {
+        say(e.message, true);
+      }
+    }
+    async function remove2() {
+      if (!pickedDraft.value) return;
+      const id = pickedDraft.value.id;
+      try {
+        await api.deleteDraft(id);
+        say(`已删除草稿 ${id}。`);
+        pickedDraft.value = null;
+        await refresh();
+      } catch (e) {
+        say(e.message, true);
+      }
+    }
+    function playtest() {
+      if (!pickedDraft.value) return;
+      emit2("playtest", { draft: pickedDraft.value.id });
+    }
+    function startTimer() {
+      stopTimer();
+      const t0 = Date.now();
+      timer = setInterval(() => {
+        elapsed.value = Math.round((Date.now() - t0) / 1e3);
+      }, 1e3);
+    }
+    function stopTimer() {
+      if (timer) clearInterval(timer);
+      timer = null;
+    }
+    function stageMark(stage) {
+      if (stage === "done") return "✓";
+      if (stage === "error" || stage === "warn") return "!";
+      if (stage === "repair") return "↻";
+      return "·";
+    }
+    onMounted(async () => {
+      await refresh();
+      const live = jobs.value.find((j) => j.status === "running" || j.status === "queued");
+      if (live) await resume(live.job_id);
+    });
+    onBeforeUnmount(stopTimer);
+    return (_ctx, _cache) => {
+      return openBlock(), createElementBlock("div", _hoisted_1$1, [
+        createBaseVNode("aside", _hoisted_2$1, [
+          createBaseVNode("div", _hoisted_3$1, [
+            createBaseVNode("button", {
+              class: "t",
+              onClick: _cache[0] || (_cache[0] = ($event) => emit2("back"))
+            }, "← 回到选卡")
+          ]),
+          createBaseVNode("div", _hoisted_4$1, [
+            _cache[6] || (_cache[6] = createBaseVNode("h3", { class: "sec" }, "任务", -1)),
+            !jobs.value.length ? (openBlock(), createElementBlock("p", _hoisted_5$1, "还没有生成任务。")) : createCommentVNode("", true),
+            (openBlock(true), createElementBlock(Fragment, null, renderList(jobs.value, (j) => {
+              return openBlock(), createElementBlock("button", {
+                key: j.job_id,
+                class: normalizeClass(["pack", { current: j.job_id === pickedJobId.value }]),
+                onClick: ($event) => pickJob(j)
+              }, [
+                createBaseVNode("span", _hoisted_7, toDisplayString(j.pack_name), 1),
+                createBaseVNode("span", _hoisted_8, [
+                  createTextVNode(toDisplayString(j.status), 1),
+                  j.status === "running" ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
+                    createTextVNode(" · 进行中")
+                  ], 64)) : createCommentVNode("", true)
+                ]),
+                createBaseVNode("span", _hoisted_9, toDisplayString(j.job_id), 1)
+              ], 10, _hoisted_6);
+            }), 128)),
+            _cache[7] || (_cache[7] = createBaseVNode("h3", { class: "sec" }, "草稿（未发布）", -1)),
+            !drafts.value.length ? (openBlock(), createElementBlock("p", _hoisted_10, " 还没有草稿。生成的包先落这里，过 check-worldpack 才允许发布。 ")) : createCommentVNode("", true),
+            (openBlock(true), createElementBlock(Fragment, null, renderList(drafts.value, (d) => {
+              return openBlock(), createElementBlock("button", {
+                key: d.id,
+                class: normalizeClass(["pack", { broken: !d.playable, current: pickedDraft.value && pickedDraft.value.id === d.id }]),
+                onClick: ($event) => pickDraft(d)
+              }, [
+                createBaseVNode("span", _hoisted_12, toDisplayString(d.name || d.id), 1),
+                createBaseVNode("span", _hoisted_13, toDisplayString(d.playable ? "✓ 通过校验，可发布" : "✗ 未通过校验"), 1),
+                createBaseVNode("span", _hoisted_14, toDisplayString(d.id) + " · " + toDisplayString(d.npcs) + " 角色 · " + toDisplayString(d.nodes) + " 节点", 1)
+              ], 10, _hoisted_11);
+            }), 128))
+          ])
+        ]),
+        createBaseVNode("section", _hoisted_15, [
+          createBaseVNode("div", _hoisted_16, [
+            _cache[14] || (_cache[14] = createBaseVNode("h3", { class: "sec" }, "从素材生成一张卡", -1)),
+            _cache[15] || (_cache[15] = createBaseVNode("p", { class: "t" }, [
+              createTextVNode(" 小说 / 剧本 / 大纲的正文都行（超长会自动截断到 30 万字）。 "),
+              createBaseVNode("strong", null, "接口只收文本、不收文件路径"),
+              createTextVNode("——这是安全边界，不是偷懒。 ")
+            ], -1)),
+            createBaseVNode("div", _hoisted_17, [
+              _cache[8] || (_cache[8] = createBaseVNode("label", null, "包名（只能是目录名：中文/字母/数字/下划线/连字符）", -1)),
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => form.value.name = $event),
+                type: "text",
+                placeholder: "例如 江湖旧梦_修订"
+              }, null, 512), [
+                [vModelText, form.value.name]
+              ])
+            ]),
+            createBaseVNode("div", _hoisted_18, [
+              _cache[9] || (_cache[9] = createBaseVNode("label", null, "素材正文", -1)),
+              withDirectives(createBaseVNode("textarea", {
+                "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => form.value.source_text = $event),
+                rows: "8",
+                placeholder: "把小说/大纲/设定粘进来…"
+              }, null, 512), [
+                [vModelText, form.value.source_text]
+              ])
+            ]),
+            createBaseVNode("div", _hoisted_19, [
+              createBaseVNode("label", null, [
+                _cache[10] || (_cache[10] = createTextVNode("修复轮次 ")),
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => form.value.rounds = $event),
+                  type: "text",
+                  class: "tiny"
+                }, null, 512), [
+                  [vModelText, form.value.rounds]
+                ])
+              ]),
+              createBaseVNode("label", null, [
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => form.value.with_corpus = $event),
+                  type: "checkbox"
+                }, null, 512), [
+                  [vModelCheckbox, form.value.with_corpus]
+                ]),
+                _cache[11] || (_cache[11] = createTextVNode(" 同时生成 Judge 语料（多 12 次调用，更贵）"))
+              ])
+            ]),
+            createBaseVNode("div", _hoisted_20, [
+              createBaseVNode("label", null, [
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => form.value.offline = $event),
+                  type: "checkbox"
+                }, null, 512), [
+                  [vModelCheckbox, form.value.offline]
+                ]),
+                _cache[12] || (_cache[12] = createTextVNode(" 离线试跑（内嵌假模型，不花钱、不联网）"))
+              ])
+            ]),
+            form.value.offline ? (openBlock(), createElementBlock("p", _hoisted_21, ' 离线试跑产出的是一个**假世界**（"离线测试世界"），只用来看这条链通不通。 要真的从素材做出能玩的卡，取消上面的勾。 ')) : (openBlock(), createElementBlock("p", _hoisted_22, _cache[13] || (_cache[13] = [
+              createTextVNode(" ⚠️ 真实生成会调用模型：一次约 "),
+              createBaseVNode("strong", null, "¥0.1–0.3", -1),
+              createTextVNode("；勾了语料还要再贵一些。 生成是后台任务，可以边跑边看，也可以取消（取消点在块与块之间）。 ")
+            ]))),
+            createBaseVNode("div", _hoisted_23, [
+              createBaseVNode("button", {
+                disabled: !canSubmit.value || unref(running) || props.busy,
+                onClick: submit
+              }, "开始生成", 8, _hoisted_24),
+              unref(running) ? (openBlock(), createElementBlock("button", {
+                key: 0,
+                onClick: cancel
+              }, "取消任务")) : createCommentVNode("", true),
+              unref(running) ? (openBlock(), createElementBlock("span", _hoisted_25, "已等 " + toDisplayString(elapsed.value) + " 秒…", 1)) : createCommentVNode("", true)
+            ]),
+            _cache[16] || (_cache[16] = createBaseVNode("h3", { class: "sec" }, "进度", -1)),
+            !pickedJobId.value ? (openBlock(), createElementBlock("p", _hoisted_26, "起一个任务，或在左栏点一个任务/草稿看它的进度。")) : (openBlock(), createElementBlock(Fragment, { key: 3 }, [
+              createBaseVNode("p", _hoisted_27, [
+                createTextVNode(" 任务 " + toDisplayString(pickedJobId.value) + " · ", 1),
+                unref(running) ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
+                  createTextVNode("进行中（已等 " + toDisplayString(elapsed.value) + " 秒）", 1)
+                ], 64)) : jobSnapshot.value ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
+                  createTextVNode(toDisplayString(jobSnapshot.value.status), 1)
+                ], 64)) : (openBlock(), createElementBlock(Fragment, { key: 2 }, [
+                  createTextVNode("未取到终态快照")
+                ], 64))
+              ]),
+              unref(disconnected) ? (openBlock(), createElementBlock("p", _hoisted_28, "⚠️ " + toDisplayString(unref(streamError)), 1)) : createCommentVNode("", true),
+              createBaseVNode("div", _hoisted_29, [
+                (openBlock(true), createElementBlock(Fragment, null, renderList(unref(events), (e, i) => {
+                  return openBlock(), createElementBlock("div", {
+                    key: i,
+                    class: "log-line"
+                  }, [
+                    createBaseVNode("span", _hoisted_30, toDisplayString(stageMark(e.stage)), 1),
+                    createBaseVNode("span", _hoisted_31, toDisplayString(e.stage), 1),
+                    createBaseVNode("span", _hoisted_32, toDisplayString(e.message), 1)
+                  ]);
+                }), 128)),
+                !unref(events).length ? (openBlock(), createElementBlock("p", _hoisted_33, "（还没有事件）")) : createCommentVNode("", true)
+              ])
+            ], 64))
+          ])
+        ]),
+        createBaseVNode("aside", _hoisted_34, [
+          _cache[31] || (_cache[31] = createBaseVNode("div", { class: "col-head" }, "校验报告（只读）", -1)),
+          createBaseVNode("div", _hoisted_35, [
+            !pickedDraft.value && !report.value ? (openBlock(), createElementBlock("p", _hoisted_36, _cache[17] || (_cache[17] = [
+              createTextVNode(" 选一张草稿看它的校验报告。这一栏是"),
+              createBaseVNode("strong", null, "呈现", -1),
+              createTextVNode("，不是编辑器—— 改内容由创作者 Agent 负责（对话式），人负责确认与发布。 ")
+            ]))) : createCommentVNode("", true),
+            pickedDraft.value ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
+              createBaseVNode("h3", _hoisted_37, toDisplayString(pickedDraft.value.name || pickedDraft.value.id), 1),
+              pickedDraft.value.playable ? (openBlock(), createElementBlock("p", _hoisted_38, "✓ 通过 check-worldpack")) : (openBlock(), createElementBlock(Fragment, { key: 1 }, [
+                _cache[18] || (_cache[18] = createBaseVNode("p", { class: "err" }, "✗ 未通过 check-worldpack（不能发布）", -1)),
+                createBaseVNode("pre", _hoisted_39, toDisplayString(pickedDraft.value.error), 1)
+              ], 64)),
+              createBaseVNode("div", _hoisted_40, [
+                createBaseVNode("div", null, [
+                  _cache[19] || (_cache[19] = createBaseVNode("span", null, "角色", -1)),
+                  createBaseVNode("b", null, toDisplayString(pickedDraft.value.npcs), 1)
+                ]),
+                createBaseVNode("div", null, [
+                  _cache[20] || (_cache[20] = createBaseVNode("span", null, "主线节点", -1)),
+                  createBaseVNode("b", null, toDisplayString(pickedDraft.value.nodes), 1)
+                ]),
+                createBaseVNode("div", null, [
+                  _cache[21] || (_cache[21] = createBaseVNode("span", null, "结局", -1)),
+                  createBaseVNode("b", null, toDisplayString(pickedDraft.value.endings), 1)
+                ]),
+                createBaseVNode("div", null, [
+                  _cache[22] || (_cache[22] = createBaseVNode("span", null, "世界书条目", -1)),
+                  createBaseVNode("b", null, toDisplayString(pickedDraft.value.lore), 1)
+                ]),
+                createBaseVNode("div", null, [
+                  _cache[23] || (_cache[23] = createBaseVNode("span", null, "地点", -1)),
+                  createBaseVNode("b", null, toDisplayString(pickedDraft.value.locations), 1)
+                ])
+              ]),
+              createBaseVNode("p", _hoisted_41, "内容指纹 " + toDisplayString((pickedDraft.value.digest || "").slice(0, 16)) + "…", 1),
+              createBaseVNode("p", _hoisted_42, toDisplayString(pickedDraft.value.path), 1),
+              createBaseVNode("div", _hoisted_43, [
+                createBaseVNode("button", {
+                  disabled: !pickedDraft.value.playable,
+                  onClick: playtest
+                }, "试玩这一版", 8, _hoisted_44),
+                createBaseVNode("button", {
+                  disabled: !pickedDraft.value.playable,
+                  onClick: publish
+                }, "发布", 8, _hoisted_45),
+                createBaseVNode("button", { onClick: remove2 }, "删除草稿")
+              ]),
+              _cache[24] || (_cache[24] = createBaseVNode("p", { class: "t" }, " 试玩用**未发布**的草稿开局（会打「未发布」水印）。发布 = 把它变成别人也能玩的卡。 ", -1))
+            ], 64)) : createCommentVNode("", true),
+            report.value ? (openBlock(), createElementBlock(Fragment, { key: 2 }, [
+              _cache[30] || (_cache[30] = createBaseVNode("h3", { class: "sec" }, "这次生成", -1)),
+              createBaseVNode("div", _hoisted_46, [
+                createBaseVNode("div", null, [
+                  _cache[25] || (_cache[25] = createBaseVNode("span", null, "修复轮次", -1)),
+                  createBaseVNode("b", null, toDisplayString(report.value.repairs), 1)
+                ]),
+                createBaseVNode("div", null, [
+                  _cache[26] || (_cache[26] = createBaseVNode("span", null, "语料条数", -1)),
+                  createBaseVNode("b", null, toDisplayString(report.value.corpus_written), 1)
+                ]),
+                createBaseVNode("div", null, [
+                  _cache[27] || (_cache[27] = createBaseVNode("span", null, "走过阶段", -1)),
+                  createBaseVNode("b", null, toDisplayString((report.value.stages || []).length), 1)
+                ])
+              ]),
+              createBaseVNode("p", _hoisted_47, toDisplayString(report.value.summary), 1),
+              jobSnapshot.value && jobSnapshot.value.cost ? (openBlock(), createElementBlock("p", _hoisted_48, " 成本：" + toDisplayString(jobSnapshot.value.cost), 1)) : createCommentVNode("", true),
+              repairLines.value.length ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [
+                _cache[28] || (_cache[28] = createBaseVNode("h3", { class: "sec" }, "修复轮报错原文", -1)),
+                _cache[29] || (_cache[29] = createBaseVNode("p", { class: "t" }, "这些是 check-worldpack 当时拒绝的理由（工作台会拿它去喂模型修）。", -1)),
+                (openBlock(true), createElementBlock(Fragment, null, renderList(repairLines.value, (r, i) => {
+                  return openBlock(), createElementBlock("pre", {
+                    key: i,
+                    class: "errbox"
+                  }, toDisplayString(r), 1);
+                }), 128))
+              ], 64)) : createCommentVNode("", true)
+            ], 64)) : createCommentVNode("", true)
+          ])
         ])
       ]);
     };
@@ -7038,6 +7687,10 @@ const _hoisted_3 = {
 };
 const _hoisted_4 = {
   key: 1,
+  class: "badge-draft"
+};
+const _hoisted_5 = {
+  key: 2,
   class: "t"
 };
 const _sfc_main = {
@@ -7047,6 +7700,7 @@ const _sfc_main = {
     const packs = ref([]);
     const saves = ref([]);
     const session = ref(null);
+    const view = ref("library");
     const busy = ref(false);
     const notice = ref({ message: "", isError: false });
     const modeLabel = computed(
@@ -7073,19 +7727,22 @@ const _sfc_main = {
       }
       await refreshLists();
     }
-    async function start({ packId, mode }) {
+    async function start({ packId, mode, draft = null }) {
       busy.value = true;
       try {
-        const d = await api.newGame(packId, mode);
+        const d = await api.newGame(packId, mode, draft);
         session.value = {
           sid: d.sid,
           pack_id: d.pack_id,
           name: d.name,
           mode: d.mode,
+          draft: d.draft === true,
+          // §3.2 ③：草稿试玩 → PlayView 打「未发布」水印
           openingView: d.view
         };
+        view.value = "play";
         saves.value = (await api.saves()).saves || [];
-        say("");
+        say(d.draft ? "这一局用的是**未发布**的草稿——觉得好就回工作台发布。" : "");
       } catch (e) {
         say(`开局失败：${e.message}`, true);
       } finally {
@@ -7115,7 +7772,16 @@ const _sfc_main = {
       }
     }
     function leave() {
+      var _a;
+      const wasDraft = ((_a = session.value) == null ? void 0 : _a.draft) === true;
       session.value = null;
+      view.value = wasDraft ? "studio" : "library";
+      say("");
+      refreshLists();
+    }
+    function leaveToLibrary() {
+      session.value = null;
+      view.value = "library";
       say("");
       refreshLists();
     }
@@ -7124,13 +7790,14 @@ const _sfc_main = {
       return openBlock(), createElementBlock("div", _hoisted_1, [
         createBaseVNode("header", _hoisted_2, [
           createBaseVNode("h1", null, toDisplayString(session.value ? session.value.name : "文字养成游戏"), 1),
-          session.value ? (openBlock(), createElementBlock("span", _hoisted_3, toDisplayString(modeLabel.value), 1)) : (openBlock(), createElementBlock("span", _hoisted_4, "选一张卡开始，或读取存档"))
+          session.value ? (openBlock(), createElementBlock("span", _hoisted_3, toDisplayString(modeLabel.value), 1)) : createCommentVNode("", true),
+          session.value && session.value.draft ? (openBlock(), createElementBlock("span", _hoisted_4, "未发布（草稿试玩）")) : !session.value ? (openBlock(), createElementBlock("span", _hoisted_5, toDisplayString(view.value === "studio" ? "创作工作台：从素材生成一张卡" : "选一张卡开始，或读取存档"), 1)) : createCommentVNode("", true)
         ]),
-        createVNode(_sfc_main$7, {
+        createVNode(_sfc_main$8, {
           message: notice.value.message,
           "is-error": notice.value.isError
         }, null, 8, ["message", "is-error"]),
-        session.value ? (openBlock(), createBlock(_sfc_main$1, {
+        session.value ? (openBlock(), createBlock(_sfc_main$2, {
           key: 0,
           session: session.value,
           "free-input": config.value.free_input,
@@ -7139,15 +7806,23 @@ const _sfc_main = {
           onLeave: leave,
           onSaved: refreshLists,
           onEnded: _cache[1] || (_cache[1] = () => say("这一局结束了——可以「换一张卡」再开一局。"))
-        }, null, 8, ["session", "free-input", "saves"])) : (openBlock(), createBlock(_sfc_main$6, {
+        }, null, 8, ["session", "free-input", "saves"])) : view.value === "studio" ? (openBlock(), createBlock(_sfc_main$1, {
           key: 1,
+          busy: busy.value,
+          onNotice: _cache[2] || (_cache[2] = ({ message, isError }) => say(message, isError)),
+          onPlaytest: _cache[3] || (_cache[3] = ({ draft }) => start({ packId: null, mode: config.value.default_mode || "story", draft })),
+          onBack: leaveToLibrary,
+          onPublished: refreshLists
+        }, null, 8, ["busy"])) : (openBlock(), createBlock(_sfc_main$7, {
+          key: 2,
           packs: packs.value,
           saves: saves.value,
           "default-mode": config.value.default_mode || "story",
           busy: busy.value,
           onStart: start,
           onLoad: loadSave,
-          onRefresh: refreshLists
+          onRefresh: refreshLists,
+          onStudio: _cache[4] || (_cache[4] = ($event) => view.value = "studio")
         }, null, 8, ["packs", "saves", "default-mode", "busy"]))
       ]);
     };

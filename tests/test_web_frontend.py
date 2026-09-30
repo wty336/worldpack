@@ -183,6 +183,23 @@ def _src(*parts: str) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def _function_body(src: str, name: str) -> str:
+    """取出 `.vue`/`.js` 里 `function <name>(…)` 的函数体文本（到下一个顶层函数为止）。
+
+    **为什么需要它**：`assert "某行代码" in 整个文件` 这种断言会被**文件里别处的
+    同一行**满足。本仓库已经踩过两次同一形状的假绿：
+    ① 判据写在注释里也能满足（改用 ast.unparse 剥注释）；
+    ② `say(e.message, true)` 在别的 catch 块里也有，于是把 publish 里那行改成
+       `say('发布失败', true)` 之后守卫照样绿。
+    要钉住"**这个函数**里必须这样写"时，就必须真的只看那个函数。
+    """
+    key = f"function {name}("
+    assert key in src, f"找不到函数 {name}——它被改名或删了？"
+    rest = src[src.index(key):]
+    nxt = re.search(r"\n(?:async )?function ", rest[1:])
+    return rest if nxt is None else rest[: nxt.start() + 1]
+
+
 def test_column_layout_is_three_columns():
     """三栏布局（左：本局 · 中：正文+输入 · 右：状态栏）——本轮重写的核心目标。"""
     css = _src("styles.css")
@@ -267,10 +284,14 @@ def test_api_client_endpoints_exist_in_backend_routes():
 
     做法：从 `client.js` 的 `ENDPOINTS` 里取出 `"METHOD /path"` 字符串，
     与 `web.app` 的路由表逐个核对（`{sid}` 占位符按 FastAPI 的原样比对）。
+
+    **方法白名单含 DELETE**（2026-10 补）：原先只收 GET/POST，于是
+    `DELETE /api/packs/drafts/{name}` 声明错了也无人发现——"漏检一个方法"和
+    "漏检一个端点"是同一类洞，只是更隐蔽（正则不匹配就静默跳过）。
     """
     js = _src("api", "client.js")
     # ENDPOINTS 块里的 "METHOD /api/..." 字面量
-    declared = set(re.findall(r"'((?:GET|POST) /api[^']*)'", js))
+    declared = set(re.findall(r"'((?:GET|POST|DELETE) /api[^']*)'", js))
     assert declared, "没有从 client.js 里解析出任何端点——ENDPOINTS 的形状变了？"
 
     routes: set[str] = set()
@@ -279,11 +300,179 @@ def test_api_client_endpoints_exist_in_backend_routes():
         path = getattr(r, "path", None)
         if methods and path:
             for m in methods:
-                if m in ("GET", "POST"):
+                if m in ("GET", "POST", "DELETE"):
                     routes.add(f"{m} {path}")
 
     missing = sorted(d for d in declared if d not in routes)
     assert not missing, f"前端声明了后端没有的端点：{missing}\n后端现有：{sorted(routes)}"
+
+
+def test_api_client_covers_all_workbench_endpoints():
+    """反向覆盖（创作工作台 N2a）：生成 → 进度 → 草稿 → 发布，一个都不能漏。
+
+    与上面那条的分工：那条防"声明了后端没有的"，这条防"后端有、客户端忘了接"
+    ——后者表现为界面上少一个功能，而不是报错，最难被发现。
+    """
+    js = _src("api", "client.js")
+    for needle in (
+        "POST /api/packs/generate",
+        "GET /api/packs/generate",
+        "GET /api/packs/generate/{job_id}",
+        "GET /api/packs/generate/{job_id}/events",
+        "POST /api/packs/generate/{job_id}/cancel",
+        "GET /api/packs/drafts",
+        "POST /api/packs/publish",
+        "DELETE /api/packs/drafts/{name}",
+    ):
+        assert needle in js, f"API 客户端缺少工作台端点声明：{needle}"
+    # `ENDPOINTS` 只是**声明**，上面那条核对的是声明与后端路由是否一致；
+    # 真正发出去的请求方法还得对得上——声明 DELETE、实发 POST 的话后端回 405，
+    # 而"端点存在"这条守卫照样绿。
+    #
+    # ⚠️ 这里**不能**写 `assert "method: 'DELETE'" in js`：那被 `del` 辅助函数的
+    # **定义**满足了，把 `deleteDraft` 改成调 `post` 之后守卫照样绿（本仓库第三个
+    # 同一形状的假绿："字符串在文件里出现过"）。要钉的是**调用点**，所以直接看
+    # `deleteDraft` 那一行调用了哪个辅助函数。
+    m = re.search(r"deleteDraft:\s*\(name\)\s*=>\s*(\w+)\(", js)
+    assert m, "找不到 deleteDraft 的调用行——形状变了？"
+    assert m.group(1) == "del", (
+        f"deleteDraft 调的是 {m.group(1)}()，而端点声明是 DELETE——后端会回 405"
+    )
+
+
+def test_workbench_view_contracts_in_source():
+    """工作台的三条契约（都属于"写错了不报错、只表现成怪现象"）：
+
+    ① **进度流用 fetch + ReadableStream，不用 `EventSource`**——本端点的订阅语义是
+       "回放 + 续播"，`EventSource` 的无状态自动重连会让每次重连重收一遍历史，
+       日志里出现重复行；
+    ② **重连要从空列表重建**（因为服务端总会回放完整历史）——这正是"不需要去重代码"
+       的原因；写成 append 就会重复；
+    ③ **发布被拒时显示后端原文**——`check_worldpack` 的报错就是拿去喂模型修的燃料，
+       前端把它改写成"发布失败"等于把这条链的价值丢掉一半。
+    """
+    js = _src("composables", "useJobStream.js")
+    assert "new EventSource" not in js, "进度流不用 EventSource（重连会重收历史，见文件头）"
+    assert "getReader()" in js, "必须用 fetch + ReadableStream 手动解析 SSE"
+    assert "events.value = []" in js, "重连必须从空列表重建（服务端会回放完整历史）"
+    assert "MAX_RECONNECT" in js, "重连要有上限，接不上就如实显示断开"
+
+    v = _src("views", "StudioView.vue")
+    assert "未通过 check-worldpack" in v, "闸门不过时必须明确说出来"
+    # 报错原文有两处出口，都要在：① 报告栏渲染草稿当前的校验失败原文；
+    # ② 发布被拒时把后端的 detail 原样转给提示条（不是改写成"发布失败"）。
+    assert "pickedDraft.error" in v, "报告栏要渲染草稿当前校验失败的**原文**"
+    # ⚠️ 这一条必须**限定在 publish 函数体内**：只查"文件里有没有
+    # `say(e.message, true)`"是查不出问题的——文件里别的 catch 块也有同一行，
+    # 把 publish 里的那行改成 `say('发布失败', true)` 之后守卫照样绿。
+    # （这是本仓库第二次踩"字符串在文件里出现过"这种假绿，第一次是被注释满足。）
+    assert "say(e.message, true)" in _function_body(v, "publish"), (
+        "发布被拒时必须原样呈现后端原文（喂模型修的燃料），不能改写成「发布失败」"
+    )
+    assert "试玩这一版" in v, "草稿试玩入口"
+    assert "offline: true" in v, "离线试跑默认开（真实生成要花钱，默认花钱是错的默认值）"
+    assert "¥0.1–0.3" in v, "真实生成的成本必须前置说清楚"
+
+
+def test_workbench_payloads_carry_the_fields_the_view_reads(tmp_path, monkeypatch):
+    """前端从工作台端点**读**的字段，真实后端必须真的发得出来。
+
+    **为什么单独要有这一条**（这是"桩会同意我"的洞）：
+    浏览器真机冒烟（`scripts/webui_smoke.mjs`）用的是**桩后端**——不花钱、可重复，
+    代价是它由我手写，于是**它会同意我关于后端形状的任何假设**。我把
+    `/api/packs/generate` 的响应键记成 `jobId`、把报告字段记成 `repair_rounds`，
+    桩就会照着我错的样子实现，冒烟照样 36/36，而真机上是一片空白。
+    反向的那一半也有人管（`scripts/worldgen_smoke.py` 打真后端），但它验的是
+    **后端自己**对不对，不看前端读了什么。这一条把两侧接上：用**真** app 跑一次
+    离线生成，然后逐个断言前端依赖的键确实在。
+
+    字段清单来自 `StudioView.vue` / `useJobStream.js` 的读取点，改名时这里必须一起改
+    ——这正是我们要的（比"运行时发现是 undefined"早得多）。
+    """
+    import shutil
+
+    from tests.test_jobs import _wait
+
+    root = tmp_path / "world-packs"
+    root.mkdir(parents=True)
+    monkeypatch.setattr(web, "_pack_root", lambda: root)
+
+    client = TestClient(web.app)
+
+    # ---- 1. 起任务：前端读 d.job_id ----
+    r = client.post("/api/packs/generate", json={
+        "name": "contract_probe", "source_text": "# 素材\n\n某人在城里醒来。\n", "offline": True,
+    })
+    assert r.status_code == 202
+    body = r.json()
+    for key in ("ok", "job_id", "pack_name", "status"):
+        assert key in body, f"前端读 /api/packs/generate 的 {key!r}，后端没发"
+    job_id = body["job_id"]
+    assert _wait(web.JOBS.get(job_id)).status == "done"
+
+    # ---- 2. 终态快照：报告栏读这些 ----
+    snap = client.get(f"/api/packs/generate/{job_id}").json()
+    for key in ("job_id", "pack_name", "status", "error", "cost", "elapsed", "result"):
+        assert key in snap, f"前端读任务快照的 {key!r}，后端没发"
+    for key in ("repairs", "corpus_written", "stages", "summary"):
+        assert key in (snap["result"] or {}), f"报告栏读 result.{key}，后端没发"
+
+    # ---- 3. 进度事件：时间线读 stage / message ----
+    text = client.get(f"/api/packs/generate/{job_id}/events").text
+    progress = [
+        json.loads(b.split("data: ", 1)[1])
+        for b in text.split("\n\n")
+        if b.startswith("event: progress")
+    ]
+    assert progress, "事件流里没有任何 progress 帧——进度面板会是空的"
+    for ev in progress:
+        assert "stage" in ev and "message" in ev, f"进度事件缺 stage/message：{ev}"
+    assert any(ev["stage"] == "done" for ev in progress), "没有终态事件，前端会一直等"
+
+    # ---- 4. 草稿项：列表与报告栏读这些 ----
+    draft = next(d for d in client.get("/api/packs/drafts").json()["drafts"]
+                 if d["id"] == "contract_probe")
+    for key in ("id", "name", "npcs", "nodes", "endings", "lore", "locations",
+                "digest", "path", "draft", "playable", "error"):
+        assert key in draft, f"前端读草稿项的 {key!r}，后端没发"
+    assert draft["draft"] is True and draft["playable"] is True
+
+    # ---- 5. 草稿试玩：App.vue 读 d.draft 决定要不要打「未发布」水印 ----
+    # 只换掉"花钱的那部分"（LLM），选包与建局都跑**真实**代码——否则测的就是假件了。
+    from game_agent.game import Game
+    from game_agent.worldpack import load_worldpack as _load
+
+    def fake_make_game(sid, pack_id=None, *, draft=None, mainline_enabled=True):
+        path, _ = web._resolve_pack(pack_id, draft)  # 真实选包（含草稿查表）
+        pack = _load(path)
+        llm = LLMClient(
+            FakeClient([resp(msg(tool_calls=[_submit("开场。", ["甲", "乙", "丙"])]))]),
+            "fake", build_tools(pack.schedule),
+        )
+        return (
+            Game(pack, GameState.from_pack(pack), llm, mainline_enabled=mainline_enabled),
+            web.UsageTracker(str(tmp_path / "u.jsonl"), session=sid),
+        )
+
+    monkeypatch.setattr(web, "_make_game", fake_make_game)
+    d = client.post("/api/new", json={"draft": "contract_probe"}).json()
+    assert d.get("draft") is True, "草稿试玩没有 draft 标记 → 前端不会打「未发布」水印"
+    assert d["pack_id"] == "contract_probe"
+    for key in ("sid", "pack_id", "mode", "view"):
+        assert key in d, f"前端开局读 {key!r}，后端没发"
+
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def test_library_exposes_studio_entry_and_hides_drafts():
+    """选卡屏要有工作台入口，且**草稿不许混进"选一张卡"**（玩家会点到半成品）。"""
+    lib = _src("views", "LibraryView.vue")
+    assert "emit('studio')" in lib and "创作工作台" in lib
+    assert "drafts" not in lib, "草稿的试玩入口在工作台里，不在这屏"
+
+    app = _src("App.vue")
+    assert "StudioView" in app and "'studio'" in app
+    assert "session.draft" in app, "草稿试玩要在顶栏打「未发布」水印"
 
 
 def test_api_client_covers_all_play_endpoints():

@@ -1,7 +1,10 @@
-/** 选卡屏（E-3/E-4）：选一张卡 + 选模式 + 读档。
+/** 选卡屏（E-3/E-4）：选一张卡 + 选模式 + 读档，以及进入创作工作台（N2a）。
  *
  *  坏包**也列出来**（后端 `/api/catalog` 会返回 `playable=false` + `error`）——
  *  让玩家看见"这张卡坏了"，而不是整块界面白屏或静默少一张卡。
+ *
+ *  **草稿刻意不出现在这里**：它们是未发布的半成品。要试玩草稿，走创作工作台
+ *  （那里有"试玩这一版"），而不是把它们混进"选一张卡"——玩家会点到没做完的卡。
  */
 <script setup>
 import { computed, ref } from 'vue'
@@ -12,7 +15,7 @@ const props = defineProps({
   defaultMode: { type: String, default: 'story' },
   busy: { type: Boolean, default: false },
 })
-const emit = defineEmits(['start', 'load', 'refresh'])
+const emit = defineEmits(['start', 'load', 'refresh', 'studio'])
 
 const picked = ref(null)
 const mode = ref(props.defaultMode)
@@ -53,6 +56,7 @@ function load() {
     <p class="t">
       共 {{ packs.length }} 张卡（可玩 {{ playable.length }}）。
       <button class="t" :disabled="busy" @click="emit('refresh')">重新读取</button>
+      <button :disabled="busy" @click="emit('studio')">创作工作台：从素材做一张新卡 →</button>
     </p>
 
     <div class="pack-list grid">

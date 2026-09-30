@@ -39,6 +39,8 @@ const post = (url, body) =>
     body: JSON.stringify(body ?? {}),
   })
 
+const del = (url) => fetch(url, { method: 'DELETE' })
+
 /** 端点清单（与 web.py 的路由一一对应；守卫会核对）。 */
 export const ENDPOINTS = Object.freeze({
   config: 'GET /api/config',
@@ -53,6 +55,15 @@ export const ENDPOINTS = Object.freeze({
   turn: 'POST /api/{sid}/turn',
   save: 'POST /api/{sid}/save',
   load: 'POST /api/{sid}/load',
+  // 创作工作台（N2a）：生成 → 进度 → 草稿 → 发布
+  generate: 'POST /api/packs/generate',
+  jobs: 'GET /api/packs/generate',
+  job: 'GET /api/packs/generate/{job_id}',
+  jobEvents: 'GET /api/packs/generate/{job_id}/events',
+  cancelJob: 'POST /api/packs/generate/{job_id}/cancel',
+  drafts: 'GET /api/packs/drafts',
+  publish: 'POST /api/packs/publish',
+  deleteDraft: 'DELETE /api/packs/drafts/{name}',
 })
 
 export const api = {
@@ -63,9 +74,13 @@ export const api = {
   saves: () => fetch('/api/saves').then((r) => jsonOrThrow(r, '读取存档列表')),
   sessions: () => fetch('/api/sessions').then((r) => jsonOrThrow(r, '读取会话列表')),
 
-  /** 开局：pack_id 选卡，mode 选"跟主线走 / 自由探索"。 */
-  newGame: (packId, mode) =>
-    post('/api/new', { pack_id: packId, mode }).then((r) => jsonOrThrow(r, '开局')),
+  /** 开局：pack_id 选卡，mode 选"跟主线走 / 自由探索"，draft 试玩未发布的草稿。
+   *
+   *  `draft` 与 `pack_id` 互斥（后端优先 draft）。草稿试玩**必须**走这个入参而不是
+   *  `pack_id`：`/api/catalog` 里根本没有草稿，硬塞进 pack_id 会被后端以"未知的世界包"拒绝。
+   */
+  newGame: (packId, mode, draft = null) =>
+    post('/api/new', { pack_id: packId, mode, draft }).then((r) => jsonOrThrow(r, '开局')),
 
   meta: (sid) => fetch(`/api/${sid}/meta`).then((r) => jsonOrThrow(r, '读取会话信息')),
   status: (sid) => fetch(`/api/${sid}/status`).then((r) => jsonOrThrow(r, '读取状态')),
@@ -74,6 +89,24 @@ export const api = {
 
   save: (sid, path) => post(`/api/${sid}/save`, { path }).then((r) => jsonOrThrow(r, '存档')),
   load: (sid, path) => post(`/api/${sid}/load`, { path }).then((r) => jsonOrThrow(r, '读档')),
+
+  // ---- 创作工作台（N2a）----
+
+  /** 起一个后台生成任务（立刻返回 job_id；进度看 SSE）。会**真的花钱**，除非 offline。 */
+  generate: (body) => post('/api/packs/generate', body).then((r) => jsonOrThrow(r, '起生成任务')),
+  /** 任务列表（新的在前）——刷新页面后靠它找回正在跑的任务。 */
+  jobs: () => fetch('/api/packs/generate').then((r) => jsonOrThrow(r, '读取任务列表')),
+  /** 任务终态快照：`result`（stages/repairs/summary…）与 `cost` 只有它带得全。 */
+  job: (jobId) => fetch(`/api/packs/generate/${jobId}`).then((r) => jsonOrThrow(r, '读取任务')),
+  cancelJob: (jobId) =>
+    post(`/api/packs/generate/${jobId}/cancel`).then((r) => jsonOrThrow(r, '取消任务')),
+
+  /** 草稿列表（含未通过校验的，带 `error` 原文）。**已发布的卡不在这里**。 */
+  drafts: () => fetch('/api/packs/drafts').then((r) => jsonOrThrow(r, '读取草稿列表')),
+  /** 发布到已发布区。**闸门 = check_worldpack**，不过则 400 且 detail 是报错原文。 */
+  publish: (name) => post('/api/packs/publish', { name }).then((r) => jsonOrThrow(r, '发布')),
+  deleteDraft: (name) =>
+    del(`/api/packs/drafts/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, '删除草稿')),
 
   /** 回合请求体（kind 决定后端分发哪个 Game 方法）。 */
   turnBody: {
