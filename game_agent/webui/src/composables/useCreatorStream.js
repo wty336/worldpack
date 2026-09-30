@@ -30,6 +30,7 @@ export function useCreatorStream() {
   const reply = shallowRef('')
   const summary = shallowRef('') // 工作版摘要（Agent 看到的这张卡是什么样）
   const result = shallowRef(null) // done 的载荷（校验结论 / changed / diff）
+  const startedJob = shallowRef(null) // Agent 从素材起的新任务（{job_id, pack_name}）
 
   /** 发一句话。返回 `done` 的载荷；失败返回 null（错误写进 `error`/`steps`）。 */
   async function send(name, text) {
@@ -38,6 +39,7 @@ export function useCreatorStream() {
     reply.value = ''
     result.value = null
     steps.value = []
+    startedJob.value = null
     messages.value.push({ role: 'user', content: text })
     try {
       const res = await fetch(`/api/creator/${encodeURIComponent(name)}/chat`, {
@@ -77,6 +79,16 @@ export function useCreatorStream() {
             } else if (event === 'text') {
               reply.value = payload.text // 中间态；done.reply 覆盖它
               steps.value.push({ type: 'text', text: payload.text })
+            } else if (event === 'job') {
+              // Agent 从素材起了一个**新**任务（start_generation 工具）。
+              // 不在这里等它——把任务交给调用方，由它切到进度页签去订阅那条流。
+              startedJob.value = payload
+              steps.value.push({
+                type: 'tool',
+                name: 'start_generation',
+                status: 'ok',
+                result: `已起任务 ${payload.job_id}（${payload.pack_name}）`,
+              })
             } else if (event === 'done') {
               done = payload
               reply.value = payload.reply || reply.value
@@ -125,5 +137,5 @@ export function useCreatorStream() {
         : null
   }
 
-  return { running, messages, steps, error, reply, summary, result, send, hydrate }
+  return { running, messages, steps, error, reply, summary, result, startedJob, send, hydrate }
 }

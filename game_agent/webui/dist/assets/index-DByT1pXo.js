@@ -7127,12 +7127,14 @@ function useCreatorStream() {
   const reply = shallowRef("");
   const summary = shallowRef("");
   const result = shallowRef(null);
+  const startedJob = shallowRef(null);
   async function send(name, text) {
     running.value = true;
     error.value = "";
     reply.value = "";
     result.value = null;
     steps.value = [];
+    startedJob.value = null;
     messages.value.push({ role: "user", content: text });
     try {
       const res = await fetch(`/api/creator/${encodeURIComponent(name)}/chat`, {
@@ -7168,6 +7170,14 @@ function useCreatorStream() {
             } else if (event === "text") {
               reply.value = payload.text;
               steps.value.push({ type: "text", text: payload.text });
+            } else if (event === "job") {
+              startedJob.value = payload;
+              steps.value.push({
+                type: "tool",
+                name: "start_generation",
+                status: "ok",
+                result: `已起任务 ${payload.job_id}（${payload.pack_name}）`
+              });
             } else if (event === "done") {
               done = payload;
               reply.value = payload.reply || reply.value;
@@ -7206,7 +7216,7 @@ function useCreatorStream() {
       reply: ""
     } : null;
   }
-  return { running, messages, steps, error, reply, summary, result, send, hydrate };
+  return { running, messages, steps, error, reply, summary, result, startedJob, send, hydrate };
 }
 const TERMINAL_STAGES = ["done", "error", "cancelled"];
 const MAX_RECONNECT = 3;
@@ -7540,6 +7550,13 @@ const _sfc_main$1 = {
       const done = await creator.send(name, text);
       await refresh();
       await scrollChat();
+      const job = creator.startedJob.value;
+      if (job && job.job_id) {
+        tab.value = "generate";
+        await resume(job.job_id);
+        say(`Agent 已从素材起了一张新卡（${job.pack_name}）——进度在上面，跑完会出现在左栏草稿里。`);
+        return;
+      }
       if (done) {
         if (!done.validate_ok) {
           say("Agent 改完之后 check-worldpack 没过——右栏有报错原文，可以接着让它修。", true);

@@ -404,10 +404,28 @@ class Game:
         self.last_choices = last.choices
         if narration and not meltdown_seen:  # A5：熔断兜底文案不进反重复窗口/last_narration
             self._check_repetition(narration)
+        # **出口统一以引擎状态为准推导"有没有待决抉择"**（2026-10 修）。
+        #
+        # 此前这里只搬 narration/choices/ending，`choice_prompt` 被丢掉。而
+        # `state.pending_choice` 可能在**本轮之内**被设置——`end_turn` 完成当前节点后
+        # 会去找下一个满足 `when` 的节点，新节点带 `critical_choices` 时就把锁挂上了。
+        # 于是视图说"没有选项"，引擎说"只能选固定选项"：
+        # `say` / `act` / `end_day` 全抛 GameError，而**唯一的出路 `pick(i)` 在界面上
+        # 没有按钮可点**——玩家彻底卡死，只能读档。
+        #
+        # 真机撞到两次：一次是生成卡的 `pick()` 熔断（回滚把 `pending_choice` 还原），
+        # 一次是生成卡**同一个节点被反复重入**（`when: {all: []}` 恒真 → 完成后立刻
+        # 又满足进入条件 → 又挂上一个待决抉择）。
+        #
+        # 修在这儿而不是逐个出口去补：`_narrate` 是**所有**回合的唯一汇聚点，
+        # 而"视图与引擎状态不许自相矛盾"是这条链上唯一的真判据。判据与
+        # `storyline.pending_choice` 同源（不另存一份）。
+        choice = self.story.pending_choice(self.state)
         return TurnView(
             narration=narration or None,
-            choices=last.choices,
+            choices=[o.text for o in choice.options] if choice is not None else last.choices,
             ending=last.ending,
+            choice_prompt=choice,
             **self._turn_fields(),
         )
 
@@ -624,9 +642,25 @@ class Game:
                 "content": "[引擎熔断] 本轮生成多次未达协议，已放弃本轮。",
             }
         )
+        # **关键抉择期熔断：视图必须把选项带回去**（2026-10 修）。
+        #
+        # `pick()` 的事务快照取在 `choose_option` 之前，所以熔断回滚会把
+        # `state.pending_choice` **还原**（设计如此：熔断不该吃掉一个分叉）。此时
+        # 引擎仍然锁着输入（say/act/end_day 全抛 GameError），而这里原先造的视图
+        # **不带 `choice_prompt`** ——于是玩家看到的是"没有固定选项可点 + 说什么都被拒"
+        # 的**卡死态**：唯一的出路 `pick(i)` 在界面上根本不存在。
+        #
+        # 真机跑生成卡时撞到的就是这个（`worldpack_smoke` 的 pick 熔断 → 下一轮
+        # act 抛 GameError）。判据与 `storyline.pending_choice` 同源，不另存一份。
+        choice = self.story.pending_choice(self.state)
         return TurnView(
-            narration="（本轮生成失败，已跳过——请换个说法或行动再试，或读档重来。）",
+            narration=(
+                "（本轮生成失败，已跳过——请**重新选择**。）"
+                if choice is not None
+                else "（本轮生成失败，已跳过——请换个说法或行动再试，或读档重来。）"
+            ),
             choices=self.last_choices or [FREE_INPUT_OPTION],
+            choice_prompt=choice,
             **self._turn_fields(),
         )
 

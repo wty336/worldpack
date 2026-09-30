@@ -152,6 +152,15 @@ async function chat() {
   const done = await creator.send(name, text)
   await refresh()
   await scrollChat()
+  // Agent 从素材起了一张新卡（start_generation）→ **自动切到进度页签并订阅那条流**。
+  // 这一步是"对话式做卡"体验的关键：否则作者只知道"任务起了"，却不知道去哪看。
+  const job = creator.startedJob.value
+  if (job && job.job_id) {
+    tab.value = 'generate'
+    await resume(job.job_id)
+    say(`Agent 已从素材起了一张新卡（${job.pack_name}）——进度在上面，跑完会出现在左栏草稿里。`)
+    return
+  }
   if (done) {
     if (!done.validate_ok) {
       say('Agent 改完之后 check-worldpack 没过——右栏有报错原文，可以接着让它修。', true)

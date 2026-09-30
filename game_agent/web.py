@@ -353,6 +353,46 @@ def _creator_session(name: str) -> creator.CreatorSession:
     return s
 
 
+def _make_generation_starter(name: str, events: "queue.Queue"):
+    """造一个"从素材起一张新卡"的注入器，交给创作者 Agent 当工具用（N6 补）。
+
+    **它是"转交"不是"代跑"**：生成是分钟级后台任务，塞进一次工具调用里同步等会把
+    一轮对话挂死几分钟、且用户看不到任何进度。所以这里只做四件事：
+    校验参数 → 丢进已有的任务表 → 给前端发一个 `job` 事件（它会自动切到进度页签）→
+    告诉模型**别等**。进度、取消、结果全部复用 N1 那一套。
+
+    `draft_name` 参数（当前正在改的那张草稿）只用于生成失败时的提示文案——
+    新卡与当前草稿是两张不同的卡，不该混。
+    """
+    del name  # 新卡名由模型给，与当前草稿无关；留着参数是为了可读的调用点
+
+    def start(new_name: str, source_text: str, offline: bool) -> str:
+        if (bad := catalog.can_create(new_name, _pack_root())) is not None:
+            raise creator.CreatorError(bad)
+        job = JOBS.create(
+            pack_name=new_name,
+            pack_dir=catalog.draft_dir(new_name, _pack_root()),
+            source_text=source_text,
+            offline=offline,
+            with_corpus=False,
+            rounds=4,
+        )
+        JOBS.run_in_background(job, source_text, jobs.default_runner)
+        # 结构化事件（而不是让前端去解析工具返回的字符串）：前端据此**自动切到
+        # 「从素材生成」页签并开始订阅这条进度流**，作者不用自己找。
+        events.put({
+            "type": "job", "job_id": job.id, "pack_name": new_name, "offline": offline,
+        })
+        return (
+            f"已起任务 {job.id}（{'离线试跑，不花钱' if offline else '真机生成，约 ¥0.1–0.3'}，"
+            f"需要几分钟）。**不要等它、也不要反复查**——"
+            f"工作台已自动切到「从素材生成」页签显示进度；跑完新包会出现在左栏草稿里，"
+            f"用户可以在那里试玩或发布。你现在可以直接把这件事告诉用户。"
+        )
+
+    return start
+
+
 @app.post("/api/packs/fork")
 def api_fork(req: ForkRequest) -> dict:
     """把已发布包复制成草稿——**没有这条路径，创作 Agent 就只能改刚生成的空包**。
@@ -443,7 +483,8 @@ def _creator_stream(name: str, text: str):
                     pack=name,
                 )
                 llm = creator.build_creator_llm(settings, tracker)
-                turn = s.send(text, llm, on_event=events.put)
+                turn = s.send(text, llm, on_event=events.put,
+                              start_generation=_make_generation_starter(name, events))
                 holder["turn"] = turn
             except Exception as e:  # noqa: BLE001 — 未预期异常转 error 事件，不静默断开
                 events.put({"type": "error", "message": f"内部错误: {type(e).__name__}: {e}"})

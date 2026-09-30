@@ -191,6 +191,80 @@ def test_meltdown_rolls_back_action_points():
     assert state.action_points_left == 3, "熔断回合不得扣除行动点"
 
 
+def test_meltdown_during_critical_choice_must_still_show_the_choice():
+    """**关键抉择期熔断：视图必须把选项带回去**，否则玩家卡死。
+
+    这条是 2026-10 真机跑生成卡时撞出来的：`pick()` 的叙事熔断 → 事务回滚把
+    `pending_choice` **还原**（对：熔断不该吃掉一个分叉），但熔断兜底造的视图
+    **不带 `choice_prompt`**。于是三件事同时成立，玩家无路可走：
+
+    - 引擎锁着输入：`say` / `act` / `end_day` 全抛 `GameError`；
+    - 视图说没有固定选项（`choice_prompt is None`），只给一个「自己说些什么…」；
+    - 唯一的出路 `pick(i)` 在界面上**没有按钮可点**。
+
+    判据是"视图与引擎状态不许自相矛盾"：引擎说还得选，视图就得给出选项。
+    """
+    pack, state, game = _game([resp(msg(content="（不调收尾工具）"))] * 3)
+    game.state.current_node = "n1_first_meeting"
+    game.state.pending_choice = "how_to_help"
+
+    view = game.pick(0)
+
+    # 回滚把抉择还原了 → 引擎仍然锁着
+    assert state.pending_choice == "how_to_help", "熔断不该吃掉这个分叉（回滚语义）"
+    assert game.story.choice_locked(state) is True
+    # **而视图必须承认这件事**
+    assert view.choice_prompt is not None, (
+        "熔断兜底丢了 choice_prompt → 玩家看不到选项、又说什么都被拒 = 卡死"
+    )
+    assert view.choice_prompt.id == "how_to_help"
+    assert "重新选择" in view.narration, "兜底文案要告诉玩家该做什么"
+
+    # 反向守卫：非抉择期的熔断**不该**凭空造出一个 choice_prompt
+    _, state2, game2 = _game([resp(msg(content="（不调收尾工具）"))] * 3)
+    state2.pending_choice = None
+    view2 = game2._llm_round()
+    assert view2.choice_prompt is None, "没有待决抉择时不许伪造选项视图"
+    assert "重新选择" not in view2.narration
+
+
+def test_turn_ending_with_a_new_choice_must_say_so():
+    """**回合进行中新挂上的关键抉择，视图必须当场说**（比熔断那条更一般）。
+
+    真机在生成卡上撞到的第二个形态：`end_turn` 完成当前节点后会去找下一个满足
+    `when` 的节点；生成器写出的节点 `when: {all: []}` **恒真**，于是同一个节点
+    完成后立刻又满足进入条件、又挂上一个 `pending_choice`。而返回值只搬了
+    `narration/choices/ending` → 视图说"没有选项"、引擎说"只能选固定选项"
+    → `say`/`act`/`end_day` 全拒，`pick(i)` 又没有按钮可点 = **卡死**。
+
+    判据是"视图与引擎状态不许自相矛盾"：引擎锁着，视图就得给出选项与选项文本。
+    """
+    pack = load_worldpack(PACK_PATH)
+    state = GameState.from_pack(pack)
+    state.current_node = CRITICAL_NODE
+    state.pending_choice = "how_to_help"
+    # 找一个"恒真 when"的节点来复现重入：ancient_jianghu 的 n1 首节点即为空 when
+    node = next(n for n in pack.mainline.nodes if n.id == CRITICAL_NODE)
+    if not node.critical_choices:
+        pytest.skip("该节点没有关键抉择，复现不了这个形态")
+
+    llm = LLMClient(
+        FakeClient([resp(msg(tool_calls=[_submit("s1", "叙事一。")]))] * 4),
+        "fake", build_tools(pack.schedule),
+    )
+    game = Game(pack, state, llm, critique_on_critical=False)
+    view = game.pick(0)
+
+    assert view.narration, "选完之后要有叙事"
+    if game.story.pending_choice(state) is not None:
+        assert view.choice_prompt is not None, (
+            "引擎又挂上了待决抉择，而视图没说 → 玩家卡死"
+        )
+        assert view.choices == [o.text for o in view.choice_prompt.options], (
+            "选项文本要与待决抉择一致（不能给上一轮的过期选项）"
+        )
+
+
 def test_meltdown_does_not_rollback_turn_count():
     """反向守卫：回合计数取在快照之前，不应被回滚（否则长局计数倒退）。"""
     pack, state, game = _game([

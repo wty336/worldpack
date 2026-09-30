@@ -365,12 +365,20 @@ def _brief(value: Any, limit: int = 120) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_registry(wc: WorkingCopy) -> ToolRegistry:
+def build_registry(
+    wc: WorkingCopy,
+    start_generation: Callable[[str, str, bool], str] | None = None,
+) -> ToolRegistry:
     """工作版 → 工具注册表。
 
     只读工具没有 `rejects`（它们不该拒绝，除了未知 id）；写工具声明 `CreatorError`，
     于是 `dispatch` 会把拒绝变成 `[引擎拒绝] …` 的结构化文本回给模型——
     模型据此修正，而不是让异常打断整轮。
+
+    `start_generation(name, source_text, offline) -> str`（N6 补）由 **HTTP 层注入**：
+    起一个生成任务需要任务表与包根目录，那两样归 `web.py` 管。`creator.py` 不 import
+    `web`（会成环），也不自己造任务表——**依赖注入在这里不是洁癖**：没有注入时
+    （单测、或将来把生成管线关掉）这个工具会以"未接入"拒绝，而不是让模型以为能做。
     """
     reg = ToolRegistry()
 
@@ -469,6 +477,70 @@ def build_registry(wc: WorkingCopy) -> ToolRegistry:
         "type": "object", "properties": {},
     }, lambda a: wc.diff() or "（还没有任何改动）")
 
+    # ---- 从素材起一张新卡（对话式做卡的入口）----
+    #
+    # **为什么是"转交"而不是在这里跑**：生成是**分钟级后台任务**（8 块提取 × 修复轮），
+    # 不能塞进一次工具调用里同步等——那会把一轮对话挂死几分钟，而用户看不到任何进度。
+    # 所以这个工具只做三件事：校验参数 → 把任务丢进已有的任务表 → 告诉模型**别等**。
+    # 进度、取消、结果全部复用 N1 那套（工作台会收到一个 `job` 事件并自动切到进度页签）。
+    if start_generation is None:
+        reg.register(ToolSpec(
+            name="start_generation",
+            description="从素材（小说/剧本/大纲正文）起一个新世界包。生成是后台任务，需要几分钟。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "新包名（目录名：中文/字母/数字/_/-）"},
+                    "source_text": {"type": "string", "description": "素材正文（不是文件路径）"},
+                },
+                "required": ["name", "source_text"],
+            },
+            handler=None,
+            disabled_msg=(
+                "[协议错误] 这个部署没有接入生成管线——请让用户在工作台的"
+                "「从素材生成一张卡」页签里粘贴素材。**不要**假装你能生成。"
+            ),
+        ))
+    else:
+        def _start(a: dict) -> str:
+            name = str(a.get("name", "")).strip()
+            text = str(a.get("source_text", ""))
+            offline = bool(a.get("offline", False))
+            if not name:
+                raise CreatorError("包名不能为空")
+            if not text.strip():
+                raise CreatorError("素材为空：把小说/剧本/大纲的正文给全")
+            return start_generation(name, text, offline)
+
+        add(
+            "start_generation",
+            "从素材（小说/剧本/大纲的正文）起一个**新**世界包。"
+            "生成是**分钟级后台任务**：调用后**立刻返回**一个任务号，"
+            "用户会在「从素材生成」页签看到进度。"
+            "**调用后不要等、也不要反复查**——告诉用户去那个页签看进度即可。"
+            "真实生成会花钱（约 ¥0.1–0.3），只在用户明确要求做新卡时调用；"
+            "素材是**文本**，不接受文件路径。",
+            {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "新包名（只能是目录名：中文/字母/数字/下划线/连字符）",
+                    },
+                    "source_text": {
+                        "type": "string",
+                        "description": "素材正文（整段粘贴进来，超长会自动截断到 30 万字）",
+                    },
+                    "offline": {
+                        "type": "boolean",
+                        "description": "true = 离线试跑（内嵌假模型，不花钱）；默认 false",
+                    },
+                },
+                "required": ["name", "source_text"],
+            },
+            _start,
+        )
+
     return reg
 
 
@@ -557,7 +629,8 @@ class CreatorSession:
         return [m for m in self.messages if m.get("role") in ("user", "assistant")
                 and m.get("content")]
 
-    def send(self, text: str, llm, *, on_event: Callable[[dict], None] | None = None) -> CreatorTurn:
+    def send(self, text: str, llm, *, on_event: Callable[[dict], None] | None = None,
+             start_generation: Callable[[str, str, bool], str] | None = None) -> CreatorTurn:
         """跑一轮：模型 ↔ 工具循环。`on_event` 用来把过程推给前端（SSE）。"""
         emit = on_event or (lambda ev: None)
         self.messages.append({"role": "user", "content": text})
@@ -566,7 +639,7 @@ class CreatorSession:
             "role": "system",
             "content": f"【当前工作版】{self.wc.summary()}",
         })
-        registry = build_registry(self.wc)
+        registry = build_registry(self.wc, start_generation=start_generation)
         tools = registry.schemas()
         turn = CreatorTurn(reply="")
 

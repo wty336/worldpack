@@ -709,3 +709,113 @@ def test_forked_draft_can_be_edited_by_the_agent(web_client, monkeypatch):
     assert done["changed"] == ["world.yaml"]
     lore = _yaml(root / "_drafts" / "published" / "world.yaml")["lore"]
     assert any(x["id"] == "probe_lore" for x in lore)
+
+
+# ---------------------------------------------------------------------------
+# 9. 对话式做卡：start_generation 工具（2026-10 补）
+# ---------------------------------------------------------------------------
+
+
+def test_start_generation_tool_is_disabled_when_not_wired(work):
+    """**没接入生成管线时必须明说"不能做"，而不是让模型以为它能做。**
+
+    这条挡的是最坏的一种失败：模型凭空答应"好的我这就做一张卡"，然后什么也没发生
+    ——用户等一个永远不来的结果。`handler=None` + `disabled_msg` 是注册表的既有机制
+    （`remember` / `query_world` 同款），所以拒绝是结构化的、模型看得到原因。
+    """
+    wc = WorkingCopy(root=work)
+    reg = build_registry(wc)  # 不注入 start_generation
+    res = reg.dispatch("start_generation", {"name": "x", "source_text": "素材"})
+    assert res.status == "protocol_error"
+    assert "没有接入生成管线" in res.message
+    assert "不要" in res.message and "假装" in res.message, "要明确禁止假装能做"
+
+
+def test_start_generation_tool_delegates_instead_of_running(work):
+    """**接入后是"转交"不是"代跑"**：工具立刻返回，返回值里必须写明别等。
+
+    为什么这条重要：生成是分钟级任务。若这个工具体内同步跑，一轮对话会被挂死几分钟，
+    而且用户看不到任何进度——那就退化成了"点一次按钮然后发呆"。
+    """
+    wc = WorkingCopy(root=work)
+    calls: list[tuple] = []
+
+    def fake_start(name, text, offline):
+        calls.append((name, text, offline))
+        return f"已起任务 job_x（{name}）"
+
+    reg = build_registry(wc, start_generation=fake_start)
+    out = reg.dispatch("start_generation",
+                       {"name": "new_card", "source_text": "一段素材", "offline": True})
+    assert out.status == "ok", out.message
+    assert calls == [("new_card", "一段素材", True)]
+
+    # 参数校验必须在工具层（别把空素材丢给生成管线白烧一次）
+    assert reg.dispatch("start_generation", {"name": "", "source_text": "x"}).status == "rejected"
+    assert reg.dispatch("start_generation",
+                        {"name": "x", "source_text": "   "}).status == "rejected"
+
+
+def test_start_generation_is_offered_to_the_model_when_wired(work):
+    """接入后工具**出现在 schema 里**（否则模型根本不知道有这条路）。"""
+    wc = WorkingCopy(root=work)
+    names = [t["function"]["name"] for t in
+             build_registry(wc, start_generation=lambda a, b, c: "ok").schemas()]
+    assert "start_generation" in names
+    # 未接入时**也注册**（带 disabled_msg）——这样模型会被告知"不能"，而不是猜
+    names2 = [t["function"]["name"] for t in build_registry(wc).schemas()]
+    assert "start_generation" in names2
+
+
+def test_chat_can_start_a_generation_and_emits_a_job_event(web_client, monkeypatch):
+    """端到端：对话里让 Agent 从素材做新卡 → 起任务 → 推 `job` 事件给前端。
+
+    前端靠这个事件**自动切到进度页签**，所以它必须在流里出现——
+    只回一句"任务起了"而不推事件，作者就得自己去找进度在哪。
+    """
+    client, root = web_client
+    _script(
+        monkeypatch,
+        resp(msg(tool_calls=[tool_call("c1", "start_generation",
+                                       {"name": "brand_new", "source_text": "# 大纲\n\n某人醒来。",
+                                        "offline": True})])),
+        resp(msg(content="已经起了一张新卡的任务，进度在「从素材生成」页签。")),
+    )
+    r = client.post("/api/creator/draft_one/chat",
+                    json={"message": "把这段大纲做成一张卡：# 大纲 某人醒来。"})
+    frames = _sse_frames(r.text)
+    kinds = [k for k, _ in frames]
+    assert "job" in kinds, f"没有 job 事件，前端不会切到进度页签：{kinds}"
+
+    job = [p for k, p in frames if k == "job"][0]
+    assert job["pack_name"] == "brand_new"
+    assert job["job_id"], "要带任务号（前端靠它订阅进度）"
+    # 任务真的在任务表里，而且写的是**草稿区**
+    from tests.test_jobs import _wait
+
+    import game_agent.web as web
+
+    j = web.JOBS.get(job["job_id"])
+    assert j is not None, "只推了事件、没真起任务"
+    assert str(j.pack_dir).endswith(str(Path("_drafts") / "brand_new"))
+    # ⚠️ 这条断言是**钱**的守卫：工具默认 `offline=false`（对话式做卡的意图是"真做一张"），
+    # 所以测试**必须**显式传 offline=True。第一版忘了传，结果测试跑了 60 秒真机生成、
+    # 往 saves/usage-import.jsonl 追了 62 条真实调用记录（已回退）。
+    assert j.offline is True, "测试里不许触发真机生成（那是要花钱的）"
+    assert _wait(j).status in ("done", "failed")  # 别留悬挂任务
+
+
+def test_chat_refuses_to_start_generation_shadowing_published(web_client, monkeypatch):
+    """对话式做卡**同样**不许遮蔽已发布的包（与 HTTP 端点同一条护栏）。"""
+    client, _ = web_client
+    _script(
+        monkeypatch,
+        resp(msg(tool_calls=[tool_call("c1", "start_generation",
+                                       {"name": "published", "source_text": "素材"})])),
+        resp(msg(content="这个名字已经有已发布的包了，换个名字。")),
+    )
+    r = client.post("/api/creator/draft_one/chat", json={"message": "就叫 published"})
+    tools = [p for k, p in _sse_frames(r.text) if k == "tool"]
+    assert tools and tools[0]["name"] == "start_generation"
+    assert tools[0]["status"] == "rejected", tools[0]
+    assert "已发布" in tools[0]["result"]
