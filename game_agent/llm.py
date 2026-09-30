@@ -254,7 +254,7 @@ class LLMClient:
             tools,
             models={
                 purpose: settings.model_for(purpose)
-                for purpose in ("judge", "compress", "extract", "reflect", "dedup")
+                for purpose in ("judge", "compress", "extract", "reflect", "dedup", "creator")
             },
             tracker=tracker,
             no_thinking_side_channel=settings.no_thinking_side_channel,
@@ -362,6 +362,65 @@ class LLMClient:
             text=choice.message.content or "",
             finish_reason=finish_reason,
         )
+
+    def complete_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        *,
+        max_tokens: int = 2000,
+        temperature: float | None = None,
+        purpose: str = "creator",
+    ) -> Any:
+        """带工具的非流式补全，返回**原始 assistant 消息对象**（可能含 tool_calls）。
+
+        上游：`docs/plan-tavern-shaped-product.md` §4.1——创作者 Agent 是**另一条轻量循环**，
+        不是 `run_turn`。两者形状不同，不该硬塞进同一个函数：
+
+        | | `run_turn`（叙事回合） | 创作者回合 |
+        | --- | --- | --- |
+        | 流式正文 | 要（玩家在读） | 不要（产出是文件改动） |
+        | 收尾协议 | 必须 `submit_narration`，否则熔断 | **不要**：模型不调工具就等于说完了 |
+        | Judge / factcheck / 内轮自校正 | 要 | 不要（质量由 `check_worldpack` 兜底） |
+        | 原子性 | 整轮回滚 | 不需要（草稿就是沙箱，改坏了可以再改） |
+
+        **但仍然复用同一个 LLMClient**：模型路由（purpose → 模型）、usage 记账、
+        trace 落盘这三件事必须只有一份实现——否则创作者线会自己长出一套记账，
+        而那正是 G-6（记账串号）的形状。所以这里只加"怎么发一次带工具的请求"，
+        循环与工具面留在 `creator.py`。
+        """
+        model = self.model_for(purpose)
+        kwargs: dict[str, Any] = dict(
+            model=model, messages=messages, tools=tools, tool_choice="auto",
+            max_tokens=max_tokens, stream=False,
+        )
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        est_input = _estimate_input_tokens(messages)
+        t0 = time.monotonic()
+        try:
+            resp = self._client.chat.completions.create(**kwargs)
+        except Exception as e:  # noqa: BLE001
+            if is_context_overflow(e):
+                self.last_overflow = True
+            self._trace(
+                "call", purpose=purpose, model=model, max_tokens=max_tokens,
+                latency_ms=round((time.monotonic() - t0) * 1000),
+                error=type(e).__name__,
+            )
+            raise
+        latency_ms = round((time.monotonic() - t0) * 1000)
+        self._record_usage(model, purpose, resp)
+        self._calibrate(purpose, est_input, resp)
+        choice = resp.choices[0]
+        self._trace(
+            "call", purpose=purpose, model=model, max_tokens=max_tokens,
+            latency_ms=latency_ms,
+            finish_reason=getattr(choice, "finish_reason", None),
+            tok_factor=round(self.token_factor(purpose), 3),
+            usage=usage_fields(resp),
+        )
+        return choice.message
 
     def run_turn(
         self,

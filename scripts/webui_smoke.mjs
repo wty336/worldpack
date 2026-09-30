@@ -126,6 +126,20 @@ const PUBLISH_REJECTED =
   '缺少文件: world-packs/_drafts/race_draft/mainline.yaml\n' +
   '（web 创作工作台会把这段报错原文给模型去修；也可以在草稿目录里手工改）'
 
+// ---- 创作者 Agent（N6）桩 ----
+//
+// 对话流是 POST + SSE：start → tool…（+ text）→ done。
+// 桩刻意安排成"先改坏 → 校验报错 → 再改对"两轮，好让"修复循环 + diff + 校验原文"
+// 这三块都能在浏览器里被观察到。
+const CREATOR_MSG_1 = '把她的性格改冷一点'
+const CREATOR_TOOL_RESULT = 'npcs/shen_qingqing.yaml: personality 已更新'
+const CREATOR_DIFF =
+  '--- 基线/npcs/shen_qingqing.yaml\n' +
+  '+++ 工作版/npcs/shen_qingqing.yaml\n' +
+  '@@ -1,4 +1,4 @@\n' +
+  '-personality: 温柔体贴\n' +
+  '+personality: 外冷内热，说话极简\n'
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css; charset=utf-8', '.json': 'application/json' }
 
 function serveDist(res, rel) {
@@ -163,6 +177,69 @@ function startStub() {
     // ---- 创作工作台（N2a）----
     if (path === '/api/packs/drafts' && req.method === 'GET')
       return json({ ok: true, drafts: DRAFTS })
+    // ---- 创作者 Agent（N6）----
+    if (path === '/api/packs/fork') {
+      void readBody(req).then((body) =>
+        json({ ok: true, draft: mkDraft(body.name, `草稿·${body.name}`) }),
+      )
+      return
+    }
+    if (path.startsWith('/api/creator/')) {
+      const rest = path.slice('/api/creator/'.length)
+      const name = decodeURIComponent(rest.replace(/\/chat$/, ''))
+      if (rest.endsWith('/chat')) {
+        void readBody(req).then((body) => {
+          // 「改坏」这条口令 → 返回校验失败，用来观察"闸门不过要说清 + 原始报错可见"
+          const bad = /改坏/.test(body.message || '')
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' })
+          res.write(`event: start\ndata: ${JSON.stringify({ name })}\n\n`)
+          const steps = [
+            { type: 'tool', name: 'read_npc', status: 'ok', result: '{"id": "shen_qingqing"}' },
+            { type: 'tool', name: 'update_npc_field', status: 'ok', result: CREATOR_TOOL_RESULT },
+            {
+              type: 'tool', name: 'validate_pack',
+              status: bad ? 'rejected' : 'ok',
+              result: bad ? '[✗] 校验未通过：缺少文件: mainline.yaml' : '[✓] check-worldpack 通过',
+            },
+          ]
+          let i = 0
+          const tick = setInterval(() => {
+            if (i < steps.length) {
+              res.write(`event: tool\ndata: ${JSON.stringify(steps[i++])}\n\n`)
+              return
+            }
+            clearInterval(tick)
+            res.write(
+              `event: text\ndata: ${JSON.stringify({ type: 'text', text: '我改好了。' })}\n\n`,
+            )
+            res.write(
+              `event: done\ndata: ${JSON.stringify({
+                reply: bad
+                  ? '改完了，但 check-worldpack 没通过，报错在右栏。'
+                  : '已把她的性格改成外冷内热，说话更短。校验通过。',
+                tools: steps.map((s) => ({ name: s.name, status: s.status })),
+                validate_ok: !bad,
+                validate_text: bad
+                  ? '缺少文件: world-packs/_drafts/' + name + '/mainline.yaml'
+                  : 'check-worldpack 通过',
+                changed: ['npcs/shen_qingqing.yaml'],
+                diff: bad ? '' : CREATOR_DIFF,
+                truncated: false,
+              })}\n\n`,
+            )
+            res.end()
+          }, 90)
+        })
+        return
+      }
+      if (req.method === 'DELETE')
+        return json({ ok: true, reset: name, note: '已清空对话上下文；草稿内容未动。' })
+      return json({
+        ok: true, name, open: false, messages: [],
+        summary: `世界《演示世界》· 2 角色 · 3 主线节点 · 2 结局 · 世界书 4 条`,
+        diff: '', changed: [], validate_ok: null, validate_text: '',
+      })
+    }
     if (path === '/api/packs/generate' && req.method === 'POST')
       return json({ ok: true, job_id: JOB_ID, pack_name: 'smoke_draft', status: 'queued' }, 202)
     if (path === '/api/packs/generate' && req.method === 'GET')
@@ -499,8 +576,6 @@ async function main() {
       await cdp.eval(`/已压缩历史后重试成功/.test(document.querySelector('#app .prose').textContent)`),
     )
 
-    const dump = await cdp.eval(`document.documentElement.outerHTML`)
-
     // =====================================================================
     // 创作工作台（N2a）：素材 → 进度 → 校验报告 → 试玩 → 发布
     // =====================================================================
@@ -570,6 +645,20 @@ async function main() {
     )
 
     // ---- 贴素材 → 生成 → 进度流 ----
+    // 先切回「从素材生成」页签：**点选草稿会自动切到对话页签**（N6 的交互——
+    // 选中一张草稿的意图就是"改这一版"），所以这里必须显式切回来，
+    // 否则下面的表单根本不在地 DOM 里（第一版就是因此报"页面内异常: Uncaught"）。
+    const backToGenerate = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio .tabs button')]
+        .find(x => x.textContent.includes('从素材生成'));
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`)
+    check('能切回「从素材生成」页签（两个模式互通）', backToGenerate)
+    await cdp.waitFor(`!!document.querySelector('#app .studio textarea')`, {
+      label: '生成表单出现',
+    })
     await cdp.eval(`(() => {
       const setv = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
       setv(document.querySelector('#app .studio .field input[type=text]'), 'smoke_draft');
@@ -643,6 +732,115 @@ async function main() {
       await cdp.eval(`/未发布/.test(document.querySelector('#app .topbar')?.textContent || '')`),
     )
 
+    // =====================================================================
+    // 创作者 Agent（N6）：和 Agent 对话改这一版
+    // =====================================================================
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/` })
+    await cdp.waitFor(`!!document.querySelector('#app .library')`, { label: '回到选卡屏' })
+    await cdp.eval(`(() => {
+      [...document.querySelectorAll('#app button')]
+        .find(x => x.textContent.includes('创作工作台')).click();
+    })()`)
+    await cdp.waitFor(`!!document.querySelector('#app .studio')`, { label: '回到工作台' })
+
+    // 两个模式入口（从素材生成 / 和 Agent 改这一版）
+    check(
+      '工作台有两个模式入口（从素材生成 / 和 Agent 改这一版）',
+      await cdp.eval(`(() => {
+        const t = document.querySelector('#app .studio .tabs')?.textContent || '';
+        return t.includes('从素材生成') && t.includes('和 Agent 改这一版');
+      })()`),
+    )
+
+    // 点一张草稿 → 自动切到对话模式，并拉取会话现状
+    await cdp.eval(`(() => {
+      [...document.querySelectorAll('#app .studio .col-left .pack')]
+        .find(x => x.textContent.includes('过校验的一版')).click();
+    })()`)
+    await cdp.waitFor(`!!document.querySelector('#app .studio .chat')`, {
+      timeout: 8000, label: '对话面板出现',
+    })
+    check('选中草稿后自动进入对话模式（作者要的就是改这一版）', true)
+    check(
+      '对话面板说明工作版摘要（Agent 看到的世界状态）',
+      await cdp.eval(`/演示世界/.test(document.querySelector('#app .studio .col-mid')?.textContent || '')`),
+    )
+
+    // ---- 发一句话 ----
+    await cdp.eval(`(() => {
+      const inp = [...document.querySelectorAll('#app .studio .save-row input[type=text]')].pop();
+      inp.value = '把她的性格改冷一点';
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`)
+    const sent = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio button')]
+        .find(x => x.textContent.trim() === '发送');
+      if (!b || b.disabled) return false;
+      b.click();
+      return true;
+    })()`)
+    check('对话输入可用并被发送', sent)
+
+    // 工具过程逐条出现（"Agent 在做什么"可见）
+    await cdp.waitFor(`document.querySelectorAll('#app .studio .chat-step').length >= 1`, {
+      timeout: 8000, label: '工具过程出现',
+    })
+    check('Agent 的工具调用过程逐条可见（不是转圈等一个黑盒）', true)
+    await cdp.waitFor(`/update_npc_field/.test(document.querySelector('#app .studio .chat')?.textContent || '')`,
+      { timeout: 8000, label: '改内容的那一步' })
+    check('改内容的工具调用显示出来（name 可见）', true)
+
+    // 最终答复落进对话记录
+    await cdp.waitFor(`/外冷内热/.test(document.querySelector('#app .studio .chat')?.textContent || '')`,
+      { timeout: 8000, label: 'Agent 最终答复' })
+    check('Agent 的最终答复进入对话记录', true)
+
+    // ---- 右栏：校验结论 + diff ----
+    await cdp.waitFor(`!!document.querySelector('#app .studio .col-right .diff')`,
+      { timeout: 8000, label: 'diff 渲染' })
+    check(
+      '右栏渲染工作版 vs 基线的 diff（人靠它确认改了什么）',
+      await cdp.eval(`/外冷内热/.test(document.querySelector('#app .studio .col-right .diff')?.textContent || '')`),
+    )
+    check(
+      '右栏显示这次改动的校验结论',
+      await cdp.eval(`/check-worldpack 通过/.test(document.querySelector('#app .studio .col-right')?.textContent || '')`),
+    )
+    check(
+      '右栏在有了对话之后**仍然**没有输入框（呈现面不许退化成表单）',
+      await cdp.eval(`document.querySelectorAll('#app .studio .col-right input, #app .studio .col-right textarea').length === 0`),
+    )
+
+    // ---- 改坏 → 闸门不过要说清 + 原始报错可见 ----
+    await cdp.eval(`(() => {
+      const inp = [...document.querySelectorAll('#app .studio .save-row input[type=text]')].pop();
+      inp.value = '把它改坏';
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`)
+    await cdp.eval(`(() => {
+      [...document.querySelectorAll('#app .studio button')]
+        .find(x => x.textContent.trim() === '发送').click();
+    })()`)
+    await cdp.waitFor(`/Agent 这一版的校验/.test(document.querySelector('#app .studio .col-right')?.textContent || '')`,
+      { timeout: 8000, label: 'Agent 校验区块' })
+    await cdp.waitFor(`/未通过/.test(document.querySelector('#app .studio .col-right')?.textContent || '')`,
+      { timeout: 8000, label: '校验失败结论' })
+    check('Agent 改坏之后右栏明确说"未通过、不能发布"', true)
+    check(
+      '且给出 check-worldpack 的报错原文（不是只给一个红点）',
+      await cdp.eval(`/mainline\\.yaml/.test(document.querySelector('#app .studio .col-right .errbox')?.textContent || '')`),
+    )
+
+    // ---- 复制一张现成的卡来改 ----
+    check(
+      '左栏有「复制成草稿」入口（不然 Agent 只能改刚生成的空包）',
+      await cdp.eval(`(() => {
+        const t = document.querySelector('#app .studio .col-left')?.textContent || '';
+        return t.includes('复制成草稿') && !!document.querySelector('#app .studio .col-left select');
+      })()`),
+    )
+
+    const dump = await cdp.eval(`document.documentElement.outerHTML`)
     if (keep) {
       const p = join(ROOT, 'webui-smoke-dom.html')
       writeFileSync(p, dump)

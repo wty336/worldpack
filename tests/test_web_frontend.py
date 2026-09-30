@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from fakes import FakeClient, msg, resp, tool_call
@@ -331,13 +332,18 @@ def test_api_client_covers_all_workbench_endpoints():
     #
     # ⚠️ 这里**不能**写 `assert "method: 'DELETE'" in js`：那被 `del` 辅助函数的
     # **定义**满足了，把 `deleteDraft` 改成调 `post` 之后守卫照样绿（本仓库第三个
-    # 同一形状的假绿："字符串在文件里出现过"）。要钉的是**调用点**，所以直接看
-    # `deleteDraft` 那一行调用了哪个辅助函数。
-    m = re.search(r"deleteDraft:\s*\(name\)\s*=>\s*(\w+)\(", js)
-    assert m, "找不到 deleteDraft 的调用行——形状变了？"
-    assert m.group(1) == "del", (
-        f"deleteDraft 调的是 {m.group(1)}()，而端点声明是 DELETE——后端会回 405"
-    )
+    # 同一形状的假绿："字符串在文件里出现过"）。要钉的是**调用点**。
+    #
+    # 做法对**每一个** DELETE 端点逐一核对（不写死某一个名字）：漏检一个端点
+    # 和漏检一个方法是同一类洞，所以这里按声明自动遍历。
+    delete_keys = re.findall(r"(\w+):\s*'DELETE ", js)
+    assert delete_keys, "没有从 client.js 里解析出任何 DELETE 端点——形状变了？"
+    for key in delete_keys:
+        m = re.search(rf"{key}:\s*\([^)]*\)\s*=>\s*(\w+)\(", js)
+        assert m, f"找不到 {key} 的调用行——形状变了？"
+        assert m.group(1) == "del", (
+            f"{key} 调的是 {m.group(1)}()，而端点声明是 DELETE——后端会回 405"
+        )
 
 
 def test_workbench_view_contracts_in_source():
@@ -473,6 +479,123 @@ def test_library_exposes_studio_entry_and_hides_drafts():
     app = _src("App.vue")
     assert "StudioView" in app and "'studio'" in app
     assert "session.draft" in app, "草稿试玩要在顶栏打「未发布」水印"
+
+
+def test_creator_chat_contracts_in_source():
+    """创作者 Agent 对话流的三条契约（N6）。
+
+    ① **断线不重连**——这一条与 `useJobStream` 正好相反，两者容易互相抄错：
+       后台任务流是 GET + 服务端回放，重连安全；对话流是一个 POST 触发一次
+       "跑一段就没了"的工作，重连会把同一句话**执行第二遍**（重复扣费、重复改草稿）。
+       所以这里断言它**没有**重连机制，而 `useJobStream` 有——两条一起钉住，
+       才不会有人"统一一下风格"把其中一个改坏。
+    ② 同样不能用 `EventSource`（只支持 GET + 无状态自动重连）。
+    ③ `done.reply` 才是最终答复（中间 `text` 事件只是过程）。
+    """
+    c = _src("composables", "useCreatorStream.js")
+    assert "new EventSource" not in c, "EventSource 只支持 GET，且重连会把这一轮重跑"
+    assert "getReader()" in c, "必须用 fetch + ReadableStream 手动解析 SSE"
+    assert "method: 'POST'" in c
+    assert "MAX_RECONNECT" not in c, (
+        "对话流**不许**自动重连：重连 = 把同一句话再执行一遍（重复改草稿）"
+    )
+    # 流断了且没收到 done 时必须**如实说明**，而不是静默当成成功
+    assert "连接中断" in c, "断线要如实告诉作者（改动可能只落了一部分）"
+    assert "这一轮连接中断" in c or "改动可能只落了一部分" in c
+    assert "result.value = payload" in c, "done 载荷要留着（校验结论 + diff 靠它）"
+
+    j = _src("composables", "useJobStream.js")
+    assert "MAX_RECONNECT" in j, (
+        "后台任务流**必须**能重连（服务端会回放完整历史，重连是安全的）"
+        "——与对话流的取舍相反，两条一起钉住"
+    )
+
+
+def test_creator_panel_is_wired_into_the_workbench():
+    """工作台要有两个模式与对话面板；**右栏仍然不许有输入框**。"""
+    v = _src("views", "StudioView.vue")
+    assert "从素材生成一张卡" in v and "和 Agent 改这一版" in v, "两个模式入口"
+    assert "useCreatorStream" in v
+    assert "chatInput" in v and "发送" in v, "对话输入"
+    assert "清空对话上下文" in v, "重置只丢上下文、不动内容——这个动作要可见"
+    assert "复制成草稿" in v and "api.fork" in v, "改现成的卡要先 fork"
+    assert "工作版 vs 会话基线" in v, "diff 要给人看（确认改了什么再发布）"
+    assert "creator.result.value.validate_text" in v, (
+        "Agent 改完后的校验原文要显示——不许只显示一个红点"
+    )
+    # 右栏"没有输入框"这条**不在源码层断言**：`<input>` 出现在中栏是合法的，
+    # 按文本判断左右栏只会写出一个脆弱的正则。它由浏览器真机冒烟直接断言
+    # `#app .studio .col-right input` 数量为 0——那才是这个契约真正成立的地方。
+
+
+def test_workbench_payloads_carry_the_fields_the_view_reads_creator(tmp_path, monkeypatch):
+    """创作者端点的载荷必须带上前端读的键（N6 版的"桩会同意我"防线）。
+
+    与工作台那条同一理由：浏览器冒烟用桩后端，桩由我手写，于是**它会同意我关于
+    后端形状的任何假设**。这里用真 app 跑一轮脚本化的对话，逐个断言键真的存在。
+    """
+    import shutil
+
+    from fastapi.testclient import TestClient
+    from fakes import FakeClient, msg, resp, tool_call
+
+    import game_agent.creator as creator_mod
+    import game_agent.web as web
+    from game_agent.llm import LLMClient
+
+    root = tmp_path / "world-packs"
+    root.mkdir(parents=True)
+    shutil.copytree(PACK_PATH, root / "published")
+    shutil.copytree(PACK_PATH, root / "_drafts" / "probe")
+    monkeypatch.setattr(web, "_pack_root", lambda: root)
+    monkeypatch.setattr(web, "CREATORS", {})
+    monkeypatch.setattr(web, "load_settings", lambda: SimpleNamespace(has_api_key=True))
+
+    npc = next((root / "_drafts" / "probe" / "npcs").glob("*.yaml")).stem
+    fake = LLMClient(FakeClient([
+        resp(msg(tool_calls=[tool_call(
+            "c1", "update_npc_field",
+            {"npc_id": npc, "field": "personality", "value": "改过"})])),
+        resp(msg(tool_calls=[tool_call("c2", "validate_pack", {})])),
+        resp(msg(content="改好了。")),
+    ]), "fake", [])
+    monkeypatch.setattr(creator_mod, "build_creator_llm",
+                        lambda settings, tracker=None: fake)
+    client = TestClient(web.app)
+
+    r = client.post("/api/creator/probe/chat", json={"message": "改性格"})
+    frames = {}
+    for block in r.text.split("\n\n"):
+        if not block.strip():
+            continue
+        event, data = "message", ""
+        for line in block.split("\n"):
+            if line.startswith("event: "):
+                event = line[7:]
+            elif line.startswith("data: "):
+                data += line[6:]
+        if data:
+            frames.setdefault(event, []).append(json.loads(data))
+
+    assert "start" in frames, "首帧心跳（前端据此切'处理中'）"
+    assert "tool" in frames, "工具过程事件"
+    for ev in frames["tool"]:
+        for key in ("type", "name", "status", "result"):
+            assert key in ev, f"tool 事件缺 {key}：{ev}"
+    done = frames["done"][0]
+    for key in ("reply", "tools", "validate_ok", "validate_text", "changed", "diff",
+                "truncated"):
+        assert key in done, f"done 事件缺前端要读的 {key}"
+
+    state = client.get("/api/creator/probe").json()
+    for key in ("ok", "name", "open", "messages", "summary", "diff", "changed",
+                "validate_ok", "validate_text"):
+        assert key in state, f"创作会话现状缺 {key}"
+
+    fork = client.post("/api/packs/fork", json={"name": "published"}).json()
+    assert "draft" in fork and fork["draft"]["id"] == "published"
+
+    shutil.rmtree(root, ignore_errors=True)
 
 
 def test_api_client_covers_all_play_endpoints():

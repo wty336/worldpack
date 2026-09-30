@@ -64,6 +64,11 @@ export const ENDPOINTS = Object.freeze({
   drafts: 'GET /api/packs/drafts',
   publish: 'POST /api/packs/publish',
   deleteDraft: 'DELETE /api/packs/drafts/{name}',
+  // 创作者 Agent（N6）：拿现成的卡来改 → 对话式改人物设定与世界书
+  fork: 'POST /api/packs/fork',
+  creatorState: 'GET /api/creator/{name}',
+  creatorChat: 'POST /api/creator/{name}/chat',
+  creatorReset: 'DELETE /api/creator/{name}',
 })
 
 export const api = {
@@ -107,6 +112,17 @@ export const api = {
   publish: (name) => post('/api/packs/publish', { name }).then((r) => jsonOrThrow(r, '发布')),
   deleteDraft: (name) =>
     del(`/api/packs/drafts/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, '删除草稿')),
+
+  // ---- 创作者 Agent（N6）----
+
+  /** 把**已发布**的卡复制成草稿——"改一张现成的卡"的第一步（原版只读，不会被动）。 */
+  fork: (name) => post('/api/packs/fork', { name }).then((r) => jsonOrThrow(r, '复制成草稿')),
+  /** 创作会话现状（对话记录 + diff + 校验结论）。刷新页面靠它接上。 */
+  creatorState: (name) =>
+    fetch(`/api/creator/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, '读取创作会话')),
+  /** 清空对话上下文（**不动草稿内容**）。 */
+  creatorReset: (name) =>
+    del(`/api/creator/${encodeURIComponent(name)}`).then((r) => jsonOrThrow(r, '重置对话')),
 
   /** 回合请求体（kind 决定后端分发哪个 Game 方法）。 */
   turnBody: {

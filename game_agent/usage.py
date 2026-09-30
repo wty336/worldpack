@@ -110,11 +110,23 @@ class UsageTracker:
     单包单玩家时只是"合并口径"，多会话/多剧本下变成**数据错误**——
     无法回答"这一局花了多少钱"。现在**每个会话一个账本文件**（`usage-<sid>.jsonl`），
     并同时在条目里带 `session` 字段，于是"按会话精确"与"跨会话聚合"两种读法都成立。
+
+    ``pack``（N6，创作者 Agent 的归因轴）：这一笔账属于**哪张卡**。
+    为什么必须在创作者 Agent 第一次接线时就带上、而不是留到"成本可见"那一项再补：
+    作者会反复对同一张草稿说很多轮话，事后要能回答"**改这一版花了多少钱**"；
+    而 agent 的调用与游玩调用虽然文件分开，归档之后却只有这一个字段能区分
+    "这笔钱花在改哪张卡上"。这与 G-6 的教训同型——**事后补轴要重造历史数据**。
     """
 
-    def __init__(self, path: str | Path, session: str | None = None):
+    def __init__(
+        self,
+        path: str | Path,
+        session: str | None = None,
+        pack: str | None = None,
+    ):
         self.path = Path(path)
         self.session = session
+        self.pack = pack
         self.entries: list[dict] = []
 
     def record(
@@ -130,7 +142,7 @@ class UsageTracker:
         为什么单独一个字段而不是塞进 usage：`usage` 是提供方口径的 token 计数，
         原样透传；`game_turn` 是引擎口径的时间轴，用于把"一次玩家操作"的成本
         （主回合 + 级联 + 判劣重写 + 溢出重试 + 压缩）加总。两者来源不同，不该混。
-        `session` 同理：它是**会话轴**，与提供方的 token 口径无关。
+        `session` / `pack` 同理：它们是**会话轴与内容轴**，与提供方的 token 口径无关。
         """
         entry: dict[str, Any] = {
             "ts": ts or datetime.now().isoformat(timespec="seconds"),
@@ -139,6 +151,8 @@ class UsageTracker:
         }
         if self.session:
             entry["session"] = self.session
+        if self.pack:
+            entry["pack"] = self.pack
         if game_turn is not None:
             entry["game_turn"] = game_turn
         if usage:

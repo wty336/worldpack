@@ -149,6 +149,7 @@ onMounted(boot)
     <StudioView
       v-else-if="view === 'studio'"
       :busy="busy"
+      :packs="packs"
       @notice="({ message, isError }) => say(message, isError)"
       @playtest="({ draft }) => start({ packId: null, mode: config.default_mode || 'story', draft })"
       @back="leaveToLibrary"

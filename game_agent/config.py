@@ -30,6 +30,7 @@ class Settings:
     extract_model: str = ""  # B3（Track B）：事实提取用模型（空 = 回退主模型）
     reflect_model: str = ""  # B3（Track B）：关系洞察用模型（空 = 回退主模型）
     dedup_model: str = ""  # B3（Track B）：语义去重用模型（空 = 回退主模型）
+    creator_model: str = ""  # N6：创作者 Agent 用模型（空 = 回退主模型）
     no_thinking_side_channel: bool = False  # 侧信道关思考（DEEPSEEK_DISABLE_THINKING=1）
     trace_path: str = ""  # B1（Track B）：LLM 调用 trace 落盘路径（空 = 关闭）
     # J 系列：模型上下文窗（token；0 = 未声明 → 溢出预检关闭，只保留被拒后的恢复）。
@@ -49,6 +50,7 @@ class Settings:
             "extract": self.extract_model,
             "reflect": self.reflect_model,
             "dedup": self.dedup_model,
+            "creator": self.creator_model,
         }.get(purpose)
         return dedicated or self.model
 
@@ -109,6 +111,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     extract_model = os.environ.get("DEEPSEEK_EXTRACT_MODEL", "").strip()
     reflect_model = os.environ.get("DEEPSEEK_REFLECT_MODEL", "").strip()
     dedup_model = os.environ.get("DEEPSEEK_DEDUP_MODEL", "").strip()
+    creator_model = os.environ.get("DEEPSEEK_CREATOR_MODEL", "").strip()
     no_thinking = os.environ.get("DEEPSEEK_DISABLE_THINKING", "").strip().lower() in (
         "1", "true", "yes", "on",
     )
@@ -123,6 +126,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         extract_model=extract_model,
         reflect_model=reflect_model,
         dedup_model=dedup_model,
+        creator_model=creator_model,
         no_thinking_side_channel=no_thinking,
         trace_path=trace_path,
         context_window=context_window,

@@ -170,6 +170,40 @@ input[type="text"], select {
 .field input[type="text"] { width: 100%; }
 .field input.tiny { width: 56px; }
 
+/* 中栏的模式切换（N6 起有两个入口：从素材生成 / 和 Agent 改这一版） */
+.tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+.tabs button { margin: 0; }
+.studio select { max-width: 100%; }
+
+/* ---------- 创作者 Agent 对话（N6） ---------- */
+.chat {
+  border: 1px solid var(--line-soft); border-radius: 6px; background: var(--card);
+  max-height: 46vh; overflow-y: auto; padding: 10px 12px; margin: 8px 0;
+}
+.chat-msg { padding: 5px 0; line-height: 1.75; font-size: 0.94em; }
+.chat-msg .who {
+  display: inline-block; min-width: 42px; font-size: 0.78em; color: var(--accent);
+  font-weight: 600;
+}
+.chat-msg.user .what { color: var(--ink); }
+.chat-msg.assistant .what { color: var(--ink); }
+.chat-msg.assistant { border-left: 2px solid var(--accent-bg); padding-left: 8px; }
+/* 过程行（工具调用/中间话）：比对话轻一档，不抢注意力 */
+.chat-step {
+  padding: 2px 0 2px 8px; font-size: 0.8em; color: var(--ink-dim);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word;
+}
+.chat-step .mark { color: var(--accent); margin-right: 5px; }
+
+/* diff（工作版 vs 基线）：等宽、可滚，长 diff 不挤走右栏其余内容 */
+.diff {
+  white-space: pre-wrap; word-break: break-word; background: #fbf8f2;
+  border: 1px solid var(--line-soft); border-radius: 6px; padding: 8px 10px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.74em; line-height: 1.6; max-height: 40vh; overflow: auto; margin: 6px 0;
+}
+
 .cost {
   background: #fdf6f3; border: 1px solid #e8cbb8; color: #96603f;
   border-radius: 6px; padding: 8px 11px; font-size: 0.85em; line-height: 1.7;

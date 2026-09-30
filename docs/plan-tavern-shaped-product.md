@@ -478,7 +478,7 @@ send({ kind: 'end_day' }, { onDone: v => applyView(v) })
 | E-5 | `import_story.py` → `game_agent/worldgen.py`（纯函数 + 薄 CLI） | 中 | 能力 B | ✅ **已完成**：`worldgen.py` 809 行（提示词/分块提取/物化/校验修复/语料/进度事件），CLI 851→**237 行**薄壳。等价性已证：重构前 vs 重构后离线跑，退出码相同、**8 个产出文件逐字节相同**、stdout 归一化后逐行相同。守卫 `tests/test_worldgen.py`（22 项） |
 | E-6 | 后台任务表 + 进度 SSE（照抄 `_turn_stream` 的 queue+线程模式） | 中 | 能力 B | ✅ **已完成**（2026-10，roadmap **N1**）：`game_agent/jobs.py` 任务表 + 串行执行器；5 个端点（生成 / 查询 / SSE / 取消）；**不能照抄 `_turn_stream`**——那是秒级单连接，分钟级任务必须事件留档 + 回放 + 多订阅者广播。`tests/test_jobs.py`（22 项）+ 真机 `scripts/worldgen_smoke.py` |
 | E-7 | 草稿区 `world-packs/_drafts/` + 发布闸门（过 `check_worldpack` 才能发布） | 小 | 能力 B/C | ✅ 已完成 · 见 **§6.6** |
-| E-8 | 创作者 Agent：新 system prompt + 10 个工具 + `creator_model` 路由 + 修复循环 | 中 | 能力 C | ⬜ 见 roadmap **N6** |
+| E-8 | 创作者 Agent：新 system prompt + 10 个工具 + `creator_model` 路由 + 修复循环 | 中 | 能力 C | ✅ **已完成**（2026-10，roadmap **N6**）：`game_agent/creator.py`（工作版 + **11 个工具** + 修复循环 + diff）+ `fork_to_draft` + 4 个端点 + 前端对话面板。证据：`tests/test_creator.py`（33 项）+ 真机对话冒烟 `scripts/creator_smoke.py`（真实模型确实按 read → 改 → validate 走） |
 | E-9 | 会话列表 / 存档列表接口（`SESSIONS` 是无淘汰的内存 dict） | 小 | 前端左栏 | ✅ **已完成**：`GET /api/sessions`（pack/mode **由 game 推出**，不存第二份）+ `GET /api/saves`（只读顶层摘要 / 坏档隔离 / mtime 倒序）。`tests/test_catalog.py`（3 项） |
 
 > E-1 和 E-2 必须最先做：它们是 `plan-creator-player.md` 已认定的缺口（G1/G2），
@@ -772,7 +772,7 @@ validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、
 
 #### 验证
 
-- 离线 **980 项全绿**（`test_drafts.py` 17 项为新）。
+- 离线 **1016 项全绿**（`test_drafts.py` 17 项为新）。
 - **变异验证**（三处，都在还原后复跑全绿）：
   1. 把 `list_drafts` 改回 `_is_pack_dir` 判据 → 恰好那 3 条覆盖该缺陷的守卫变红
      （`[bad_yaml]` 参数化分支照常绿，因为它们不依赖该判据）；
@@ -816,6 +816,36 @@ validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、
 
 ---
 
+### 6.8 批次 7 执行记录（2026-10）：创作者 Agent（E-8，能力 C）
+
+**交付**：`game_agent/creator.py`（工作版 + **11 个工具** + 修复循环 + diff）
++ `catalog.fork_to_draft` + `LLMClient.complete_with_tools` + `Settings.creator_model`
++ `UsageTracker(pack=…)` + 4 个端点 + 前端对话面板/两模式页签/diff
++ `tests/test_creator.py`（33 项）+ `scripts/creator_smoke.py`（真机对话冒烟）。
+
+**逐条推理见 `docs/roadmap.md` §2.4**，这里只记与本文档其他章节的呼应：
+
+1. **§4.1 的判断被真机验证**：另起一条轻量循环是对的。真实模型在这一轮里
+   `read_npc → list_npcs → read_npc → update_npc_field → validate_pack`，
+   9 帧 / 4.7s——它**先读再改、改完自己校验**。若当初把创作者任务塞进 `run_turn`，
+   `submit_narration` 那套收尾协议会把它逼成"必须写一段叙事"，而它的产出根本不是叙事。
+2. **§4.2 的"`validate_pack` 是整个设计的支点"成立**：工具面的第 10 个工具就是它，
+   报错原文回灌给模型；而服务端在 `done` 里给**权威**校验结论（不采信模型自报）
+   ——两边同源（都走 `load_worldpack`），所以不存在"Agent 说通过了、发布被拒"。
+3. **§4.2 的"工作者面向工作版，原始包只读"落成了一条真机断言**：
+   冒烟在对话前后各取一次 `pack_digest`，必须一模一样。
+4. **§5.1 那张图现在字面成立**：工作台 2 = 左对话（中栏）+ 右字段与校验报告（右栏），
+   且右栏**始终没有输入框**（浏览器冒烟直接断言，与 §6.7 同一条）。
+5. **N6 的前置（按包归因的成本轴）在开工时就落地了**：`purpose="creator"` +
+   `session` + `pack` 三个轴，账本按卡分开（`saves/usage-creator-<name>.jsonl`）。
+   所以"改这一版花了多少钱"现在就能答——真机冒烟实测 6 次调用 13,822 tokens。
+6. **一条关于冒烟指令的教训（已升为 roadmap §4 纪律 8）**：
+   第一版冒烟用"把**主角**的说话风格改简短点"（歧义：该包里"主角"是玩家、没有角色卡），
+   模型**拒绝猜**并反问——**那是设计意图，不是缺陷**，坏的是指令。
+   冒烟指令的歧义会被记成产品缺陷。
+
+---
+
 ## 7. 交付顺序与工作量（人日，粗粒度）
 
 > ⚠️ **进度已并入 `docs/roadmap.md`**（2026-10）。那张表是"下一步做什么"的唯一答案；
@@ -827,18 +857,23 @@ validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、
 | 1 | **Stage A 前端拆分** + E-3 / E-4 / E-9 | 3–4 | ✅ **已完成** |
 | 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + **Stage B/C 三栏界面** | 6–10 | ✅ **已完成**（真机冒烟 18/18） |
 | 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | ✅ **已完成**（`worldgen.py` + 后台任务 SSE + 草稿区/发布闸门 + **N2a 创作工作台**，见 §6.5/§6.6/§6.7） |
-| 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ⬜ 见 roadmap N6（**编辑面归它**，右栏只做呈现，见 §4.2；前置已全部就绪） |
+| 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ✅ **已完成**（`creator.py` + 11 个工具 + 修复循环 + 对话面板 + diff，见 §6.8 / roadmap N6） |
 | 5 | 分发（entry point / `asset://` / MCP 加固） | 2–3 | ⬜ 见 roadmap N11 |
 
-**合计约 25–38 人日**，其中前端约占一半。**已完成约 15–20 人日**（阶段 0/1/2 + 能力 A + 能力 B）。
-**能力 A、B 都已完整可用**：选卡 → 三栏游玩 → 存档读档；以及贴素材 → 边跑边看进度 →
-看校验报告 → 草稿试玩 → 过闸门发布。前端有热更新开发模式与入库的构建产物。
+**合计约 25–38 人日**，其中前端约占一半。**已完成约 21–27 人日**（阶段 0/1/2 + 能力 A/B/C）。
+**三条能力全部完整可用**：① 选卡 → 三栏游玩 → 存档读档；② 贴素材 → 边跑边看进度 →
+看校验报告 → 草稿试玩 → 过闸门发布；③ **和 Agent 对话改人物设定与世界书**。
 
-> **能力 B 已收口；下一步只剩能力 C**：
-> **B ✅** = 生成管线接上 Web（B1 提取 ✅、B2 后台任务 ✅、B4 草稿/发布 ✅、**N2a 工作台 ✅**）；
-> **C** = 创作者 Agent（对话式改人物设定与世界书，**编辑面归它**）。
-> C 的前置（"能从素材生成卡" + 草稿工作副本 + 显示面）现在**全部就绪**，
-> 而且 N2a 的生成流程与报告渲染**本来就是 Agent 的显示面**，接着做不返工。
+> **三条能力已全部收口；剩下的都是"周边与纵深"**（roadmap N4/N5/N7–N11）：
+> 存档点与回退、前后台分离、ST 内容导入、harness 四条改进、分发。
+> **其中 N7（存档点/回退/分支）是玩家侧最大的体验缺口**，若更在意"玩起来爽"可优先。
+
+> **能力 C 也已收口**——至此 §4.2 那张工具表上线的有：
+> `read_world` / `read_npc` / `list_npcs` / `read_lore` / `update_world_field` /
+> `update_npc_field` / `add_npc` / `remove_npc` / `upsert_lore` / `validate_pack` / `diff_pack`。
+> 当初 §4.2 设想的"工作台 2：编辑器（左边对话、右边字段与校验报告）"现在是**字面成立**的：
+> 中栏是对话（N6）、右栏是字段与校验报告（N2a + N6 的 diff），并且右栏**始终没有输入框**
+> （编辑权归 Agent，这条由浏览器冒烟直接断言）。
 > **具体排期见 `docs/roadmap.md`，边界论证见其 §1.1。**
 
 ---

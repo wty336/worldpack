@@ -36,7 +36,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import catalog, jobs
+from . import catalog, creator, jobs
 from .config import load_settings, resolve_context_window
 from .game import Game, GameError
 from .jobs import GenerationJob
@@ -308,6 +308,179 @@ class PublishRequest(BaseModel):
     """§3.2 ③：把草稿发布到已发布区（过 `check_worldpack` 才允许）。"""
 
     name: str
+
+
+class ForkRequest(BaseModel):
+    """N6：把已发布包复制成草稿（"拿现成的卡来改"）。"""
+
+    name: str
+
+
+class CreatorChatRequest(BaseModel):
+    """N6：对创作者 Agent 说一句话。"""
+
+    message: str
+
+
+# ---------------------------------------------------------------------------
+# N6 / E-8：创作者 Agent（对话式改人物设定与世界书）
+# ---------------------------------------------------------------------------
+
+CREATORS: dict[str, creator.CreatorSession] = {}
+"""进程内创作会话表（按**草稿名**索引）。
+
+为什么按草稿名而不是随机 sid：作者的"这一版"就是草稿目录本身，会话只是它的
+对话上下文。刷新页面、甚至服务重启之后，作者的"这一版"还在原处——
+按名字索引让前后端都少一个需要同步的 id（与 `session_pack_id` 同一条纪律：
+能从真实位置推出来的东西，不要再存一份）。
+"""
+
+
+def _creator_dir(name: str) -> Path:
+    """草稿目录（**只能经 catalog 查表得到**，绝不拼路径）。"""
+    entry = catalog.resolve_draft(name, _pack_root())
+    if entry is None:
+        raise HTTPException(400, f"草稿不存在: {name!r}（创作 Agent 只改草稿，不改已发布包）")
+    return Path(entry.path)
+
+
+def _creator_session(name: str) -> creator.CreatorSession:
+    """取（或开）一个创作会话。"""
+    s = CREATORS.get(name)
+    if s is None:
+        s = creator.CreatorSession.open(_creator_dir(name), name)
+        CREATORS[name] = s
+    return s
+
+
+@app.post("/api/packs/fork")
+def api_fork(req: ForkRequest) -> dict:
+    """把已发布包复制成草稿——**没有这条路径，创作 Agent 就只能改刚生成的空包**。
+
+    库里的 8 张卡都已发布，而工作版是草稿区（§4.2"原始包只读"），
+    所以"改一张现成的卡"必须先 fork。**是复制不是移动**：已发布内容原地不动。
+    """
+    try:
+        entry = catalog.fork_to_draft(req.name, _pack_root())
+    except catalog.CatalogError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "draft": entry.to_dict()}
+
+
+@app.get("/api/creator/{name}")
+def api_creator_state(name: str) -> dict:
+    """创作会话现状：对话记录 + 工作版状态 + diff。刷新页面靠它接上。"""
+    _creator_dir(name)  # 草稿不存在 → 400（而不是开一个指向空气的会话）
+    s = CREATORS.get(name)
+    if s is None:
+        return {
+            "ok": True, "name": name, "open": False, "messages": [],
+            "summary": creator.WorkingCopy(root=_creator_dir(name)).summary(),
+            "diff": "", "changed": [], "validate_ok": None, "validate_text": "",
+        }
+    ok, text = s.wc.validate()
+    return {
+        "ok": True, "name": name, "open": True,
+        "messages": s.history(),
+        "summary": s.wc.summary(),
+        "diff": s.wc.diff(), "changed": s.wc.changed_files(),
+        "validate_ok": ok, "validate_text": text,
+        "baseline_note": s.baseline_note, "turns": s.turns,
+    }
+
+
+@app.delete("/api/creator/{name}")
+def api_creator_reset(name: str) -> dict:
+    """清掉会话上下文（**不动草稿内容**）——"换个话题重说"用。
+
+    为什么与"删草稿"分开：作者常常想丢掉一轮越聊越乱的上下文，但保留已经改好的
+    内容。基线同时重置，于是 diff 从"此刻"重新开始记（这一点在返回里说明）。
+    """
+    CREATORS.pop(name, None)
+    return {"ok": True, "reset": name,
+            "note": "已清空对话上下文；草稿内容未动。diff 基线已重置为当前状态。"}
+
+
+@app.post("/api/creator/{name}/chat")
+def api_creator_chat(name: str, req: CreatorChatRequest):
+    """和创作者 Agent 说一句话（SSE 推过程）。
+
+    **为什么用 SSE 而不是普通 JSON**：一轮对话是 读 → 改 → 校验 → （可能再改）
+    好几次模型调用，几十秒没有反馈就是"卡了还是在想"的老问题——
+    与 N1 后台任务同一个理由。事件：`tool`（哪一步、成了没有）、`text`（模型的
+    中间话）、`done`（最终答复 + 校验结论 + diff）、`error`。
+    """
+    text = (req.message or "").strip()
+    if not text:
+        raise HTTPException(400, "消息为空")
+    _creator_dir(name)  # 契约校验放在 HTTP 层（同 `_require_pack` 的理由）
+    settings = load_settings()
+    if not settings.has_api_key:
+        raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
+    return StreamingResponse(_creator_stream(name, text), media_type="text/event-stream")
+
+
+def _creator_stream(name: str, text: str):
+    """创作会话的 SSE 生成器：工作线程跑循环，本生成器消费队列。
+
+    与 `_turn_stream` 同一形状（首帧心跳 + 哨兵收尾 + worker 里持锁）。
+    锁在 worker 里取的理由与那边完全相同：**对话上下文的生存期不该取决于
+    客户端是否还在线**——作者误刷新一下，不能让已经发出去的这一轮半途而废
+    （改动会落盘一部分，而对话历史却少了对应的一轮，两边就对不上了）。
+    """
+    s = _creator_session(name)
+    events: "queue.Queue" = queue.Queue()
+    holder: dict = {}
+
+    def worker() -> None:
+        with _creator_lock(name):
+            try:
+                settings = load_settings()
+                # N6 前置：**创作者调用带 pack 归因轴**（`usage-creator-<name>.jsonl`
+                # + 条目里的 pack 字段），于是"改这一版花了多少钱"从第一天就答得上。
+                tracker = UsageTracker(
+                    f"saves/usage-creator-{name}.jsonl", session=f"creator-{name}",
+                    pack=name,
+                )
+                llm = creator.build_creator_llm(settings, tracker)
+                turn = s.send(text, llm, on_event=events.put)
+                holder["turn"] = turn
+            except Exception as e:  # noqa: BLE001 — 未预期异常转 error 事件，不静默断开
+                events.put({"type": "error", "message": f"内部错误: {type(e).__name__}: {e}"})
+            finally:
+                events.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+    yield _sse("start", json.dumps({"name": name}, ensure_ascii=False))
+    while True:
+        ev = events.get()
+        if ev is None:
+            break
+        yield _sse(ev.get("type", "message"), json.dumps(ev, ensure_ascii=False))
+    turn = holder.get("turn")
+    if turn is not None:
+        yield _sse("done", json.dumps({
+            "reply": turn.reply,
+            "tools": [{"name": t["name"], "status": t["status"]} for t in turn.tools_used],
+            "validate_ok": turn.validate_ok,
+            "validate_text": turn.validate_text,
+            "changed": turn.changed,
+            "diff": s.wc.diff(),
+            "truncated": turn.truncated,
+        }, ensure_ascii=False))
+
+
+_CREATOR_LOCKS: dict[str, threading.Lock] = {}
+_CREATOR_LOCKS_GUARD = threading.Lock()
+
+
+def _creator_lock(name: str) -> threading.Lock:
+    """每个草稿一把锁（同草稿的对话串行，不同草稿互不阻塞）。"""
+    with _CREATOR_LOCKS_GUARD:
+        lock = _CREATOR_LOCKS.get(name)
+        if lock is None:
+            lock = _CREATOR_LOCKS[name] = threading.Lock()
+        return lock
 
 
 def _safe_save_path(raw: str) -> Path:

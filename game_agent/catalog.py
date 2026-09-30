@@ -355,6 +355,47 @@ def delete_draft(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> None:
     _invalidate(root)
 
 
+def can_fork(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> str | None:
+    """能否把已发布的 `name` 复制成一份草稿；不能则返回原因。
+
+    **为什么需要这条**：创作者 Agent（N6）面向**工作版**改内容，而工作版就是草稿区
+    （§4.2 "工作者面向工作版，原始包只读"）。库里的 8 张卡都已经发布，
+    没有这条路径，Agent 就只能在"刚生成、还没发布"的草稿上工作——
+    等于对着空包改，能力 C 的实际用处归零。
+    """
+    if (bad := validate_name(name)) is not None:
+        return bad
+    if not (Path(root) / name).is_dir():
+        return f"没有这个已发布的世界包：{Path(root) / name}"
+    if draft_dir(name, root).exists():
+        return (
+            f"草稿区已存在同名草稿：{draft_dir(name, root)}。"
+            f"草稿不覆盖——先用它，或先删掉它再复制。"
+        )
+    return None
+
+
+def fork_to_draft(name: str, root: str | Path = DEFAULT_PACK_ROOT) -> PackEntry:
+    """把已发布包复制成草稿（"拿现成的卡来改"）。失败抛 `CatalogError`。
+
+    **是复制不是移动**：已发布内容必须原地不动——它可能正被某个玩家玩着，
+    而且"复制一份来改"才符合草稿区的语义（原版只读）。发布时若同名已存在，
+    `can_publish` 会拒绝，所以这条不会静默覆盖线上内容。
+    """
+    if (bad := can_fork(name, root)) is not None:
+        raise CatalogError(bad)
+    src = Path(root) / name
+    dst = draft_dir(name, root)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copytree(src, dst)
+    except OSError as e:
+        shutil.rmtree(dst, ignore_errors=True)  # 半个副本比没有更糟
+        raise CatalogError(f"复制成草稿失败（已回滚）：{e}") from e
+    _invalidate(root)
+    return replace(_entry_from_dir(dst), draft=True)
+
+
 def _invalidate(root: str | Path) -> None:
     """目录变更后主动清缓存（不等指纹比对）。"""
     with _CACHE_LOCK:
