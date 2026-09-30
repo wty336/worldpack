@@ -14,22 +14,28 @@ build/
 .ruff_cache/
 .coverage
 
-# 产线工作日志（断点续跑用；体积≈数据集两倍，且可由它重生成）
-data/**/.work/
+# ---- 微调线已归档到 archive/finetune/（详见该目录 README）----
+#
+# **决策（2026-10）：archive/ 整体不入库，仅在本地保留。**
+# 归档线 226.6 MB，其中 166.4 MB 早先已被下面三条规则排除，可入库余量 60.2 MB；
+# 为了让仓库体积最小，改为整目录忽略。代价是**归档线不在 GitHub 上**——
+# 需要发布时用 `git add -f archive/` 显式放行。
+#
+# 下面三条是"整目录忽略"之前的细粒度规则，保留它们是因为：一旦有人 `-f` 放行
+# archive/，这三块大体积生成物仍然必须被排除（否则一次 add -A 会灌进 130 MB）。
+#   ① 产线工作日志（断点续跑用；体积≈数据集两倍，且可由它重生成）
+archive/finetune/data/**/.work/
+#   ② 训练导出 jsonl（纯派生数据，`export_training` 秒级可重生成；manifest.json 入库当回执）
+archive/finetune/data/training/*.jsonl
+#   ③ 人读清单的全文附录（等于把数据集复制一份，一条命令即可现场重生成；
+#      清单主体「索引 + 标签总表 + 风险项」入库，那才是人读面）
+archive/finetune/reports/*-review-*-full.md
 
-# 人读清单的**全文附录**：等于把数据集复制一份（1000 条 ≈ 4.6 MB），
-# 一条命令即可现场重生成（`python -m scripts.scenario_factory.factory_review`）；
-# 清单主体（索引 + 标签总表 + 风险项）入库，那才是人读面。
-reports/*-review-*-full.md
+archive/
 
-# 训练导出（④）的 jsonl：**纯派生数据**（34 MB，`export_training` 秒级零成本重生成，
-# 且逐条校验过），不像 `data/route-a/*.jsonl` 那样要花 ¥96 才能重造 ⇒ 不入库；
-# `manifest.json`（条数/摘要/种子/切分）入库 —— 它是这次导出的**回执**，
-# 拿着它就能核对任何一次重生成（`dataset_sha256` 可比对）。
-data/training/*.jsonl
-
-# 训练产物（⑤）：adapter / 日志 / 指标 —— 机器产出、体积随实验增长，
-# 人读小结（训练报告）另存 `reports/` 再入库。
+# 运行时 replay 产物（checkpoint / runlog / usage）——**不是训练产物**：
+# 由 `scripts/record_run.py` 现场重生成，人读小结另存 `reports/` 再入库。
+# （原注释误标为"训练产物（⑤）：adapter / 日志 / 指标"，2026-09 已更正。）
 runs/
 
 # IDE
@@ -51,3 +57,16 @@ saves/smoke-seed2/
 saves/smoke-tb4/
 saves/smoke-tb6/
 saves/smoke-trace/
+
+# SillyTavern 源码调研副本（上游 1.19.0 @ 06bde93，自带 .git，95.5 MB）
+#
+# 它是 `docs/sillytavern-borrow.md` 与 `st-prompt-macros-report.md` 的**分析基准**，
+# 但**不是本仓库的代码**：没有任何 .py/.toml/.yaml/.json 引用它。
+# 不忽略的后果不是"提交 95 MB"，而是 `git add -A` 静默产生一个**没有 .gitmodules 的
+# gitlink**——克隆者拿到空目录 + 指向外部 commit 的失效引用，且 git status 长期噪声。
+#
+# 复核基准（clone 不包含它，故在此留取回方式）：
+#   git clone https://github.com/SillyTavern/SillyTavern.git .st-inspect
+#   git -C .st-inspect checkout 06bde93
+.st-inspect/
+
