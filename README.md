@@ -1,4 +1,4 @@
-# LLM Agent Runtime：文字互动养成游戏引擎
+﻿# LLM Agent Runtime：文字互动养成游戏引擎
 
 [![CI](https://github.com/wty336/worldpack/actions/workflows/ci.yml/badge.svg)](https://github.com/wty336/worldpack/actions/workflows/ci.yml)
 
@@ -46,7 +46,7 @@
 [✓] 禁表扫描通过（无世界观外元素）
 ```
 
-质量口径：**875 项离线测试全绿** · E1 对抗门禁 110 语料×3 轮（三类拦截 100%、正常误报 6%）· 300 轮长局零熔断 · 单局成本 ¥2–4、一次质量门 ¥0.1–0.3 · 缓存命中 99.3%。完整证据见 `docs/plan-design-hardening.md`、`docs/p1-report.md`、`docs/m2b-postmortem.md`。
+质量口径：**898 项离线测试全绿** · E1 对抗门禁 110 语料×3 轮（三类拦截 100%、正常误报 6%）· 300 轮长局零熔断 · 单局成本 ¥2–4、一次质量门 ¥0.1–0.3 · 缓存命中 99.3%。完整证据见 `docs/plan-design-hardening.md`、`docs/p1-report.md`、`docs/m2b-postmortem.md`。
 
 ![Web 前端真机截图](docs/assets/web.png)
 
@@ -129,7 +129,7 @@ world-packs/       # 世界包（纯 YAML 内容，换一包换一个游戏，8 
   urban_neon/      # 赛博都市《霓虹深处》
   campus_otome/    # 校园乙游《青槐高中·告白之前》（3 攻略 + 1 闺蜜 · 5 养成轴 · 10 结局）
   …                # 现代校园 / 80 年代 / 太空科幻 / 中性探针
-tests/             # 离线测试与守卫（875 项，CI 执行）
+tests/             # 离线测试与守卫（898 项，CI 执行）
 docs/              # 设计文档 / 计划 / 复盘（26 份 ADR 级记录）
 scripts/           # 质量门 / 冒烟 / 长局探针 / 素材导入等 38 个工具
 eval-sets/         # 评测语料（**运行时门禁用**：注入防御 / 记忆冲突 / 去重 / extract）
@@ -140,7 +140,7 @@ archive/finetune/  # 已归档的微调线（数据 / 产线 / 训练器 / 计�
 
 - **设计加固六批 ✅（2026-09-25）**：判官证据面（事实图纳入摘要/选择日志、连贯性材料）、校验闭环（确定性层每轮常开 + LLM 层降频采样 + 反馈复查）、ToolRegistry 声明式工具层 + MCP server、地点一等公民、counters/items 机制表达力、token 校准；子代理全量审查 1C/2M/10m 全部修复。真机冒烟零偏差零泄漏（`docs/plan-design-hardening.md`）
 - **约定真值 ✅（2026-09-25）**：修掉玩家实测缺陷——NPC 反复重问**已经约好**的事（"周五去学园祭"约完又被问"周五有空吗"）。根因不是模型记性差，而是约定**不是引擎真值**：记忆池单轮只注入 10 条（约定在新近/重要性/相关性三维全吃亏，且**到期日没人提"周五"，BM25 检索必然落空**）、提取提示词把"剧情进展的瞬时状态"排除在外、记忆模型**没有"到期"概念**。修法：`state.appointments` 一等真值 + `make_appointment` 工具（模型提议 → 引擎校验 → 落盘）+ 状态栏 `<约定>` **无条件常驻注入**（到期/逾期由引擎按天数现算）+ 引擎规则第 11 条（约定纪律）。守卫 `tests/test_appointments.py`（15 项，含变异验证）
-- **M1 ✅ · M1.5 ✅ · M2a ✅ · M2b ✅**：记忆显式化 + 剧情摘要压缩 + LLM-Judge 语义校验——300 轮零熔断、成本曲线变平（当时 133 测试，逐步增至本代 875）
+- **M1 ✅ · M1.5 ✅ · M2a ✅ · M2b ✅**：记忆显式化 + 剧情摘要压缩 + LLM-Judge 语义校验——300 轮零熔断、成本曲线变平（当时 133 测试，逐步增至本代 898）
 - **改进路线图四批（P0~P3）✅（2026-09-07）**：Judge 灵敏度硬门禁 / 记忆升级+模型分层+成本记账 / 数值深度 / Lorebook+脚手架+Web 前端
 - **M3 通用性验证 ✅（2026-09-07）**：仙侠、赛博都市（forbidden 表语义反转）相继验证"换包即玩"，后续三个包（校园/80 年代/太空）零引擎改动通过
 - **校园乙游包《青槐高中·告白之前》✅**：现代校园 × 乙游养成的通用性验证点——3 名攻略对象 + 1 名闺蜜、5 条养成轴（学力/仪态/才艺/体力/零花）、好感阶段驱动角色语气、路线 × 秘密 × 亲笔信决定 10 个结局。机制面覆盖地点表（8）/ counters（同行·赠礼）/ items（材料→点心→赠礼闭环）/ 检定三档 / 自定义工具 `write_letter`（once + 计数门槛）/ 三类事件触发；**零引擎改动**，18 项守卫（`tests/test_fourth_worldpack.py`）+ 30 条 Judge 语料（6/6/6/12+）
@@ -157,6 +157,20 @@ archive/finetune/  # 已归档的微调线（数据 / 产线 / 训练器 / 计�
   换行归一使 CRLF/LF 同摘要（跨机可对账）。
   守卫：`tests/test_pack_identity.py`（14 项）+ `tests/test_web_accounting.py`（8 项）+ `tests/test_web_frontend.py`（+4 项）。
   设计与路线图见 `docs/plan-dsh-tavern-parity.md`、`docs/plan-tavern-shaped-product.md`。
+- **平台化批次 2 ✅（2026-10）：选一张卡自由游玩**。把"一个进程 = 一个包"改成"可选的卡"：
+  ① **目录层** `game_agent/catalog.py`——枚举 `world-packs/`，返回卡片元数据（世界名 / 时代 / 角色数 / 节点数 / 结局数 / 内容指纹）。
+  三条纪律都有来历：**坏包隔离**（一个改到一半的包只让那张卡变红，不让整个选卡屏白屏）、
+  **`id` 不参与路径拼接**（`resolve_pack()` 是查表，`../` 与绝对路径天然无效）、
+  **缓存必须会失效**（指纹用逐文件 stat 而非目录 mtime——**修改已存在的文件不改父目录 mtime**；
+  实测一次全量列举 288 ms → 缓存后 13.6 ms）。
+  ② **会话级选包**：`POST /api/new{pack_id, mode}` + `GET /api/catalog` + `GET /api/{sid}/meta`；
+  `GAME_WORLDPACK` 降级为默认值（CLI `--pack` 仍可指向 `world-packs/` 之外）。
+  ③ **自由游玩 / 剧本模式**：`mode=free` 只表示"**不再进入主线节点**"——已进节点、结局、日程、事件全不动，
+  且不再把玩家锁在固定选项上（玩家要切换的是"要不要被主线牵着走"，不是"把已发生的剧情擦掉"）。
+  ④ **会话与存档列表**：`GET /api/sessions`（pack/mode 由 game 推出，不存第二份，避免分叉）、
+  `GET /api/saves`（只读顶层摘要、坏档隔离、mtime 倒序）。
+  ⑤ **选卡屏**：卡片列出世界名/时代/规模，开局前选模式；存档按卡命名、下拉读取；`alert()` 换成非阻塞提示条。
+  守卫 `tests/test_catalog.py`（23 项）。
 
 ## 许可
 

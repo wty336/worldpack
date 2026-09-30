@@ -44,31 +44,29 @@
 
 ## 2. 能力 A：选一张卡自由游玩
 
-### 2.1 引擎侧（改动很小）
+### 2.1 引擎侧（改动很小）—— ✅ **已完成（E-3），见 §6.2**
 
-**问题**：当前是"一个进程 = 一个包"。`web.py:52` 的 `_pack_path()` 读环境变量
+**原来的问题**：曾是"一个进程 = 一个包"。`web.py` 的 `_pack_path()` 读环境变量
 `GAME_WORLDPACK`，`_make_game(sid)` 无参数地取它 —— **换包要重启进程**。
 
 ```python
-# game_agent/web.py:46-52 现状
+# 改前
 def _pack_path() -> str:
     return os.environ.get("GAME_WORLDPACK", DEFAULT_PACK)
 ```
 
-**改法**（`plan-creator-player.md` §1 已拍板同一方向）：
+**实际落地**（`plan-creator-player.md` §1 已拍板同一方向）：
 
-1. 新增 `game_agent/catalog.py`：扫描 `world-packs/*`，对每个包调 `load_worldpack()`，
-   返回**卡片元数据**（`world.name` / `era` / `opening` / NPC 数与名单 / 节点数 / 结局数 / digest）。
-   `load_worldpack` 本来就在开局时全量载入内存、之后不碰磁盘（`judge_corpus` 是唯一例外），
-   所以目录扫描是干净的。
-2. `_make_game(sid, pack_id)`：会话创建时按 `pack_id` 取包并绑定到 `Session`。
-3. `POST /api/new` 接受 `{pack_id}`；新增 `GET /api/catalog` 返回卡片列表。
-4. 环境变量降级为"默认包"（保持 CLI 与既有脚本不破）。
+1. `game_agent/catalog.py`：扫描 `world-packs/*`，对每个包调 `load_worldpack()`，
+   返回卡片元数据（`name` / `era` / `opening` / NPC 数 / 节点数 / 结局数 / digest）。
+   `load_worldpack` 本来就在开局时全量载入内存、之后不碰磁盘，所以目录扫描是干净的。
+2. `_make_game(sid, pack_id=None, *, mainline_enabled=True)`：会话创建时按 `pack_id` 取包。
+3. `POST /api/new` 接受 `{pack_id, mode}`；新增 `GET /api/catalog` 与 `GET /api/{sid}/meta`。
+4. 环境变量降级为**默认值**，且仍允许指向 `world-packs/` 之外的任意目录（CLI `--pack` 的既有用法不破）。
 
-**存档必须带剧本身份**（否则改包后读旧档会静默穿帮）：`save.py:58-63` 的 `save_game()`
-只写 `state.to_dict()` + `save_version`，**不含 `pack_id`**。
-加 `pack_id` / `pack_digest`（复用 `evalmeta.file_digest`，已做换行归一化、跨机可对账），
-读档不一致 → **拒绝并提示**，不静默降级。这是 `plan-creator-player.md` 的 G2。
+**存档的剧本身份**（否则改包后读旧档会静默穿帮）：原 `save_game()` 只写
+`state.to_dict()` + `save_version`。现落 `pack: {id, digest}`，读档不一致 → **拒绝并提示**。
+这是 `plan-creator-player.md` 的 G2，已在批次 1 落地（见 §6.1 E-2）。
 
 ### 2.2 "自由游玩 vs 剧本模式"
 
@@ -79,10 +77,17 @@ def _pack_path() -> str:
 
 对已有节点的包想"自由游玩"，只加一个会话级布尔量，在 `Game` 里传给
 `storyline.begin_turn` / `_try_enter_node`：为假时直接跳过节点进入与关键抉择。
-**这是十几行的改动，不要动 `storyline.py` 的状态机本身。**
+**这是十几行的改动，不要动 `storyline.py` 的状态机本身。** ✅ 已按此落地（E-4）。
 
-> 建议在前端把它做成每局开局的一个选择（"跟着主线走 / 自由探索"），
+> 前端已把它做成**每局开局的一个选择**（"跟着主线走 / 自由探索"），
 > 而不是包的一个属性——同一个包两种玩法是有价值的。
+
+**实际实现的语义边界（比"十几行"更值得记住）**：`mainline_enabled=False` 只表示
+**不再进入新节点**；已进入的节点状态、结局判定、禁用词过滤、日程与事件**全部照旧**。
+理由：玩家想切换的是"要不要被主线牵着走"，不是"把已经发生的剧情擦掉"——
+抹掉进度会让"先自由探索、之后再跟主线"变成不可能。
+配套地 `choice_locked()` 在自由模式恒为 `False`：即使存档是从剧本模式带过来的、
+`pending_choice` 还挂着，也不该在自由游玩里把玩家锁在固定选项上（那正是玩家切过来的原因）。
 
 ### 2.3 "卡"是什么：建议用包当卡
 
@@ -433,13 +438,13 @@ send({ kind: 'end_day' }, { onDone: v => applyView(v) })
 | --- | --- | --- | --- | --- |
 | E-1 | **修记账串号**：`_WEB_TRACKER` 曾是全进程单例，多会话共写 `saves/usage-web.jsonl` | 小 | 一切多会话形态（Critical） | ✅ **已修**：每会话一个账本 `saves/usage-<sid>.jsonl` + 条目带 `session` 轴；新增 `GET /api/{sid}/cost`。`tests/test_web_accounting.py`（8 项，含"进程级单例不得回归"的钉名字守卫） |
 | E-2 | **存档加剧本身份戳**：此前只有 `state.to_dict()` + `save_version` | 小 | 换包/改包后读旧档 | ✅ **已修**：`save_version` 2→3，落 `pack: {id, digest}`；读档不一致抛 `PackMismatchError`（**拒绝并提示**，且在构造 `GameState` 之前，不留半应用状态）。`tests/test_pack_identity.py`（14 项） |
-| E-3 | 新增 `catalog.py` + `GET /api/catalog` + `_make_game(sid, pack_id)` + `POST /api/new{pack_id}` | 小 | 能力 A | ⬜ 未开始（会话级选包仍缺；`GAME_WORLDPACK` 仍是进程级） |
-| E-4 | 会话级"自由/剧本"开关（跳过节点进入） | 小 | 能力 A | ⬜ 未开始 |
+| E-3 | 新增 `catalog.py` + `GET /api/catalog` + `_make_game(sid, pack_id)` + `POST /api/new{pack_id}` | 小 | 能力 A | ✅ **已完成**：`game_agent/catalog.py`（坏包隔离 / 路径安全查表 / 签名缓存）；`GET /api/catalog`；`POST /api/new{pack_id}`（未知 id → 400）；`GET /api/{sid}/meta`。`tests/test_catalog.py`（15 项） |
+| E-4 | 会话级"自由/剧本"开关（跳过节点进入） | 小 | 能力 A | ✅ **已完成**：`StorylineEngine(mainline_enabled=)` + `POST /api/new{mode}`；语义刻意收窄为"不再进入新节点"（§2.2）。`tests/test_catalog.py`（4 项） |
 | E-5 | `import_story.py` → `game_agent/worldgen.py`（纯函数 + 薄 CLI） | 中 | 能力 B | ⬜ 未开始 |
 | E-6 | 后台任务表 + 进度 SSE（照抄 `_turn_stream` 的 queue+线程模式） | 中 | 能力 B | ⬜ 未开始 |
 | E-7 | 草稿区 `world-packs/_drafts/` + 发布闸门（过 `check_worldpack` 才能发布） | 小 | 能力 B/C | ⬜ 未开始 |
 | E-8 | 创作者 Agent：新 system prompt + 10 个工具 + `creator_model` 路由 + 修复循环 | 中 | 能力 C | ⬜ 未开始 |
-| E-9 | 会话列表 / 存档列表接口（现在 `SESSIONS` 是无淘汰的内存 dict） | 小 | 前端左栏 | 🟡 **部分**：`GET /api/{sid}/cost` 已加；会话/存档**列表**接口仍缺 |
+| E-9 | 会话列表 / 存档列表接口（`SESSIONS` 是无淘汰的内存 dict） | 小 | 前端左栏 | ✅ **已完成**：`GET /api/sessions`（pack/mode **由 game 推出**，不存第二份）+ `GET /api/saves`（只读顶层摘要 / 坏档隔离 / mtime 倒序）。`tests/test_catalog.py`（3 项） |
 
 > E-1 和 E-2 必须最先做：它们是 `plan-creator-player.md` 已认定的缺口（G1/G2），
 > **在多会话/多剧本之前修是 3 个小改动，之后修是数据考古。** 本批已完成。
@@ -480,6 +485,50 @@ Python 字符串里）拆成 `game_agent/webui/{index.html,app.css,app.js}` 三�
 **真机 HTTP 冒烟**（uvicorn 起服务）：`/` `/static/app.css` `/static/app.js` `/static/index.html`
 全部 200 且 content-type 正确，占位符已注入、页面正确引用外链脚本。
 
+### 6.2 批次 2 执行记录（2026-10）：能力 A 打通
+
+**交付**：E-3（目录层 + 会话选包）+ E-4（自由/剧本模式）+ E-9（会话/存档列表）+ 选卡屏。
+
+**`game_agent/catalog.py`**——把 `world-packs/` 从"一个进程一个包"变成"可选的卡"。
+三条纪律都是有来历的：
+- **坏包隔离**：一个改到一半的包只以 `error` 出现在卡片上，不让整个选卡屏白屏。
+- **`id` 不参与路径拼接**：`resolve_pack()` 的实现是"在已列出的目录项里查表"，
+  所以 `../`、绝对路径、盘符天然无效（不在任何目录项里）；另加白名单正则兜底。
+  与 `_safe_save_path` 同一条教训。
+- **缓存必须会失效**：一次全量列举 = 8 次 `load_worldpack`（含 717 行 `_cross_check`），
+  实测 **288 ms**；缓存后 **13.6 ms**（21×）。指纹是**逐文件 stat**（size + mtime_ns），
+  不是目录 mtime——因为**修改已存在的文件不改父目录 mtime**，用目录 mtime 会让
+  "作者改了 npcs/x.yaml"永远不失效。守卫 `test_cache_returns_fresh_content_after_edit`
+  正面钉住这条。缓存只省"列举"，真正加载仍在 `_make_game`，所以不可能玩到旧内容。
+
+**E-4 的语义刻意收窄**：自由模式 = **不再进入新节点**。已进入的节点状态、结局判定、
+禁用词过滤、日程与事件全部照旧——玩家要切换的是"要不要被主线牵着走"，
+不是"把已经发生的剧情擦掉"。抹掉进度会让"先自由探索、之后再跟主线"变成不可能。
+`choice_locked` 在自由模式恒为 `False`（即使存档从剧本模式带过来还挂着待决抉择，
+也不该把玩家锁在固定选项上）。
+
+**一处设计收敛**：`Session` 起初加了 `pack_id` / `mode` 两个字段，随后**删掉**——
+两者都能从 `game` 推出（`game.pack_meta["id"]` / `game.mainline_enabled`），
+存第二份只会多出一个能进入非法组合的维度。现在由 `session_pack_id()` / `session_mode()`
+派生，`test_session_derives_pack_and_mode_from_game` 用"只改 game、看列表与 meta 是否跟着变"
+把这条钉住。`usage` 则相反：必须存且**不给默认值**（默认值 = 漏传即静默共享，正是 G1 的形状）。
+
+**接口契约放在 HTTP 层**：`pack_id` 的校验刻意写在 `api_new`（`_require_pack`）而不是
+只埋在 `_make_game` 里——离线夹具替换 `_make_game` 是常规做法，接口契约不该跟着消失。
+`_resolve_pack` 内保留一次检查做纵深防御。
+
+**前端（仍是原生 JS，Stage B 未开始）**：选卡屏（卡片列出世界名/时代/角色数/节点数/结局数）、
+模式单选、存档下拉（按卡命名存档、`mtime` 倒序）；`alert()` 换成非阻塞提示条
+（成功 4 秒消失、错误常驻）；开局失败能退回选卡屏而不是留一个空游戏屏。
+
+**验证**：离线全量 **898 项全绿**（新增 `tests/test_catalog.py` 23 项）；
+8 个世界包 `check-worldpack` 全通过；`node --check app.js` 通过；
+**真机 HTTP 冒烟**：`/api/catalog` 返回 8 张卡、`default=ancient_jianghu`；
+未知 `pack_id` 与未知 `mode` 均 **400**；`/api/saves` 列出 52 个档（旧档 `pack` 为空是
+"只补不漏"的预期行为）；页面已挂选卡屏与 `startGame`。
+**编码核对**：`/api/catalog` 的字节是合法 UTF-8 且 `ancient_jianghu → 江湖旧梦` 断言通过
+（此前控制台看到的乱码是 PowerShell 的解码，不是接口问题）。
+
 ---
 
 ## 7. 交付顺序与工作量（人日，粗粒度）
@@ -487,18 +536,20 @@ Python 字符串里）拆成 `game_agent/webui/{index.html,app.css,app.js}` 三�
 | 阶段 | 内容 | 估算 | 状态 |
 | --- | --- | --- | --- |
 | 0 | E-1 / E-2（两个已知缺陷） | 2–3 | ✅ **已完成**（875 项全绿） |
-| 1 | **Stage A 前端拆分**（半天，无新工具链）+ E-3 / E-4 / E-9 | 3–4 | 🟡 **Stage A 已完成**；E-3 / E-4 / E-9 未开始 |
-| 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + Stage B 游戏主界面 | 6–10 | ⬜ 未开始 |
+| 1 | **Stage A 前端拆分**（半天，无新工具链）+ E-3 / E-4 / E-9 | 3–4 | ✅ **已完成**（898 项全绿） |
+| 2 | **能力 A 打通**：卡片库 + 会话选包 + 自由/剧本开关 + Stage B 游戏主界面 | 6–10 | 🟡 **引擎侧已完成、选卡屏已可用**；Stage B（Vite+Vue 三栏）未开始 |
 | 3 | **能力 B**：worldgen 服务化 + 后台任务进度 + 草稿/发布闸门 + 导入界面 | 6–9 | ⬜ 未开始 |
 | 4 | **能力 C**：创作者 Agent + 工具面 + 校验修复循环 + 编辑器工作台 | 6–9 | ⬜ 未开始 |
 | 5 | Stage C 构建部署 + 存档名/提示条等打磨 | 2–3 | ⬜ 未开始 |
 
-**合计约 25–38 人日**，其中前端约占一半。**已完成约 3–4 人日**（阶段 0 + Stage A）。
-如果你想更快看到效果：**把阶段 2 做完就已经是"选一张卡自由游玩 + 沿主线推进"的完整体验了**
-（因为能力 B 的生成管线本来就存在，先用 CLI 生成包喂给界面即可）。
+**合计约 25–38 人日**，其中前端约占一半。**已完成约 6–8 人日**（阶段 0 + 阶段 1 + 阶段 2 的引擎侧）。
+**"选一张卡自由游玩"现在端到端可用**（选卡 → 开局 → 对话/行动 → 存档 → 读档），
+只是界面仍是原生 JS 的单栏布局，没有三栏与状态栏分栏。
 
-> **下一步建议从这里接**：阶段 2 的 E-3（`catalog.py` + `GET /api/catalog` + 会话级选包）
-> 是"选一张卡"的最小闭环，且它依赖的两件事（记账隔离、存档身份戳）本批已经落地。
+> **下一步二选一**：
+> ① **能力 B（阶段 3）**——把 `import_story.py` 提成服务 + 后台进度，让"绑定小说/剧本/大纲"可用；
+> ② **Stage B（阶段 2 的前端部分）**——Vite + Vue 三栏重写，把已经选好的卡玩得更像样。
+> 选 ① 是补功能，选 ② 是补体验；两者互不阻塞，且都不需要动引擎的回合循环。
 
 ---
 

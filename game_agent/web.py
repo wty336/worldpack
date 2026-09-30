@@ -36,10 +36,11 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import catalog
 from .config import load_settings, resolve_context_window
 from .game import Game, GameError
 from .llm import LLMClient, LLMTurnError, build_tools
-from .save import PackMismatchError, load_game, load_history, save_game
+from .save import PackMismatchError, load_game, load_history, save_game, save_summary
 from .schedule import ScheduleError
 from .state import GameState
 from .storyline import FREE_INPUT_OPTION, StorylineError
@@ -54,14 +55,62 @@ app = FastAPI(title="game-agent web", docs_url=None, redoc_url=None)
 
 
 def _pack_path() -> str:
-    """当前 Web 服务使用的世界包路径（M3 换包即玩）。
+    """当前 Web 服务的**默认**世界包路径（M3 换包即玩）。
 
     默认 DEFAULT_PACK；CLI `web --pack` 通过环境变量 GAME_WORLDPACK 覆盖——
     uvicorn 以 "game_agent.web:app" 启动时无法传参，环境变量是免改代码的通道。
 
-    （会话级选包见 `docs/plan-tavern-shaped-product.md` §2.1 的 E-3，尚未实现。）
+    E-3 起它降级为**缺省值**：会话可以在 `POST /api/new` 里显式指定 `pack_id`
+    （见 `_resolve_pack`）。环境变量仍然有效，且允许指向 `world-packs/` 之外的
+    任意目录（CLI `--pack some/dir` 的既有用法）。
     """
     return os.environ.get("GAME_WORLDPACK", DEFAULT_PACK)
+
+
+def _pack_root() -> Path:
+    """世界包目录（目录层的扫描根）。"""
+    return Path(DEFAULT_PACK).parent
+
+
+def _require_pack(pack_id: str) -> catalog.PackEntry:
+    """校验客户端传来的 `pack_id`；不合法直接 400。
+
+    **刻意放在 HTTP 层**（`api_new` 里调），而不是只埋在 `_make_game` 内部：
+    请求参数的校验属于接口契约，测试替换掉 `_make_game`（离线夹具的常规做法）
+    不该让契约一起消失。`_resolve_pack` 里仍保留一次检查做纵深防御。
+    """
+    entry = catalog.resolve_pack(pack_id, _pack_root())
+    if entry is None:
+        raise HTTPException(400, f"未知的世界包: {pack_id!r}")
+    if not entry.playable:
+        raise HTTPException(400, f"世界包无法加载: {pack_id}——{entry.error}")
+    return entry
+
+
+def _resolve_pack(pack_id: str | None) -> tuple[Path, str]:
+    """决定这一局用哪个包 → (包目录, pack_id)。
+
+    优先级（E-3）：
+    1. 显式 `pack_id`——**只能经 `catalog.resolve_pack()` 查表得到**，绝不拼路径；
+       不认识的 id 直接 400，不做"猜一个相近的"这种兜底。
+    2. `GAME_WORLDPACK` 环境变量（CLI `--pack`）——按**路径**加载，可指向目录外。
+    3. 目录兜底：`ancient_jianghu` 优先，否则第一个可玩的包。
+
+    第 3 条刻意不硬编码 DEFAULT_PACK：目录是内容，不该有"某个包必须在库"的假设——
+    包被移走时应当退到"还有什么能玩"，而不是启动即 500。
+    """
+    if pack_id:
+        entry = _require_pack(pack_id)
+        return Path(entry.path), entry.id
+
+    env_path = os.environ.get("GAME_WORLDPACK", "").strip()
+    if env_path:
+        return Path(env_path), Path(env_path).name
+
+    fallback = catalog.default_pack_id(_pack_root())
+    if fallback is None:
+        raise HTTPException(500, f"{_pack_root()}/ 下没有任何可玩的世界包")
+    return _pack_root() / fallback, fallback
 
 
 def _usage_path(sid: str) -> str:
@@ -74,13 +123,47 @@ def _usage_path(sid: str) -> str:
     return f"saves/usage-{sid}.jsonl"
 
 
+MODE_STORY = "story"
+MODE_FREE = "free"
+
+
+def _validate_mode(mode: str) -> str:
+    """游玩模式白名单（E-4）。未知值直接 400——不静默当 story。
+
+    静默兜底会让前端把 "Free" 拼错时表现为"模式开关没反应"，
+    而这类"点了没效果"最难排查。
+    """
+    if mode not in (MODE_STORY, MODE_FREE):
+        raise HTTPException(400, f"未知的游玩模式: {mode!r}（可选 {MODE_STORY} / {MODE_FREE}）")
+    return mode
+
+
 @dataclass
 class Session:
-    """B-4（M4）：一个游戏会话 = game + 串行化锁。"""
+    """B-4（M4）：一个游戏会话 = game + 串行化锁 + 本会话账本。
+
+    **刻意只存这三样**：`pack_id` 与 `mode` 都能从 `game` 推出
+    （`game.pack_meta["id"]` / `game.mainline_enabled`），再存一份只会多出一个
+    能进入非法组合的维度——改了 game 忘了改 Session，列表与真值就分叉。
+    这与 `state.py` 把 `Appointment.is_overdue` **算出来而不落库**是同一条纪律。
+
+    而 `usage` 恰恰相反：它必须存，且**不给默认值**——默认值意味着"漏传就静默共享
+    一个 tracker"，那正是 G1 那个数据错误的形状。
+    """
 
     game: Game
     lock: threading.Lock
     usage: UsageTracker  # G1：本会话专属账本（此前是进程级共享单例）
+
+
+def session_pack_id(session: Session) -> str:
+    """本局绑定的世界包 id——唯一真源是 `game.pack_meta`（与存档身份戳同源）。"""
+    return session.game.pack_meta["id"]
+
+
+def session_mode(session: Session) -> str:
+    """本局游玩模式——由 `mainline_enabled` 推出，不另存一份。"""
+    return MODE_STORY if session.game.mainline_enabled else MODE_FREE
 
 
 SESSIONS: dict[str, Session] = {}
@@ -91,12 +174,18 @@ SESSIONS: dict[str, Session] = {}
 # ---------------------------------------------------------------------------
 
 
-def _make_game(sid: str) -> tuple[Game, UsageTracker]:
-    """建一局。返回 (game, tracker)——tracker 由调用方存进 Session（G1）。"""
+def _make_game(
+    sid: str, pack_id: str | None = None, *, mainline_enabled: bool = True
+) -> tuple[Game, UsageTracker]:
+    """建一局。返回 (game, tracker)——tracker 由调用方存进 Session（G1）。
+
+    选定的是哪个包不在这里回传：答案就在 `game.pack_meta["id"]`（唯一真源）。
+    """
     settings = load_settings()
     if not settings.has_api_key:
         raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
-    pack = load_worldpack(_pack_path())
+    pack_path, _ = _resolve_pack(pack_id)
+    pack = load_worldpack(pack_path)
     state = GameState.from_pack(pack)
     tracker = UsageTracker(_usage_path(sid), session=sid)  # G1：本会话专属账本
     llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
@@ -108,6 +197,7 @@ def _make_game(sid: str) -> tuple[Game, UsageTracker]:
         plan_node=True,  # agent-first 第 4 件：节点目标拆子步骤
         factcheck_every=1,  # 设计加固 B1：缺席证据检查每轮常开（确定性层）
         context_window=resolve_context_window(settings),  # J 系列：显式配置 > 端点自报
+        mainline_enabled=mainline_enabled,  # E-4：自由游玩不进入主线节点
     )
     return game, tracker
 
@@ -157,6 +247,13 @@ class SaveRequest(BaseModel):
     path: str = "web.json"  # A-1：仅接受 saves/ 内的裸文件名
 
 
+class NewRequest(BaseModel):
+    """E-3/E-4：开局参数。两个字段都有默认值 → 请求体可省略（旧前端/旧测试不受影响）。"""
+
+    pack_id: str | None = None  # None = 用 GAME_WORLDPACK / 目录兜底
+    mode: str = MODE_STORY  # story = 沿主线推进；free = 自由游玩
+
+
 def _safe_save_path(raw: str) -> Path:
     """A-1（审查修复 C1）：存档路径约束——**严格拒绝**一切非裸文件名。
 
@@ -177,16 +274,103 @@ def _safe_save_path(raw: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
+@app.get("/api/catalog")
+def api_catalog() -> dict:
+    """E-3：可选的"卡"列表（剧本市场的**数据面**）。
+
+    坏包也返回（`playable=false` + `error` 原文）——让玩家看见"这张卡坏了"，
+    比整块界面白屏或静默少一张卡都好排查。
+    """
+    entries = catalog.list_packs(_pack_root())
+    return {
+        "ok": True,
+        "root": str(_pack_root()),
+        "default": catalog.default_pack_id(_pack_root()),
+        "packs": [e.to_dict() for e in entries],
+    }
+
+
+@app.get("/api/sessions")
+def api_sessions() -> dict:
+    """E-9：进程内活跃会话列表（前端左栏）。
+
+    只报会话级事实（哪张卡、什么模式、跑到第几回合），不含剧情内容——
+    列表接口不该把长局历史拖着走。
+    """
+    return {
+        "ok": True,
+        "sessions": [
+            {
+                "sid": sid,
+                "pack_id": session_pack_id(s),
+                "name": s.game.pack.world.name,
+                "mode": session_mode(s),
+                "turn": s.game.state.turn_count,
+                "day": s.game.state.day,
+                "ending": bool(s.game.ending),
+            }
+            for sid, s in SESSIONS.items()
+        ],
+    }
+
+
+@app.get("/api/saves")
+def api_saves() -> dict:
+    """E-9：存档列表（只读顶层摘要，反序列化留给真正读档时）。
+
+    按 mtime 倒序 —— 玩家找的是"最近那局"，不是按文件名字典序。
+    """
+    if not SAVE_ROOT.is_dir():
+        return {"ok": True, "saves": []}
+    out: list[dict] = []
+    for p in SAVE_ROOT.glob("*.json"):
+        try:
+            out.append(save_summary(p))
+        except (ValueError, OSError) as e:
+            # 单个坏档不拖垮列表（与 catalog 同一姿态）
+            out.append({"path": p.name, "error": f"{type(e).__name__}: {e}"})
+    out.sort(key=lambda r: r.get("mtime", 0), reverse=True)
+    return {"ok": True, "saves": out}
+
+
 @app.post("/api/new")
-def api_new() -> dict:
+def api_new(req: NewRequest | None = None) -> dict:
+    """开局。`pack_id` 选定"哪张卡"，`mode` 选定"跟主线走 / 自由探索"。"""
+    req = req or NewRequest()
+    mode = _validate_mode(req.mode)
+    if req.pack_id:  # 接口层先校验契约（见 `_require_pack` 的说明）
+        _require_pack(req.pack_id)
     sid = uuid.uuid4().hex[:12]
-    game, tracker = _make_game(sid)  # B-4：autosave 按 sid 命名，需先生成 sid
+    # B-4：autosave 按 sid 命名，需先生成 sid
+    game, tracker = _make_game(sid, req.pack_id, mainline_enabled=(mode == MODE_STORY))
     session = Session(game=game, lock=threading.Lock(), usage=tracker)
     with session.lock:
         view = game.start()
         SESSIONS[sid] = session
     # name：世界包名随会话返回，前端据此渲染标题（F1 修复：引擎页面不含世界内容文案）
-    return {"sid": sid, "name": game.pack.world.name, "view": _view(game, view)}
+    return {
+        "sid": sid,
+        "name": game.pack.world.name,
+        "pack_id": session_pack_id(session),  # E-3：前端据此显示"在玩哪张卡"
+        "mode": mode,  # E-4：前端据此显示模式徽标
+        "view": _view(game, view),
+    }
+
+
+@app.get("/api/{sid}/meta")
+def api_meta(sid: str) -> dict:
+    """本会话的绑定信息（前端刷新后重新对齐标题/卡/模式）。"""
+    s = _ensure_session(sid)
+    return {
+        "ok": True,
+        "sid": sid,
+        "pack_id": session_pack_id(s),
+        "name": s.game.pack.world.name,
+        "mode": session_mode(s),
+        "mainline": s.game.state.current_node,
+        "turn": s.game.state.turn_count,
+        "day": s.game.state.day,
+    }
 
 
 @app.get("/api/{sid}/status")

@@ -1,13 +1,131 @@
 /* Web 前端脚本（Stage A：从 web.py 内嵌字符串拆出，行为不变）。
    自由输入文案由服务端注入到 window.__GAME_FREE_INPUT__（单一真源仍是
-   引擎常量 storyline.FREE_INPUT_OPTION），避免前后端各写一份而漂移。 */
+   引擎常量 storyline.FREE_INPUT_OPTION），避免前后端各写一份而漂移。
+
+   批次 2（E-3/E-4/E-9）新增：选卡屏（哪张卡 + 什么模式）、模式徽标、
+   存档下拉与按卡命名的存档名。 */
 
 let sid = null;
+let packId = null;      // 本局绑定的世界包 id（E-3）
+let pickedPack = null;  // 选卡屏里当前高亮的那张卡
 const FREE_INPUT = window.__GAME_FREE_INPUT__;  // 由 index.html 注入（引擎常量）
 const $ = (id) => document.getElementById(id);
 const story = $("story"), promptEl = $("prompt"), choicesEl = $("choices"), statusEl = $("status"), genEl = $("gen");
 let genTimer = null;
 let curEntry = null;  // 追加式日志：每回合一个分段，故事连续可回看（玩家反馈：跨天不该清空剧情）
+
+// 非阻塞提示（替换 alert()）：写进 #notice，#prompt 留给剧情文本。
+// 玩家实测反馈里"不知道是卡了还是模型在思考"与"点了没反应"是同一类问题——
+// 阻塞弹窗会打断阅读，而静默失败则完全看不见。
+let noticeTimer = null;
+function notice(msg, isError) {
+  const el = $("notice");
+  el.textContent = msg || "";
+  el.className = isError ? "err" : "";
+  el.style.display = msg ? "block" : "none";
+  if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
+  if (msg && !isError) noticeTimer = setTimeout(() => { el.textContent = ""; el.style.display = "none"; }, 4000);
+}
+
+// ---------------------------------------------------------------------------
+// 选卡屏（E-3 / E-4）
+// ---------------------------------------------------------------------------
+function currentMode() {
+  const r = document.querySelector('input[name="mode"]:checked');
+  return r ? r.value : "story";
+}
+function packLabel(p) {
+  const bits = [];
+  if (p.npcs) bits.push(p.npcs + " 名角色");
+  if (p.nodes) bits.push(p.nodes + " 个主线节点");
+  bits.push(p.endings + " 个结局");
+  return bits.join(" · ");
+}
+function renderPacks(packs) {
+  const box = $("packs");
+  box.innerHTML = "";
+  if (!packs.length) {
+    $("picker-hint").textContent = "world-packs/ 下没有找到任何世界包。";
+    return;
+  }
+  packs.forEach((p) => {
+    const b = document.createElement("button");
+    b.className = "pack" + (p.playable ? "" : " broken");
+    b.disabled = !p.playable;
+    const name = document.createElement("span");
+    name.className = "pname";
+    name.textContent = p.name || p.id;
+    const era = document.createElement("span");
+    era.className = "pera";
+    era.textContent = p.playable ? (p.era || "") : ("无法加载：" + p.error);
+    const meta = document.createElement("span");
+    meta.className = "pmeta";
+    meta.textContent = p.playable ? packLabel(p) : p.id;
+    b.append(name, era, meta);
+    if (p.playable) {
+      b.onclick = () => {
+        pickedPack = p;
+        box.querySelectorAll(".pack").forEach((x) => x.classList.remove("chosen"));
+        b.classList.add("chosen");
+        $("startBtn").disabled = false;
+        $("startBtn").textContent = "开始《" + (p.name || p.id) + "》";
+      };
+    }
+    box.appendChild(b);
+  });
+}
+function renderSaves(saves) {
+  const sel = $("saveSel");
+  sel.innerHTML = "";
+  const usable = (saves || []).filter((s) => !s.error);
+  if (!usable.length) {
+    const o = document.createElement("option");
+    o.value = ""; o.textContent = "（还没有存档）";
+    sel.appendChild(o);
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  usable.forEach((s) => {
+    const o = document.createElement("option");
+    o.value = s.path;
+    const when = new Date((s.mtime || 0) * 1000).toLocaleString();
+    const pid = s.pack ? s.pack.id : "（旧档无身份戳）";
+    o.textContent = `${s.path} — ${pid} · 第 ${s.day ?? "?"} 天 · ${s.turn_count ?? "?"} 回合 · ${when}`;
+    sel.appendChild(o);
+  });
+}
+
+async function boot() {
+  try {
+    const [cat, sv] = await Promise.all([
+      fetch("/api/catalog").then((r) => r.json()),
+      fetch("/api/saves").then((r) => r.json()),
+    ]);
+    const packs = cat.packs || [];
+    const playable = packs.filter((p) => p.playable).length;
+    $("picker-hint").textContent =
+      `共 ${packs.length} 张卡（可玩 ${playable}）。选一张开始：`;
+    renderPacks(packs);
+    renderSaves(sv.saves);
+  } catch (e) {
+    $("picker-hint").textContent = "读取世界包目录失败：" + e;
+  }
+}
+
+function newGame() {
+  sid = null; packId = null; pickedPack = null;
+  $("game").hidden = true;
+  $("picker").hidden = false;
+  $("modebadge").textContent = "";
+  $("startBtn").disabled = true;
+  $("startBtn").textContent = "开始这一局";
+  document.title = "文字养成游戏 · Web";
+  notice("");
+  boot();
+}
+
+// ---------------------------------------------------------------------------
 
 function beginEntry() {
   curEntry = document.createElement("div");
@@ -52,19 +170,37 @@ function endGen() {
   setBusy(false);
 }
 
-async function start() {
+async function startGame() {
+  if (!pickedPack) return;
+  $("picker").hidden = true;
+  $("game").hidden = false;
   startGen("正在开局");
   try {
-    const r = await fetch("/api/new", { method: "POST" });
+    const r = await fetch("/api/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pack_id: pickedPack.id, mode: currentMode() }),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.detail || ("HTTP " + r.status));
+    }
     const d = await r.json();
     sid = d.sid;
+    packId = d.pack_id;
     const name = d.name || "文字养成游戏";
     document.title = name + " · Web";
     $("game-title").textContent = name;
+    $("modebadge").textContent = d.mode === "free" ? "（自由探索）" : "（跟着主线）";
     story.innerHTML = "";
     beginEntry();
     render(d.view);
     await refreshStatus();
+  } catch (e) {
+    // 开局失败要能退回选卡屏，而不是留一个空的游戏屏
+    $("game").hidden = true;
+    $("picker").hidden = false;
+    notice("开局失败：" + e.message, true);
   } finally {
     endGen();
   }
@@ -195,6 +331,71 @@ async function refreshStatus() {
     statusEl.appendChild(hint);
   }
 }
-async function doSave() { const r = await fetch("/api/" + sid + "/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); alert((await r.json()).ok ? "已存档" : "失败"); }
-async function doLoad() { const r = await fetch("/api/" + sid + "/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "web.json" }) }); const d = await r.json(); if (d.ok) { story.innerHTML = ""; beginEntry(); curEntry.textContent = "（已读档）"; promptEl.textContent = ""; choicesEl.innerHTML = ""; statusEl.textContent = d.status; } else alert("读档失败"); }
-start();
+
+// 存档名按"哪张卡 + 第几天 + 多少回合"自动生成（E-9）：
+// 此前硬编码 web.json，多局会互相覆盖，玩家也无从分辨哪个档是哪局。
+function autoSaveName() {
+  const meta = $("modebadge").textContent || "";
+  return `${packId || "pack"}${meta.indexOf("自由") >= 0 ? "-free" : ""}.json`;
+}
+async function doSave() {
+  const name = autoSaveName();
+  try {
+    const r = await fetch("/api/" + sid + "/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: name }),
+    });
+    const d = await r.json();
+    notice(d.ok ? `已存档：${d.path}` : "存档失败", !d.ok);
+  } catch (e) {
+    notice("存档失败：" + e, true);
+  }
+}
+async function doLoad() {
+  const path = $("saveSel").value;
+  if (!path) { notice("还没有可读的存档", true); return; }
+  try {
+    // 先开局（读档要有一个会话承载状态），再把这个档读进来。
+    if (!sid) {
+      if (!pickedPack) { notice("请先选一张卡再读档", true); return; }
+      const r = await fetch("/api/new", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack_id: pickedPack.id, mode: currentMode() }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.detail || ("HTTP " + r.status));
+      }
+      const d = await r.json();
+      sid = d.sid; packId = d.pack_id;
+      $("picker").hidden = true;
+      $("game").hidden = false;
+      $("game-title").textContent = d.name;
+      $("modebadge").textContent = d.mode === "free" ? "（自由探索）" : "（跟着主线）";
+      story.innerHTML = "";
+      beginEntry();
+    }
+    const r = await fetch("/api/" + sid + "/load", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      // 服务端的拒绝理由是可行动的（例如"存档与当前剧本不是同一份内容"），原样呈现
+      notice(d.detail || "读档失败", true);
+      return;
+    }
+    story.innerHTML = "";
+    beginEntry();
+    curEntry.textContent = "（已读档）";
+    promptEl.textContent = "";
+    choicesEl.innerHTML = "";
+    statusEl.textContent = d.status;
+    notice("已读档：" + d.path);
+    await refreshStatus();
+  } catch (e) {
+    notice("读档失败：" + e.message, true);
+  }
+}
+
+boot();

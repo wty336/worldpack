@@ -272,11 +272,11 @@ C′ 能省下大量前端工作量，且不碰引擎——**这对"快速拿到
 
 | # | 差距 | 现状证据 | dsh-tavern 的对应实现 | 优先级 |
 | --- | --- | --- | --- | --- |
-| G-1 ⭐ | **前端是原型级** —— 🟡 **Stage A 已完成（2026-10）** | 原为 `web.py:344` 的 248 行内联字符串；现已拆成 `game_agent/webui/{index.html,app.css,app.js}` 真实文件 + `StaticFiles` 托管（守卫 `tests/test_web_frontend.py` 4 项，并钉住不得回归）。**三栏布局与组件化（Stage B/C）仍未开始** | `tavern-plugin/src/client/` 72 文件 15,379 行；`play-controls.js` 95KB、`sidebar.js` 81KB、`card-library.js` 38KB；宿主另有 60+ `ui-*` 插件 | **P0** |
+| G-1 ⭐ | **前端是原型级** —— 🟡 **Stage A + 选卡屏已完成（2026-10）** | 原为 `web.py:344` 的 248 行内联字符串；现拆成 `game_agent/webui/{index.html,app.css,app.js}` 真实文件 + `StaticFiles` 托管，并新增选卡屏 / 模式单选 / 存档下拉 / 非阻塞提示条（守卫 `tests/test_web_frontend.py`，并钉住不得回归）。**三栏布局与组件化（Stage B/C）仍未开始** | `tavern-plugin/src/client/` 72 文件 15,379 行；`play-controls.js` 95KB、`sidebar.js` 81KB、`card-library.js` 38KB；宿主另有 60+ `ui-*` 插件 | **P0** |
 | G-2 ⭐ | **玩家面没有存档/回退/重生成/分支** | `game.py:642 _txn_rollback` 只是**轮内事务**；`runlog.py` 有回合级全量 checkpoint，但写在 `runs/`（`.gitignore` 内）、定位是离线 replay | Story Timeline：revision / branch / checkpoint；ADR 0004→**0006**（前台先提交，后台派生的结算失败不阻塞、不撤销正文，过期结果按 branch+revision 丢弃） | **P0** |
 | G-3 | **一轮里什么都干**（正文 + 状态 + 候选 + Judge 串行） | `game.py` 单回合内串行完成 | "一主多子"：前台主 Agent 只写正文；**共享一个后台 Agent** 做候选生成与状态结算（ADR 0002），前缀各自稳定 | **P1** |
-| G-4 ⭐ | **无法消费酒馆生态内容** | 无 ST 导入路径（`import_story.py` 无 `--format`）；A 系列已实现，**E 系列未实现**；MVU 全仓 0 命中。`.st-inspect/` 是**未 tracking、未 gitignore 的嵌入式 git 仓库**（上游 SillyTavern 1.19.0，自带 `.git`），仅作只读调研 | PNG/JSON 人物卡、世界书、预设、正则、MVU、Helper 脚本全兼容 | **P1** |
-| G-5 | **单进程单包**，无目录层 | `web.py` 进程级 `GAME_WORLDPACK`（换包要重启）；`plan-creator-player.md` 已列为缺口；`catalog.py` 未写 | 人物卡库 + 剧本库 + 会话级绑定 | **P1** |
+| G-4 ⭐ | **无法消费酒馆生态内容** | 无 ST 导入路径（`import_story.py` 无 `--format`）；A 系列已实现，**E 系列未实现**；MVU 全仓 0 命中。`.st-inspect/` 已按 2026-10 决定加入 `.gitignore`（上游 SillyTavern 1.19.0，仅作只读调研） | PNG/JSON 人物卡、世界书、预设、正则、MVU、Helper 脚本全兼容 | **P1** |
+| G-5 | **单进程单包**，无目录层 —— ✅ **已修（2026-10）** | 原为进程级 `GAME_WORLDPACK`（换包要重启）；现 `game_agent/catalog.py` 提供目录层，`POST /api/new{pack_id, mode}` 做**会话级绑定**，`GET /api/catalog` 与 `GET /api/{sid}/meta` 支撑选卡屏；环境变量降级为默认值。守卫 `tests/test_catalog.py`（15 项） | 人物卡库 + 剧本库 + 会话级绑定 | ✅ **已完成** |
 | G-6 | **记账串号**（数据错误）—— ✅ **已修（2026-10）** | 原为 `_WEB_TRACKER` 全进程单例共写 `usage-web.jsonl`；现**每会话一个账本** `saves/usage-<sid>.jsonl` + 条目带 `session` 轴 + `GET /api/{sid}/cost`。守卫 `tests/test_web_accounting.py`（8 项，含"进程级单例不得回归"钉名字守卫） | 按会话隔离 | ✅ **已完成** |
 | G-7 | **存档无剧本身份戳** —— ✅ **已修（2026-10）** | `save_game()` 原只写 `state.to_dict()`；现 `save_version` 2→3 并落 `pack: {id, digest}`，读档不一致抛 `PackMismatchError`（拒绝并提示，且在构造 `GameState` 之前）。守卫 `tests/test_pack_identity.py`（14 项） | 存档带版本 | ✅ **已完成** |
 | G-8 | **无法分发** | `pyproject.toml` 无 `console_scripts`；无发布；无安装器 | EXE / APK / `install.ps1` / `dsh-tavern update` / 文档站 | **P2** |

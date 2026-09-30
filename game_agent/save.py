@@ -77,15 +77,42 @@ def _read(path: str | Path) -> dict:
     return data
 
 
-def saved_pack_meta(path: str | Path) -> dict[str, str] | None:
-    """读存档里的剧本身份戳；旧存档（G2 之前，无 `pack` 字段）返回 None。"""
-    meta = _read(path).get("pack")
+def _pack_meta_from(data: dict) -> dict[str, str] | None:
+    """从已解析的存档数据里取身份戳；缺失/形状不对返回 None（旧存档）。"""
+    meta = data.get("pack")
     if not isinstance(meta, dict):
         return None
     pid, digest = meta.get("id"), meta.get("digest")
     if not isinstance(pid, str) or not isinstance(digest, str):
         return None
     return {"id": pid, "digest": digest}
+
+
+def saved_pack_meta(path: str | Path) -> dict[str, str] | None:
+    """读存档里的剧本身份戳；旧存档（G2 之前，无 `pack` 字段）返回 None。"""
+    return _pack_meta_from(_read(path))
+
+
+def save_summary(path: str | Path) -> dict:
+    """存档摘要（E-9）：**只读顶层字段，不构造 GameState**。
+
+    存档列表要给玩家看的是"哪一局、哪个剧本、多少回合、第几天"，
+    不是把整局状态反序列化一遍。`history` 只报条数，不回传内容。
+    """
+    p = Path(path)
+    data = _read(p)
+    history = data.get("history")
+    return {
+        "path": p.name,  # 只回裸文件名：Web 侧的存档路径本来就是裸名（`_safe_save_path`）
+        "save_version": data.get("save_version"),
+        "pack": _pack_meta_from(data),
+        "turn_count": data.get("turn_count"),
+        "day": data.get("day"),
+        "scene": data.get("scene"),
+        "history": len(history) if isinstance(history, list) else 0,
+        "size": p.stat().st_size,
+        "mtime": int(p.stat().st_mtime),
+    }
 
 
 def check_pack_identity(path: str | Path, pack_meta: dict[str, str] | None) -> None:

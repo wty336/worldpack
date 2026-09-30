@@ -72,11 +72,21 @@ class StorylineEngine:
         stats: StatsSystem,
         stuck_threshold: int = 30,
         forced_threshold: int = 60,
+        mainline_enabled: bool = True,
     ):
         self.pack = pack
         self.stats = stats
         self.stuck_threshold = stuck_threshold
         self.forced_threshold = forced_threshold
+        # E-4（docs/plan-tavern-shaped-product.md §2.2）：**自由游玩 vs 剧本模式**。
+        #
+        # 语义刻意收得很窄：为假时只是"**不再进入新节点**"。已进入的节点状态、
+        # 结局判定、禁用词过滤、日程与事件全部照旧——因为玩家想切换的是
+        # "要不要被主线牵着走"，不是"把已经发生的剧情擦掉"。
+        #
+        # 为什么不做成"清空节点状态"：同一个包两种玩法是有价值的，而在自由模式里
+        # 抹掉进度会让"我先自由探索、之后再跟主线"变成不可能。
+        self.mainline_enabled = mainline_enabled
 
     # ------------------------------------------------------------------
     # 查询
@@ -103,7 +113,13 @@ class StorylineEngine:
         return None
 
     def choice_locked(self, state: GameState) -> bool:
-        """True = 关键选择待决，引擎必须锁定输入（只允许固定选项）。"""
+        """True = 关键选择待决，引擎必须锁定输入（只允许固定选项）。
+
+        自由模式下恒为 False：即使存档是从剧本模式带过来的、`pending_choice` 还挂着，
+        也不该在自由游玩里把玩家锁在固定选项上（那正是玩家切过来的原因）。
+        """
+        if not self.mainline_enabled:
+            return False
         return self.pending_choice(state) is not None
 
     # ------------------------------------------------------------------
@@ -126,6 +142,8 @@ class StorylineEngine:
         return node, msgs
 
     def _try_enter_node(self, state: GameState) -> NodeSpec | None:
+        if not self.mainline_enabled:
+            return None  # E-4：自由游玩——不触发任何主线节点
         if state.current_node is not None:
             return None  # 上一节点未完成，不进入新节点（剧情串行推进）
         for node in self.pack.mainline.nodes:

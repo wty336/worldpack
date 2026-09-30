@@ -26,3 +26,27 @@ button:hover { background: #efe3c8; }
 #status { margin-top: 14px; font-size: .85em; color: #777; white-space: pre-wrap;
           border-top: 1px dashed #d9c9a8; padding-top: 10px; }
 .t { color: #999; font-size: .8em; }
+#modebadge { font-size: .8em; color: #8a6d3b; margin-left: 8px; }
+
+/* 非阻塞提示条（替换 alert）：成功 4 秒后自动消失，错误常驻直到下次操作 */
+#notice { display: none; margin: 8px 0; padding: 8px 12px; border-radius: 6px;
+          background: #f2f7ef; border: 1px solid #cfe0c4; color: #4a6b3a; font-size: .88em; }
+#notice.err { background: #fdf1f1; border-color: #e0b4b4; color: #a94442; }
+
+/* E-3：选卡屏 */
+#picker { margin: 12px 0; }
+#packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+         gap: 10px; margin: 12px 0; }
+.pack { text-align: left; background: #fff; border: 1px solid #e6dcc8;
+        border-radius: 8px; padding: 12px 14px; cursor: pointer; font: inherit;
+        color: inherit; display: block; width: 100%; }
+.pack:hover { background: #fdfaf3; border-color: #d9c9a8; }
+.pack.chosen { background: #efe3c8; border-color: #c9b183; }
+.pack .pname { font-size: 1.02em; font-weight: 600; display: block; margin-bottom: 2px; }
+.pack .pera { color: #8a6d3b; font-size: .85em; display: block; margin-bottom: 6px; }
+.pack .pmeta { color: #999; font-size: .78em; }
+.pack.broken { background: #fdf1f1; border-color: #e0b4b4; cursor: not-allowed; }
+.pack.broken .pera { color: #a94442; }
+#moderow { margin: 10px 0; font-size: .88em; color: #666; }
+#moderow label { margin-right: 14px; white-space: nowrap; }
+#saverow { margin: 10px 0; }

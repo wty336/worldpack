@@ -139,6 +139,7 @@ class Game:
         plan_node: bool = False,  # agent-first 第 4 件：节点目标拆子步骤（plan-and-execute）
         factcheck_every: int = 0,  # 设计加固 B1：>0 时每 N 回合独立跑缺席证据检查（0=关闭）
         context_window: int = 0,  # J 系列：模型上下文窗（token，0=未声明→溢出预检关闭）
+        mainline_enabled: bool = True,  # E-4：False = 自由游玩（不进入主线节点）
     ):
         self.pack = pack
         # G2：剧本身份戳在构造时算一次（包不可变）——存档与读档校验共用同一份，
@@ -148,7 +149,9 @@ class Game:
         self.llm = llm
         self.rng = rng if rng is not None else random.Random()  # 批次 C：自定义工具结算共用
         self.stats = StatsSystem(pack.schedule)
-        self.story = StorylineEngine(pack, self.stats)
+        # E-4：自由游玩 = 不进入主线节点（已进入的节点状态不动，结局/日程/事件照旧）
+        self.mainline_enabled = mainline_enabled
+        self.story = StorylineEngine(pack, self.stats, mainline_enabled=mainline_enabled)
         self.events = EventSystem(pack, self.stats, rng)
         self.schedule = ScheduleSystem(pack, self.stats, rng)  # D 系列：检定/收益曲线共用 rng
         self.memory = MemorySystem(pack, llm)  # M2a 记忆显式化 + A4 语义去重（P1）

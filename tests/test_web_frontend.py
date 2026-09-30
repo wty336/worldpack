@@ -35,7 +35,12 @@ def _client(monkeypatch) -> TestClient:
     pack = load_worldpack(PACK_PATH)
     state = GameState.from_pack(pack)
 
-    def fake_make_game(sid: str):
+    def fake_make_game(sid: str, pack_id=None, *, mainline_enabled=True):
+        """签名必须与 `web._make_game` 一致（E-3/E-4 起多了选包与模式两个入参）。
+
+        `pack_id` / `mainline_enabled` 在这里**刻意不生效**：本文件的守卫关心的是
+        视图契约与前端结构分流，不是选包/模式语义（那由 `test_catalog.py` 守）。
+        """
         llm = LLMClient(
             FakeClient([
                 resp(msg(tool_calls=[_submit(
