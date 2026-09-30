@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import random
 import re
 import threading
 import uuid
@@ -36,7 +37,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import catalog, creator, jobs
+from . import catalog, creator, jobs, timeline
 from .config import load_settings, resolve_context_window
 from .game import Game, GameError
 from .jobs import GenerationJob
@@ -136,8 +137,13 @@ def _usage_path(sid: str) -> str:
     为什么用独立文件而不是"一个文件加 session 字段"：文件级隔离让"这一局花了多少钱"
     成为一次读文件即可回答的问题，也不存在并发追加的串写面。条目里同时带 `session`
     字段（见 `UsageTracker`），跨会话聚合读仍然可行。
+
+    ⚠️ 路径必须**从 `SAVE_ROOT` 推**，不能写死 `"saves/..."` 的相对字面量
+    （N7 顺手修的一处潜伏 bug）：写死之后，把 `SAVE_ROOT` 改到别处（测试要隔离、
+    将来要支持自定义存档目录）时，账本/自动存档/时间线会**各走各的**——
+    一部分跟着 `SAVE_ROOT`、一部分跟着当前工作目录，而且不报错。
     """
-    return f"saves/usage-{sid}.jsonl"
+    return str(SAVE_ROOT / f"usage-{sid}.jsonl")
 
 
 MODE_STORY = "story"
@@ -205,6 +211,27 @@ _TERMINAL_STAGES = {"done", "error", "cancelled"}
 # ---------------------------------------------------------------------------
 
 
+def _game_options() -> dict:
+    """生产用的 `Game` 构造选项（**建局与回退重建必须共用这一份**）。
+
+    N7 把回退做进来时，这里差点成了一个真 bug：`runlog.rebuild_game` 用的是
+    `Game(pack, state, llm, rng=…)`——**全是默认值**，于是回退一次会把
+    `mainline_enabled`（自由模式）、`context_window`（溢出预检）、
+    `critique_on_critical`、`factcheck_every` 全都悄悄退回默认。
+    玩家看到的是"回退之后这一局的手感变了"，而没有任何报错。
+
+    所以把选项抽成一份，两边都用它。**新增 Game 构造参数时只改这里一处。**
+    """
+    settings = load_settings()
+    return dict(
+        extract_every=2, compress_threshold=30000, judge_every=5, reflect_every=10,
+        critique_on_critical=True,  # agent-first 第 2 件：关键节点内轮自校正
+        plan_node=True,  # agent-first 第 4 件：节点目标拆子步骤
+        factcheck_every=1,  # 设计加固 B1：缺席证据检查每轮常开（确定性层）
+        context_window=resolve_context_window(settings),  # J 系列：显式配置 > 端点自报
+    )
+
+
 def _make_game(
     sid: str,
     pack_id: str | None = None,
@@ -226,15 +253,41 @@ def _make_game(
     llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm,
-        autosave_path=f"saves/autosave-{sid}.json",  # B-4：按会话隔离，避免互覆
-        extract_every=2, compress_threshold=30000, judge_every=5, reflect_every=10,
-        critique_on_critical=True,  # agent-first 第 2 件：关键节点内轮自校正
-        plan_node=True,  # agent-first 第 4 件：节点目标拆子步骤
-        factcheck_every=1,  # 设计加固 B1：缺席证据检查每轮常开（确定性层）
-        context_window=resolve_context_window(settings),  # J 系列：显式配置 > 端点自报
+        autosave_path=SAVE_ROOT / f"autosave-{sid}.json",  # B-4：按会话隔离，避免互覆
         mainline_enabled=mainline_enabled,  # E-4：自由游玩不进入主线节点
+        **_game_options(),
     )
     return game, tracker
+
+
+def _rebuild_from_checkpoint(sid: str, session: "Session", payload: dict) -> Game:
+    """从时间线快照重建这一局的 `Game`（N7）。
+
+    **在原位上重建**：state / history / rng 三者全部还原，且**沿用旧局的构造选项**
+    （见 `_game_options` 的注释——这是最容易悄悄退化的地方）。
+
+    复用 `runlog.rebuild_game` 的 rng 还原口径（JSON 回环会把元组读成列表，而
+    `Random.setstate` 要求元组）——**同一份序列化约定，不另写一套**。
+
+    `sid` 由端点传入而不是存进 `Session`：Session 刻意只有 game/lock/usage 三样
+    （见它的 docstring），sid 是**请求上下文**而不是会话状态。
+    """
+    old = session.game
+    state = GameState.from_dict(payload["state"])
+    rng = random.Random()
+    rng_state = payload.get("rng_state")
+    if rng_state is not None:
+        version, keys, gauss = rng_state
+        rng.setstate((version, tuple(keys), tuple(gauss) if gauss is not None else None))
+    game = Game(
+        old.pack, state, old.llm,
+        rng=rng,
+        autosave_path=SAVE_ROOT / f"autosave-{sid}.json",
+        mainline_enabled=old.mainline_enabled,  # 自由/剧本模式必须跟着走
+        **_game_options(),
+    )
+    game.history = list(payload.get("history") or [])
+    return game
 
 
 def _ensure_session(sid: str) -> Session:
@@ -479,7 +532,7 @@ def _creator_stream(name: str, text: str):
                 # N6 前置：**创作者调用带 pack 归因轴**（`usage-creator-<name>.jsonl`
                 # + 条目里的 pack 字段），于是"改这一版花了多少钱"从第一天就答得上。
                 tracker = UsageTracker(
-                    f"saves/usage-creator-{name}.jsonl", session=f"creator-{name}",
+                    SAVE_ROOT / f"usage-creator-{name}.jsonl", session=f"creator-{name}",
                     pack=name,
                 )
                 llm = creator.build_creator_llm(settings, tracker)
@@ -853,10 +906,180 @@ def api_turn(sid: str, req: TurnRequest) -> StreamingResponse:
     B-4（M4）：整个回合持有会话锁，同 sid 回合串行化。
     """
     session = _ensure_session(sid)
-    return StreamingResponse(_turn_stream(session, req), media_type="text/event-stream")
+    return StreamingResponse(_turn_stream(sid, session, req), media_type="text/event-stream")
 
 
-def _turn_stream(session: Session, req: TurnRequest):
+# ---------------------------------------------------------------------------
+# N7 / G-2：存档点 · 回退 · 分支（把 runlog 的回合级 checkpoint 产品化）
+# ---------------------------------------------------------------------------
+
+
+def _timeline(sid: str) -> timeline.Timeline:
+    """本会话的时间线（目录 `saves/timeline-<sid>/`）。
+
+    放在 `SAVE_ROOT` 下是刻意的：时间线是**会话级产物**，与 `autosave-<sid>.json`、
+    `usage-<sid>.jsonl` 同类。`_safe_save_path` 那条"只接受裸文件名"的限制不适用于它
+    ——那个限制防的是**客户端可控路径**，而这里的 `<sid>` 是服务端生成的 hex，
+    且 `timeline_root` 另做了一次白名单（纵深防御）。
+    """
+    return timeline.Timeline(timeline.timeline_root(sid, SAVE_ROOT))
+
+
+def _turn_label(game: Game, req: TurnRequest) -> str:
+    """给玩家看的一句话（时间线列表里显示这一版"是什么时候"）。"""
+    if req.kind == "start":
+        return "开局"
+    if req.kind == "end_day":
+        return f"结束第 {game.state.day} 天"
+    if req.kind == "say":
+        text = (req.text or "").strip().replace("\n", " ")
+        return f"你说：{text[:40]}"
+    if req.kind == "act":
+        label = next(
+            (a.label for a in game.pack.schedule.actions if a.id == req.action_id),
+            req.action_id or "",
+        )
+        return f"行动：{label}"
+    if req.kind == "pick":
+        return "关键抉择"
+    return req.kind
+
+
+def _checkpoint_turn(sid: str, session: Session, req: TurnRequest) -> str:
+    """回合提交之后记一个 revision。返回给玩家的提示（空 = 正常）。
+
+    **写检查点失败绝不能让回合失败**（与 ADR 0006 同一条纪律：前台已提交的东西
+    不因为派生失败而撤销）。玩家看到的是一个提示，而不是"我这一回合白玩了"。
+
+    `rng` 必须记：检定/概率事件/收益曲线都吃它，不记的话回退后的世界会从另一个
+    随机流继续长——玩家观感是"回退了但世界变了"。
+    """
+    try:
+        _timeline(sid).append(
+            state=session.game.state,
+            history=session.game.history,
+            rng=session.game.rng,
+            label=_turn_label(session.game, req),
+        )
+    except Exception as e:  # noqa: BLE001 — 存档点失败不该毁掉已经提交的回合
+        return f"（这一回合没能记入时间线：{type(e).__name__}: {e}——回退可能少一版）"
+    return ""
+
+
+def _narration_of(msg: dict) -> str:
+    """从一条 assistant 消息里取出**玩家读到的正文**。
+
+    ⚠️ 它**不在 `content` 里**：引擎的协议是"模型调 `submit_narration` 提交正文"，
+    所以那条 assistant 消息的 `content` 是空串，正文在**工具调用的 arguments** 里
+    （`{"narration": ...}`）。写这个函数之前我先按 `content` 取了一遍，
+    结果故事栏重建出来只有玩家自己的话、正文全空——**看起来像"历史丢了"，
+    其实是取错了地方**。
+    """
+    for tc in msg.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        if fn.get("name") != "submit_narration":
+            continue
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return ""
+        return str(args.get("narration") or "").strip()
+    return ""
+
+
+def _history_entries(game: Game) -> list[dict]:
+    """把 `game.history` 里**给人看**的部分抽出来（刷新/回退后重建正文栏用）。
+
+    只取两类：模型提交的正文（`submit_narration` 的参数）与玩家自己的输入
+    （`origin=player`）。引擎注入的元消息（`name=engine`：主线节点/节点完成/
+    熔断说明/时序推进/反重复提示/压缩小结）**不回放到故事栏**——它们是引擎机制，
+    不是剧情。这与 A-2 把 engine 消息排除出检索上下文是同一条口径。
+    """
+    out: list[dict] = []
+    for m in game.history:
+        role = m.get("role")
+        if role == "assistant":
+            text = _narration_of(m)
+            if text:
+                out.append({"role": "assistant", "text": text})
+        elif role == "user" and m.get("origin") == "player":
+            text = (m.get("content") or "").strip()
+            if text:
+                out.append({"role": "player", "text": text})
+    return out
+
+
+class RewindRequest(BaseModel):
+    """N7：回退到某个 revision。"""
+
+    rev: int
+
+
+@app.get("/api/{sid}/timeline")
+def api_timeline(sid: str) -> dict:
+    """本局的时间线：每个 revision + 当前分支/版本 + 占用。
+
+    前端左栏靠它渲染"回到这里"的入口。`current` 是 head 的 rev——
+    与"哪个分支是当前线"同源（head 在哪，当前线就在哪）。
+    """
+    _ensure_session(sid)
+    tl = _timeline(sid)
+    head = tl.head()
+    return {
+        "ok": True,
+        "entries": [e.to_dict() for e in reversed(tl.entries())],  # 新的在前
+        "branches": tl.branches(),
+        "current": head.rev if head else None,
+        "current_branch": tl.current_branch(),
+        "size_bytes": tl.size_bytes(),
+    }
+
+
+@app.get("/api/{sid}/history")
+def api_history(sid: str) -> dict:
+    """本局的叙事历史（刷新页面 / 回退之后重建正文栏）。
+
+    为什么需要它：正文此前只活在**前端内存**里——刷新一次故事栏就空了、
+    回退一次前端还留着旧的正文（那等于展示了一条已经不存在的剧情线）。
+    """
+    session = _ensure_session(sid)
+    return {"ok": True, "entries": _history_entries(session.game)}
+
+
+@app.post("/api/{sid}/rewind")
+def api_rewind(sid: str, req: RewindRequest) -> dict:
+    """回到某个 revision：**产生一个新版本 + 新分支**，旧分支原地保留。
+
+    - `rev` 只增不减（回退也产生新版本，`rev = max+1`）——所以"发生了什么"永远是
+      可审计的追加序列，旧版本不会被覆盖；
+    - 旧分支的条目与快照**一个字节都不动**，也**没有任何读取路径会碰它**
+      （当前线就是 head 所在的那个分支）；
+    - state / history / rng **三者一起还原**，构造选项沿用旧局（见 `_game_options`）。
+    """
+    session = _ensure_session(sid)
+    tl = _timeline(sid)
+    with session.lock:  # 与回合串行化同一把锁：回退不能和进行中的回合打架
+        try:
+            entry = tl.rewind_to(req.rev)
+            payload = tl.payload(entry.rev)
+        except timeline.TimelineError as e:
+            raise HTTPException(400, str(e))
+        session.game = _rebuild_from_checkpoint(sid, session, payload)
+        game = session.game
+    return {
+        "ok": True,
+        "rev": entry.rev,
+        "branch": entry.branch,
+        "parent": entry.parent,
+        "note": entry.note,
+        "turn": game.state.turn_count,
+        "day": game.state.day,
+        "entries": len(tl.entries()),
+        "history": _history_entries(game),
+    }
+
+
+def _turn_stream(sid: str, session: Session, req: TurnRequest):
     """回合流生成器（同步）：工作线程跑 dispatch，本生成器阻塞消费队列至哨兵。
 
     首帧心跳（D15 待办）：生成器体要先被消费才会执行，而此前**第一个 `yield`
@@ -900,6 +1123,12 @@ def _turn_stream(session: Session, req: TurnRequest):
                 else:
                     raise ValueError(f"未知回合类型 {req.kind}")
                 holder["view"] = view
+                # N7：回合**已提交**之后记一个 revision（写在锁内——快照必须与
+                # 这一次提交的状态严格对应，不能被并发的另一回合插进来）。
+                # 失败只提示、不抛：存档点坏了不该让玩家这一回合白玩。
+                note = _checkpoint_turn(sid, session, req)
+                if note:
+                    deltas.put(("notice", note))
             except (GameError, StorylineError, ScheduleError) as e:
                 deltas.put(("error", str(e)))
             except LLMTurnError as e:

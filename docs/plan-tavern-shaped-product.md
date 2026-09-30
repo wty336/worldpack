@@ -772,7 +772,7 @@ validate/corpus/smoke/done/warn`，可 JSON 序列化 → 直接能过 SSE）、
 
 #### 验证
 
-- 离线 **1023 项全绿**（`test_drafts.py` 17 项为新）。
+- 离线 **1039 项全绿**（`test_drafts.py` 17 项为新）。
 - **变异验证**（三处，都在还原后复跑全绿）：
   1. 把 `list_drafts` 改回 `_is_pack_dir` 判据 → 恰好那 3 条覆盖该缺陷的守卫变红
      （`[bad_yaml]` 参数化分支照常绿，因为它们不依赖该判据）；

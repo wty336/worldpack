@@ -47,6 +47,7 @@ export function useTurnStream() {
   const streaming = ref(false)
   const draft = shallowRef('') // 流式草稿（仅展示用）
   const error = shallowRef('')
+  const notice = shallowRef('') // 非致命提示（如"这一回合没能记入时间线"）
   const recovered = shallowRef([]) // 本轮用过的恢复手段（引擎口径）
   const subTurns = shallowRef(0)
 
@@ -58,6 +59,7 @@ export function useTurnStream() {
     streaming.value = true
     draft.value = ''
     error.value = ''
+    notice.value = ''
     recovered.value = []
     subTurns.value = 0
     try {
@@ -93,6 +95,10 @@ export function useTurnStream() {
               subTurns.value = payload.sub_turns || 0
             } else if (event === 'error') {
               error.value = payload // ← 也是裸字符串
+            } else if (event === 'notice') {
+              // N7：非致命提示（存档点写失败等）。**不当作 error**——
+              // 回合本身已经提交成功了，把它显示成错误会让玩家以为白玩了一回合。
+              notice.value = payload
             }
           }
         }
@@ -106,5 +112,5 @@ export function useTurnStream() {
     }
   }
 
-  return { streaming, draft, error, recovered, subTurns, send }
+  return { streaming, draft, error, notice, recovered, subTurns, send }
 }

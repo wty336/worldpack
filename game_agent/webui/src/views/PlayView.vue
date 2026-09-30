@@ -20,7 +20,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['notice', 'leave', 'saved', 'ended'])
 
-const { streaming, draft, error, recovered, subTurns, send } = useTurnStream()
+const { streaming, draft, error, notice, recovered, subTurns, send } = useTurnStream()
 
 const entries = ref([])          // 已提交分段
 const status = ref('')
@@ -28,6 +28,8 @@ const actions = ref({})
 const elapsed = ref(0)
 const view = ref({})
 const dock = ref(null)
+const timeline = ref([])         // N7：本局时间线（新的在前）
+const currentRev = ref(null)
 let timer = null
 
 const modeLabel = computed(() => (props.session.mode === 'free' ? '自由探索' : '跟着主线'))
@@ -72,6 +74,7 @@ onMounted(async () => {
   if (props.session.openingView) applyView(props.session.openingView)
   // 状态栏与行动区不在任何流式事件里，必须开局时主动取一次
   await refresh()
+  await loadTimeline()
 })
 
 async function turn(body) {
@@ -86,8 +89,60 @@ async function turn(body) {
   }
   if (error.value) emit('notice', { message: `[错误] ${error.value}`, isError: true })
   else if (done) applyView(done)
+  // N7：非致命提示（存档点写失败）。**排在 error 之后、成功之后**——
+  // 它既不是错误，也不影响这一回合已经生效的事实。
+  if (notice.value) emit('notice', { message: notice.value, isError: false })
   await refresh()
+  await loadTimeline()
 }
+
+// ---- N7：时间线（存档点 / 回退 / 分支）----
+
+async function loadTimeline() {
+  const sid = props.session.sid
+  try {
+    const d = await api.timeline(sid)
+    timeline.value = d.entries || []
+    currentRev.value = d.current
+  } catch (e) {
+    emit('notice', { message: e.message, isError: true })
+  }
+}
+
+/** 回到某一版：后端产生**新版本 + 新分支**（旧分支原地保留），这里重建正文栏。 */
+async function rewindTo(rev) {
+  if (streaming.value || rev === currentRev.value) return
+  try {
+    const r = await api.rewind(props.session.sid, rev)
+    entries.value = (r.history || []).map((h) => ({
+      text: h.role === 'player' ? `（你说：${h.text}）` : h.text,
+      recovery: '',
+    }))
+    view.value = { ...view.value, turn: r.turn }
+    await refresh()
+    await loadTimeline()
+    emit('notice', {
+      message: `已回到 rev ${rev}——这是新的一版（rev ${r.rev}，分支 ${r.branch}），原来的线仍然留着。`,
+      isError: false,
+    })
+  } catch (e) {
+    emit('notice', { message: e.message, isError: true })
+  }
+}
+
+function shortTime(ts) {
+  return (ts || '').slice(5, 16).replace('T', ' ')
+}
+
+onMounted(async () => {
+  // **开局的 view 必须被应用**：它带着开场叙事、候选项与（往往第一个）关键抉择。
+  // 漏掉它的症状是"三栏都渲染出来了，但正文与候选都是空的、右栏一直显示等待开局"
+  // ——结构测试全绿、只有真机冒烟能发现（scripts/webui_smoke.mjs 就是为此存在的）。
+  if (props.session.openingView) applyView(props.session.openingView)
+  // 状态栏与行动区不在任何流式事件里，必须开局时主动取一次
+  await refresh()
+  await loadTimeline()
+})
 
 async function doSave() {
   const name = `${props.session.pack_id}${props.session.mode === 'free' ? '-free' : ''}.json`
@@ -124,6 +179,32 @@ defineExpose({ refresh })
         <div class="status-actions">
           <button :disabled="streaming" @click="emit('leave')">换一张卡</button>
         </div>
+
+        <!-- N7：时间线。每一版都能回去；回去 = 开一条新分支，旧线留着 -->
+        <h3 class="sec">时间线</h3>
+        <p class="t">
+          每一回合都会自动记一版。回到某一版会**新开一条分支**——原来的线留着，
+          不会被覆盖。
+        </p>
+        <p v-if="!timeline.length" class="t">（还没有版本）</p>
+        <button
+          v-for="e in timeline"
+          :key="e.rev"
+          class="pack"
+          :class="{ current: e.rev === currentRev }"
+          :disabled="streaming || e.rev === currentRev"
+          @click="rewindTo(e.rev)"
+        >
+          <span class="pname">
+            rev {{ e.rev }} · 第 {{ e.turn }} 回合
+            <span v-if="e.rev === currentRev" class="t">（当前）</span>
+          </span>
+          <span class="pera">{{ e.label }}</span>
+          <span class="pmeta">
+            {{ e.branch }} · 第 {{ e.day }} 天 · {{ shortTime(e.ts) }}
+            <template v-if="e.is_rewind"> · 回退派生</template>
+          </span>
+        </button>
       </div>
     </aside>
 

@@ -6419,14 +6419,14 @@ const _hoisted_9$2 = { class: "pmeta" };
 const _hoisted_10$2 = { class: "mode-row" };
 const _hoisted_11$2 = { class: "save-row" };
 const _hoisted_12$2 = ["disabled"];
-const _hoisted_13$1 = ["disabled"];
-const _hoisted_14$1 = {
+const _hoisted_13$2 = ["disabled"];
+const _hoisted_14$2 = {
   key: 0,
   value: ""
 };
-const _hoisted_15$1 = ["value"];
-const _hoisted_16$1 = ["disabled"];
-const _hoisted_17$1 = {
+const _hoisted_15$2 = ["value"];
+const _hoisted_16$2 = ["disabled"];
+const _hoisted_17$2 = {
   key: 0,
   class: "t"
 };
@@ -6530,22 +6530,22 @@ const _sfc_main$7 = {
             "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => savePath.value = $event),
             disabled: !usableSaves.value.length || __props.busy
           }, [
-            !usableSaves.value.length ? (openBlock(), createElementBlock("option", _hoisted_14$1, "（还没有存档）")) : createCommentVNode("", true),
+            !usableSaves.value.length ? (openBlock(), createElementBlock("option", _hoisted_14$2, "（还没有存档）")) : createCommentVNode("", true),
             (openBlock(true), createElementBlock(Fragment, null, renderList(usableSaves.value, (s) => {
               return openBlock(), createElementBlock("option", {
                 key: s.path,
                 value: s.path
-              }, toDisplayString(saveLabel(s)), 9, _hoisted_15$1);
+              }, toDisplayString(saveLabel(s)), 9, _hoisted_15$2);
             }), 128))
-          ], 8, _hoisted_13$1), [
+          ], 8, _hoisted_13$2), [
             [vModelSelect, savePath.value]
           ]),
           createBaseVNode("button", {
             disabled: !usableSaves.value.length || __props.busy,
             onClick: load
-          }, "读取", 8, _hoisted_16$1)
+          }, "读取", 8, _hoisted_16$2)
         ]),
-        __props.saves.length && !usableSaves.value.length ? (openBlock(), createElementBlock("p", _hoisted_17$1, "存档目录里没有可读的档。")) : createCommentVNode("", true)
+        __props.saves.length && !usableSaves.value.length ? (openBlock(), createElementBlock("p", _hoisted_17$2, "存档目录里没有可读的档。")) : createCommentVNode("", true)
       ]);
     };
   }
@@ -6859,6 +6859,13 @@ const api = {
   cost: (sid) => fetch(`/api/${sid}/cost`).then((r) => jsonOrThrow(r, "读取成本")),
   save: (sid, path) => post(`/api/${sid}/save`, { path }).then((r) => jsonOrThrow(r, "存档")),
   load: (sid, path) => post(`/api/${sid}/load`, { path }).then((r) => jsonOrThrow(r, "读档")),
+  // ---- N7：存档点 / 回退 / 分支 ----
+  /** 本局时间线（每个 revision：回合/天数/标签/分支/是否当前）。 */
+  timeline: (sid) => fetch(`/api/${sid}/timeline`).then((r) => jsonOrThrow(r, "读取时间线")),
+  /** 本局叙事历史——刷新页面或回退之后重建正文栏（正文此前只活在前端内存里）。 */
+  history: (sid) => fetch(`/api/${sid}/history`).then((r) => jsonOrThrow(r, "读取历史正文")),
+  /** 回到某一版：后端产生**新版本 + 新分支**（旧分支原地保留），并返回重建后的历史。 */
+  rewind: (sid, rev) => post(`/api/${sid}/rewind`, { rev }).then((r) => jsonOrThrow(r, "回退")),
   // ---- 创作工作台（N2a）----
   /** 起一个后台生成任务（立刻返回 job_id；进度看 SSE）。会**真的花钱**，除非 offline。 */
   generate: (body) => post("/api/packs/generate", body).then((r) => jsonOrThrow(r, "起生成任务")),
@@ -6906,12 +6913,14 @@ function useTurnStream() {
   const streaming = ref(false);
   const draft = shallowRef("");
   const error = shallowRef("");
+  const notice = shallowRef("");
   const recovered = shallowRef([]);
   const subTurns = shallowRef(0);
   async function send(sid, body) {
     streaming.value = true;
     draft.value = "";
     error.value = "";
+    notice.value = "";
     recovered.value = [];
     subTurns.value = 0;
     try {
@@ -6944,6 +6953,8 @@ function useTurnStream() {
               subTurns.value = payload.sub_turns || 0;
             } else if (event === "error") {
               error.value = payload;
+            } else if (event === "notice") {
+              notice.value = payload;
             }
           }
         }
@@ -6956,7 +6967,7 @@ function useTurnStream() {
       streaming.value = false;
     }
   }
-  return { streaming, draft, error, recovered, subTurns, send };
+  return { streaming, draft, error, notice, recovered, subTurns, send };
 }
 const _hoisted_1$2 = { class: "columns" };
 const _hoisted_2$2 = { class: "col col-left" };
@@ -6971,8 +6982,20 @@ const _hoisted_7$1 = {
 const _hoisted_8$1 = { key: 0 };
 const _hoisted_9$1 = { class: "status-actions" };
 const _hoisted_10$1 = ["disabled"];
-const _hoisted_11$1 = { class: "col col-mid" };
-const _hoisted_12$1 = { class: "col col-right" };
+const _hoisted_11$1 = {
+  key: 1,
+  class: "t"
+};
+const _hoisted_12$1 = ["disabled", "onClick"];
+const _hoisted_13$1 = { class: "pname" };
+const _hoisted_14$1 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_15$1 = { class: "pera" };
+const _hoisted_16$1 = { class: "pmeta" };
+const _hoisted_17$1 = { class: "col col-mid" };
+const _hoisted_18$1 = { class: "col col-right" };
 const _sfc_main$2 = {
   __name: "PlayView",
   props: {
@@ -6985,13 +7008,15 @@ const _sfc_main$2 = {
   setup(__props, { expose: __expose, emit: __emit }) {
     const props = __props;
     const emit2 = __emit;
-    const { streaming, draft, error, recovered, subTurns, send } = useTurnStream();
+    const { streaming, draft, error, notice, recovered, subTurns, send } = useTurnStream();
     const entries = ref([]);
     const status = ref("");
     const actions = ref({});
     const elapsed = ref(0);
     const view = ref({});
     const dock = ref(null);
+    const timeline = ref([]);
+    const currentRev = ref(null);
     let timer = null;
     const modeLabel = computed(() => props.session.mode === "free" ? "自由探索" : "跟着主线");
     function recoveryText(list, sub) {
@@ -7027,6 +7052,7 @@ const _sfc_main$2 = {
     onMounted(async () => {
       if (props.session.openingView) applyView(props.session.openingView);
       await refresh();
+      await loadTimeline();
     });
     async function turn(body) {
       if (timer) clearInterval(timer);
@@ -7040,8 +7066,47 @@ const _sfc_main$2 = {
       }
       if (error.value) emit2("notice", { message: `[错误] ${error.value}`, isError: true });
       else if (done) applyView(done);
+      if (notice.value) emit2("notice", { message: notice.value, isError: false });
       await refresh();
+      await loadTimeline();
     }
+    async function loadTimeline() {
+      const sid = props.session.sid;
+      try {
+        const d = await api.timeline(sid);
+        timeline.value = d.entries || [];
+        currentRev.value = d.current;
+      } catch (e) {
+        emit2("notice", { message: e.message, isError: true });
+      }
+    }
+    async function rewindTo(rev) {
+      if (streaming.value || rev === currentRev.value) return;
+      try {
+        const r = await api.rewind(props.session.sid, rev);
+        entries.value = (r.history || []).map((h) => ({
+          text: h.role === "player" ? `（你说：${h.text}）` : h.text,
+          recovery: ""
+        }));
+        view.value = { ...view.value, turn: r.turn };
+        await refresh();
+        await loadTimeline();
+        emit2("notice", {
+          message: `已回到 rev ${rev}——这是新的一版（rev ${r.rev}，分支 ${r.branch}），原来的线仍然留着。`,
+          isError: false
+        });
+      } catch (e) {
+        emit2("notice", { message: e.message, isError: true });
+      }
+    }
+    function shortTime(ts) {
+      return (ts || "").slice(5, 16).replace("T", " ");
+    }
+    onMounted(async () => {
+      if (props.session.openingView) applyView(props.session.openingView);
+      await refresh();
+      await loadTimeline();
+    });
     async function doSave() {
       const name = `${props.session.pack_id}${props.session.mode === "free" ? "-free" : ""}.json`;
       try {
@@ -7061,7 +7126,7 @@ const _sfc_main$2 = {
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", _hoisted_1$2, [
         createBaseVNode("aside", _hoisted_2$2, [
-          _cache[8] || (_cache[8] = createBaseVNode("div", { class: "col-head" }, "本局", -1)),
+          _cache[10] || (_cache[10] = createBaseVNode("div", { class: "col-head" }, "本局", -1)),
           createBaseVNode("div", _hoisted_3$2, [
             createBaseVNode("p", null, [
               createBaseVNode("strong", null, toDisplayString(__props.session.name), 1)
@@ -7077,10 +7142,33 @@ const _sfc_main$2 = {
                 disabled: unref(streaming),
                 onClick: _cache[0] || (_cache[0] = ($event) => emit2("leave"))
               }, "换一张卡", 8, _hoisted_10$1)
-            ])
+            ]),
+            _cache[8] || (_cache[8] = createBaseVNode("h3", { class: "sec" }, "时间线", -1)),
+            _cache[9] || (_cache[9] = createBaseVNode("p", { class: "t" }, " 每一回合都会自动记一版。回到某一版会**新开一条分支**——原来的线留着， 不会被覆盖。 ", -1)),
+            !timeline.value.length ? (openBlock(), createElementBlock("p", _hoisted_11$1, "（还没有版本）")) : createCommentVNode("", true),
+            (openBlock(true), createElementBlock(Fragment, null, renderList(timeline.value, (e) => {
+              return openBlock(), createElementBlock("button", {
+                key: e.rev,
+                class: normalizeClass(["pack", { current: e.rev === currentRev.value }]),
+                disabled: unref(streaming) || e.rev === currentRev.value,
+                onClick: ($event) => rewindTo(e.rev)
+              }, [
+                createBaseVNode("span", _hoisted_13$1, [
+                  createTextVNode(" rev " + toDisplayString(e.rev) + " · 第 " + toDisplayString(e.turn) + " 回合 ", 1),
+                  e.rev === currentRev.value ? (openBlock(), createElementBlock("span", _hoisted_14$1, "（当前）")) : createCommentVNode("", true)
+                ]),
+                createBaseVNode("span", _hoisted_15$1, toDisplayString(e.label), 1),
+                createBaseVNode("span", _hoisted_16$1, [
+                  createTextVNode(toDisplayString(e.branch) + " · 第 " + toDisplayString(e.day) + " 天 · " + toDisplayString(shortTime(e.ts)) + " ", 1),
+                  e.is_rewind ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
+                    createTextVNode(" · 回退派生")
+                  ], 64)) : createCommentVNode("", true)
+                ])
+              ], 10, _hoisted_12$1);
+            }), 128))
           ])
         ]),
-        createBaseVNode("section", _hoisted_11$1, [
+        createBaseVNode("section", _hoisted_17$1, [
           createVNode(_sfc_main$4, {
             entries: entries.value,
             draft: unref(draft),
@@ -7106,7 +7194,7 @@ const _sfc_main$2 = {
             onLeave: _cache[5] || (_cache[5] = ($event) => emit2("leave"))
           }, null, 8, ["streaming"])
         ]),
-        createBaseVNode("aside", _hoisted_12$1, [
+        createBaseVNode("aside", _hoisted_18$1, [
           createVNode(_sfc_main$3, {
             status: status.value,
             actions: actions.value,

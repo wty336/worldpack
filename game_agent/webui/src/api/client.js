@@ -55,6 +55,10 @@ export const ENDPOINTS = Object.freeze({
   turn: 'POST /api/{sid}/turn',
   save: 'POST /api/{sid}/save',
   load: 'POST /api/{sid}/load',
+  // N7：存档点 / 回退 / 分支
+  timeline: 'GET /api/{sid}/timeline',
+  history: 'GET /api/{sid}/history',
+  rewind: 'POST /api/{sid}/rewind',
   // 创作工作台（N2a）：生成 → 进度 → 草稿 → 发布
   generate: 'POST /api/packs/generate',
   jobs: 'GET /api/packs/generate',
@@ -94,6 +98,15 @@ export const api = {
 
   save: (sid, path) => post(`/api/${sid}/save`, { path }).then((r) => jsonOrThrow(r, '存档')),
   load: (sid, path) => post(`/api/${sid}/load`, { path }).then((r) => jsonOrThrow(r, '读档')),
+
+  // ---- N7：存档点 / 回退 / 分支 ----
+
+  /** 本局时间线（每个 revision：回合/天数/标签/分支/是否当前）。 */
+  timeline: (sid) => fetch(`/api/${sid}/timeline`).then((r) => jsonOrThrow(r, '读取时间线')),
+  /** 本局叙事历史——刷新页面或回退之后重建正文栏（正文此前只活在前端内存里）。 */
+  history: (sid) => fetch(`/api/${sid}/history`).then((r) => jsonOrThrow(r, '读取历史正文')),
+  /** 回到某一版：后端产生**新版本 + 新分支**（旧分支原地保留），并返回重建后的历史。 */
+  rewind: (sid, rev) => post(`/api/${sid}/rewind`, { rev }).then((r) => jsonOrThrow(r, '回退')),
 
   // ---- 创作工作台（N2a）----
 

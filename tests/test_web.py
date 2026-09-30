@@ -265,7 +265,7 @@ def test_sse_streams_incrementally_before_llm_completes():
     web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock(), usage=_unused_tracker())
 
     resp = web_module._turn_stream(
-        web_module.SESSIONS[sid], web_module.TurnRequest(kind="say", text="你好")
+        sid, web_module.SESSIONS[sid], web_module.TurnRequest(kind="say", text="你好")
     )
     first = next(resp)  # 首帧 = 心跳（D15）：连接建立 + 回合已受理
     assert first.startswith("event: start"), f"首帧应为心跳: {first!r}"
@@ -314,7 +314,13 @@ def test_autosave_per_session_isolated():
         llm = LLMClient(
             _StreamingFake([_chunks_for_turn()]), "fake", build_tools(pack.schedule)
         )
-        game = Game(pack, state, llm, autosave_path=f"saves/autosave-{sid}.json")
+        # N7：自动存档路径必须**从 `SAVE_ROOT` 推**，不能写死 `"saves/..."` 相对字面量。
+        # 写死了的话，`tests/conftest.py` 把 `SAVE_ROOT` 重定向到临时目录就盖不住它，
+        # 产物会漏回仓库的 `saves/`（而下面的断言查的正是 `SAVE_ROOT` 下）。
+        game = Game(
+            pack, state, llm,
+            autosave_path=web_module.SAVE_ROOT / f"autosave-{sid}.json",
+        )
         web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock(), usage=_unused_tracker())
     with TestClient(web_module.app) as client:
         for sid in ("auto-a", "auto-b"):

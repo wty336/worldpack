@@ -30,9 +30,10 @@
 
 1. **重写前端**（原为 `web.py` 里一个 250 行的 `INDEX_HTML` 字符串常量，对照 dsh-tavern 的 15.4K 行客户端）
    —— ✅ **已完成**：Vite + Vue 3 三栏界面 + **创作工作台**（含创作者 Agent 对话面板），
-   产物入库，真机浏览器冒烟 **50/50**；
+   产物入库，真机浏览器冒烟 **58/58**；
 2. **把 `runlog` 的回合 checkpoint 提升为玩家可见的存档/回退/分支**（数据结构已经在，只差产品化）
-   —— ⬜ **仍未做**，是**目前最大的玩家侧缺口**（roadmap **N7** / 期 2 / 差距 G-2 ⭐ P0）；
+   —— ✅ **已完成**：`game_agent/timeline.py`（rev 只增不减 + branch + parent）、每回合自动建点、
+   左栏时间线与「回到这一版」、回退后重建正文栏。见 roadmap **N7** / **§2.6**；
 3. **实现 `sillytavern-borrow.md` §E-1 的人物卡/世界书导入映射表**（表已写好，只差代码）
    —— ⬜ **仍未做**（roadmap **N9** / 期 4 / 差距 G-4 ⭐ P1）。
 
@@ -40,9 +41,8 @@
 ① 选一张卡自由游玩 ② 绑定小说/剧本/大纲并沿主线推进 ③ 与 Agent 对话从素材做新卡
 ④ 对话改人物设定与世界书——**四件都已打通并有真机证据**（见 §4 的 G-1/G-5 与
 `plan-tavern-shaped-product.md` §6.2/§6.6/§6.7/§6.8）。
-**但"dsh-tavern 那种成熟度"还没到**：G-2（回退/分支，P0）、G-3（一主多子体感，P1）、
-G-4（生态内容导入，P1）、G-8/G-9（分发与插件缝，P2）四块仍在。
-也就是说：**功能面能演示、能自己玩；产品面还差一层。** 这一层里最该先做的是 G-2。
+**"dsh-tavern 那种成熟度"也补上了一块**：G-2（回退/分支）已做（roadmap N7）。
+**仍在的**：G-3（一主多子体感，P1）、G-4（生态内容导入，P1）、G-8/G-9（分发与插件缝，P2）。
 
 **明确不推荐**：把引擎移植成 DSH 插件（TS/cordis 重写）。理由见 §3.1——**架构上敌对 + 宿主明确禁止你拥有回合循环**，且它仍在 RC。
 **一个需要你拍板的例外**：把 DSH **只当 UI 壳**（客户端插件 + 引擎留在 HTTP 另一侧）是**真实可行**的，
@@ -283,8 +283,8 @@ C′ 能省下大量前端工作量，且不碰引擎——**这对"快速拿到
 
 | # | 差距 | 现状证据 | dsh-tavern 的对应实现 | 优先级 |
 | --- | --- | --- | --- | --- |
-| G-1 ⭐ | **前端是原型级** —— ✅ **已重写（2026-10）** | 原为 `web.py:344` 的 248 行内联字符串 → Stage A 拆成真实文件 → **Stage B/C 用 Vite + Vue 3 重写为三栏**（左本局 · 中正文+输入 · 右状态栏），`dist/` 入库并由 FastAPI 托管。守卫：`tests/test_web_frontend.py`（接口契约 + 源码结构 + 前端端点与后端路由一致性）+ `tests/test_webui_build.py`（产物完整性/资源路径/陈旧度）+ **`scripts/webui_smoke.mjs` 真机驱动界面 50 项**。**未做**：跨设备响应式打磨、多语言 | `tavern-plugin/src/client/` 72 文件 15,379 行；`play-controls.js` 95KB、`sidebar.js` 81KB、`card-library.js` 38KB；宿主另有 60+ `ui-*` 插件 | ✅ **已完成** |
-| G-2 ⭐ | **玩家面没有存档/回退/重生成/分支** | `game.py:642 _txn_rollback` 只是**轮内事务**；`runlog.py` 有回合级全量 checkpoint，但写在 `runs/`（`.gitignore` 内）、定位是离线 replay | Story Timeline：revision / branch / checkpoint；ADR 0004→**0006**（前台先提交，后台派生的结算失败不阻塞、不撤销正文，过期结果按 branch+revision 丢弃） | **P0** |
+| G-1 ⭐ | **前端是原型级** —— ✅ **已重写（2026-10）** | 原为 `web.py:344` 的 248 行内联字符串 → Stage A 拆成真实文件 → **Stage B/C 用 Vite + Vue 3 重写为三栏**（左本局 · 中正文+输入 · 右状态栏），`dist/` 入库并由 FastAPI 托管。守卫：`tests/test_web_frontend.py`（接口契约 + 源码结构 + 前端端点与后端路由一致性）+ `tests/test_webui_build.py`（产物完整性/资源路径/陈旧度）+ **`scripts/webui_smoke.mjs` 真机驱动界面 58 项**。**未做**：跨设备响应式打磨、多语言 | `tavern-plugin/src/client/` 72 文件 15,379 行；`play-controls.js` 95KB、`sidebar.js` 81KB、`card-library.js` 38KB；宿主另有 60+ `ui-*` 插件 | ✅ **已完成** |
+| G-2 ⭐ | **玩家面没有存档/回退/重生成/分支** —— ✅ **已做（2026-10，roadmap N7）** | `game.py:642 _txn_rollback` 只是**轮内事务**；`runlog.py` 有回合级全量 checkpoint，但写在 `runs/`（`.gitignore` 内）、定位是离线 replay | Story Timeline：revision / branch / checkpoint；ADR 0004→**0006**（前台先提交，后台派生的结算失败不阻塞、不撤销正文，过期结果按 branch+revision 丢弃） | **P0** |
 | G-3 | **一轮里什么都干**（正文 + 状态 + 候选 + Judge 串行） | `game.py` 单回合内串行完成 | "一主多子"：前台主 Agent 只写正文；**共享一个后台 Agent** 做候选生成与状态结算（ADR 0002），前缀各自稳定 | **P1** |
 | G-4 ⭐ | **无法消费酒馆生态内容** | 无 ST 导入路径（`import_story.py` 无 `--format`）；A 系列已实现，**E 系列未实现**；MVU 全仓 0 命中。`.st-inspect/` 已按 2026-10 决定加入 `.gitignore`（上游 SillyTavern 1.19.0，仅作只读调研） | PNG/JSON 人物卡、世界书、预设、正则、MVU、Helper 脚本全兼容 | **P1** |
 | G-5 | **单进程单包**，无目录层 —— ✅ **已修（2026-10）** | 原为进程级 `GAME_WORLDPACK`（换包要重启）；现 `game_agent/catalog.py` 提供目录层，`POST /api/new{pack_id, mode}` 做**会话级绑定**，`GET /api/catalog` 与 `GET /api/{sid}/meta` 支撑选卡屏；环境变量降级为默认值。守卫 `tests/test_catalog.py`（15 项） | 人物卡库 + 剧本库 + 会话级绑定 | ✅ **已完成** |
@@ -326,13 +326,13 @@ C′ 能省下大量前端工作量，且不碰引擎——**这对"快速拿到
   **保留 SSE 契约，换掉表示层**即可，不必重写后端。
   ✅ **已全部完成**：Stage A 拆真实文件 → Stage B/C 用 Vite + Vue 3 重写为三栏 →
   **N2a 创作工作台**（中栏两模式：从素材生成 / 和 Agent 改这一版；右栏只读呈现 + diff）→
-  **N6 创作者 Agent 对话面板**。真机浏览器冒烟 **50/50**（`scripts/webui_smoke.mjs`）。
+  **N6 创作者 Agent 对话面板**。真机浏览器冒烟 **58/58**（`scripts/webui_smoke.mjs`）。
   §5.1 那张"工作台 2：编辑器（左边对话、右边字段与校验报告）"现在是**字面成立**的。
   **未做**：跨设备响应式打磨、多语言、主题系统（后两者属 G-10 一类，建议不做）。
 - 关键的架构收益：**玩家看到的与模型看到的同源**（README 已经把这称为"代码掌握真值的可视化"）——
   这一点 dsh-tavern 做不到（它的正文与状态来自两个 Agent），是本项目前端该主打的产品差异点。
 
-### 期 2 · 存档点 / 回退 / 分支（把 `runlog` 产品化）—— ⬜ **仍未做（最高优先）**
+### 期 2 · 存档点 / 回退 / 分支（把 `runlog` 产品化）—— ✅ **已完成（2026-10）**
 
 这是"dsh-tavern 形态"里**性价比最高**的一项，因为数据已经在：
 

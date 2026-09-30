@@ -83,6 +83,9 @@ class _SlowGame:
         return "状态"
 
 
+SID = "sid001"  # `_turn_stream(sid, session, req)` 的会话号（N7 起它还要用来写时间线）
+
+
 class _FakeSession:
     def __init__(self, game):
         self.game = game
@@ -92,7 +95,7 @@ class _FakeSession:
 def _install(monkeypatch, box: dict):
     session = _FakeSession(_SlowGame(box))
     box["s"] = session
-    monkeypatch.setitem(web.SESSIONS, "sid001", session)
+    monkeypatch.setitem(web.SESSIONS, SID, session)
     return session
 
 
@@ -129,7 +132,7 @@ def test_lock_held_while_turn_in_progress(monkeypatch):
     """T4 复现钉：回合进行中锁空闲 = 断线会提前释放 = 串行化失效。"""
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="你好"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="你好"))
     thread = _pump(gen, timeout=0.2)  # 后台消费；worker 会卡在 release.wait 上
 
     assert session.game.started.wait(timeout=2), "工作线程未启动"
@@ -151,7 +154,7 @@ def test_lock_survives_generator_teardown(monkeypatch):
     """
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="你好"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="你好"))
     pump = _pump(gen, timeout=0.05)  # 启动 worker 后立刻返回（消费者"走了"）
 
     assert session.game.started.wait(timeout=2), "工作线程未启动（worker 未进入 say）"
@@ -181,7 +184,7 @@ def test_disconnect_cleanup_detaches_sink_and_drains_queue(monkeypatch):
     """
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="你好"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="你好"))
     pump = _pump(gen, timeout=0.2)
 
     assert session.game.started.wait(timeout=2)
@@ -255,7 +258,7 @@ def test_release_stream_is_idempotent_and_never_raises():
 def test_lock_released_after_normal_completion(monkeypatch):
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="你好"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="你好"))
     session.game.release.set()
     _pump(gen, timeout=2.0)
 
@@ -269,7 +272,7 @@ def test_worker_records_call_under_lock(monkeypatch):
     """正常回合：工作线程在锁内完成调用（回归：别把 dispatch 锁到死）。"""
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="第一句"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="第一句"))
     session.game.release.set()
     _pump(gen, timeout=2.0)
 
@@ -292,7 +295,7 @@ def test_first_frame_arrives_before_turn_completes(monkeypatch):
     """
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="你好"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="你好"))
 
     first = next(gen, None)  # 旧实现：阻塞到回合结束；新实现：立刻返回心跳
 
@@ -315,7 +318,7 @@ def test_first_frame_is_heartbeat_not_content(monkeypatch):
     """心跳帧不得伪装成 delta——前端靠事件类型分流，混用会让空叙事污染故事框。"""
     box: dict = {}
     session = _install(monkeypatch, box)
-    gen = web._turn_stream(session, web.TurnRequest(kind="say", text="你好"))
+    gen = web._turn_stream(SID, session, web.TurnRequest(kind="say", text="你好"))
     first = next(gen, None)
     session.game.release.set()
 

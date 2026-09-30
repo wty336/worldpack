@@ -317,14 +317,26 @@ def test_cli_and_web_wire_context_window_from_settings():
     注意断言的是 `resolve_context_window(settings)`：窗口的正确来源是
     "显式配置 > 端点自报 max_model_len"，直接传 `settings.context_window` 会丢掉
     端点自报那一半（云端端点不报时才是 0，本地 vLLM 本可以自动拿到）。
+
+    N7 更新：Web 侧的接线点从 `_make_game` 移到了 `_game_options()`——
+    因为**建局与回退重建必须共用同一份选项**（回退若用默认值，自由模式、
+    上下文窗、判劣自校正会一起悄悄退化）。所以这里跟着改指向，
+    而且**顺带把它查得更严**：`_game_options` 是唯一真源，两个入口都必须用它。
     """
     import inspect
 
     from game_agent import cli, web
 
-    for module, fn_name in ((cli, "_cmd_play"), (cli, "_cmd_mcp"), (web, "_make_game")):
+    for module, fn_name in ((cli, "_cmd_play"), (cli, "_cmd_mcp")):
         src = inspect.getsource(getattr(module, fn_name))
         assert "context_window=resolve_context_window(settings)" in src, f"{fn_name} 未接线"
+
+    opts = inspect.getsource(web._game_options)
+    assert "context_window=resolve_context_window(settings)" in opts, "_game_options 未接线"
+    # 两个入口都必须走 `_game_options()`，否则就出现了"第二份构造选项"
+    for fn_name in ("_make_game", "_rebuild_from_checkpoint"):
+        src = inspect.getsource(getattr(web, fn_name))
+        assert "_game_options()" in src, f"{fn_name} 没有用共享选项（回退会悄悄退化）"
 
 
 def test_resolve_context_window_prefers_explicit_config():

@@ -126,6 +126,18 @@ const PUBLISH_REJECTED =
   '缺少文件: world-packs/_drafts/race_draft/mainline.yaml\n' +
   '（web 创作工作台会把这段报错原文给模型去修；也可以在草稿目录里手工改）'
 
+// ---- N7：时间线 / 回退 ----
+const TIMELINE = [
+  { rev: 1, branch: 'b1', parent: null, turn: 0, day: 1, ts: '2026-09-30T10:00:00', label: '开局', note: '', is_rewind: false },
+  { rev: 2, branch: 'b1', parent: null, turn: 1, day: 1, ts: '2026-09-30T10:01:00', label: '你说：我上前一步。', note: '', is_rewind: false },
+  { rev: 3, branch: 'b1', parent: null, turn: 2, day: 1, ts: '2026-09-30T10:02:00', label: '行动：去后山修炼', note: '', is_rewind: false },
+]
+const HISTORY = [
+  { role: 'assistant', text: '你挡在了她身前。她敛衽一礼：多谢公子。' },
+  { role: 'player', text: '我上前一步。' },
+  { role: 'assistant', text: '她侧身让开半步，随即记下了你的名字。天色渐晚。' },
+]
+
 // ---- 创作者 Agent（N6）桩 ----
 //
 // 对话流是 POST + SSE：start → tool…（+ text）→ done。
@@ -154,7 +166,7 @@ function serveDist(res, rel) {
 }
 
 function startStub() {
-  const state = { turns: 0 }
+  const state = { turns: 0, timelineHead: 3, rewoundTo: null }
   const readBody = (req) =>
     new Promise((resolve) => {
       let b = ''
@@ -313,6 +325,33 @@ function startStub() {
     if (/^\/api\/[^/]+\/meta$/.test(path))
       return json({ ok: true, sid: 'smoke1', pack_id: 'demo_world', name: '演示世界', mode: 'story', turn: 1, day: 1 })
     if (/^\/api\/[^/]+\/cost$/.test(path)) return json({ ok: true, calls: 0, path: 'saves/usage-smoke1.jsonl', report: '' })
+    // ---- N7：时间线 / 回退 ----
+    if (/^\/api\/[^/]+\/timeline$/.test(path)) {
+      const names = ['开局', '你说：我上前一步。', '行动：去后山修炼']
+      return json({
+        ok: true,
+        entries: TIMELINE.map((e, i) => ({ ...e, label: names[i] || e.label }))
+          .sort((a, b) => b.rev - a.rev),
+        branches: ['b1'],
+        current: state.timelineHead,
+        current_branch: 'b1',
+        size_bytes: 4096,
+      })
+    }
+    if (/^\/api\/[^/]+\/history$/.test(path)) return json({ ok: true, entries: HISTORY })
+    if (/^\/api\/[^/]+\/rewind$/.test(path)) {
+      void readBody(req).then((body) => {
+        state.timelineHead = body.rev + TIMELINE.length  // 回退 = 更大的 rev
+        state.rewoundTo = body.rev
+        return json({
+          ok: true, rev: state.timelineHead, branch: 'b2', parent: body.rev,
+          note: `从 rev ${body.rev} 回退，开分支 b2`,
+          turn: 1, day: 1, entries: TIMELINE.length + 1,
+          history: HISTORY.slice(0, 2),
+        })
+      })
+      return
+    }
     if (/^\/api\/[^/]+\/turn$/.test(path)) {
       // SSE：start → delta…（带间隔，好让冒烟能观察到流式态）→ done
       // 形状与 web.py 一致：delta 的 data 是**裸 JSON 字符串**。
@@ -387,7 +426,17 @@ class Cdp {
       returnByValue: true,
       awaitPromise: true,
     })
-    if (r.exceptionDetails) throw new Error(`页面内异常: ${r.exceptionDetails.text}`)
+    if (r.exceptionDetails) {
+      // CDP 的 `text` 常常只有一句 "Uncaught"，真正的信息在 exception.description。
+      // 只报 text 的后果是排查时对着"页面内异常: Uncaught"发呆——把它拼全。
+      //
+      // 还要带上**出错的表达式**：这份冒烟里 eval 的都是一小段页面内代码，
+      // 不打印表达式的话，"at <anonymous>:3:53" 这种栈根本对不上是哪一条断言
+      // （2026-10 真遇到过一次偶发失败，就是因为没打印表达式而无法归因）。
+      const ex = r.exceptionDetails.exception || {}
+      const detail = ex.description || ex.value || r.exceptionDetails.text
+      throw new Error(`页面内异常: ${detail}\n  出错表达式：${expression}`)
+    }
     return r.result.value
   }
   /** 轮询直到表达式为真（返回其真值）。 */
@@ -576,6 +625,55 @@ async function main() {
       await cdp.eval(`/已压缩历史后重试成功/.test(document.querySelector('#app .prose').textContent)`),
     )
 
+    // ---- N7：时间线 / 回退 / 分支 ----
+    await cdp.waitFor(`document.querySelectorAll('#app .col-left .pack').length >= 3`, {
+      timeout: 8000, label: '时间线渲染',
+    })
+    check('左栏渲染出时间线（每回合自动记一版）', true)
+    check(
+      '当前版本被标出来（玩家要知道"我现在在哪一版"）',
+      await cdp.eval(`/当前/.test(document.querySelector('#app .col-left .pack.current')?.textContent || '')`),
+    )
+    check(
+      '时间线条目带分支与标签（"这一版是什么时候"可读）',
+      await cdp.eval(`(() => {
+        const t = [...document.querySelectorAll('#app .col-left .pack')]
+          .map(x => x.textContent).join(' | ');
+        return t.includes('b1') && /rev \\d+/.test(t) && t.includes('你说：') && t.includes('开局');
+      })()`),
+    )
+    check(
+      '当前版本的那一条不可点（回退到自己是空操作，UI 不给无意义入口）',
+      await cdp.eval(`!!document.querySelector('#app .col-left .pack.current')?.disabled`),
+    )
+
+    // 回到最早那一版
+    const rewound = await cdp.eval(`(() => {
+      const packs = [...document.querySelectorAll('#app .col-left .pack')];
+      const target = packs[packs.length - 1];            // 列表新的在前 → 最后一条最旧
+      if (!target || target.disabled) return false;
+      target.click();
+      return true;
+    })()`)
+    check('可以点「回到这一版」', rewound)
+    await cdp.waitFor(`/已回到 rev/.test(document.querySelector('#app .notice')?.textContent || '')`,
+      { timeout: 8000, label: '回退提示' })
+    check('回退后给出结论先行的提示（说清开了新分支）', true)
+    check(
+      '回退提示里说清了"新版本 + 新分支 + 原来的线还在"',
+      await cdp.eval(`(() => {
+        const t = document.querySelector('#app .notice')?.textContent || '';
+        return t.includes('新的一版') && t.includes('分支') && t.includes('原来的线');
+      })()`),
+    )
+    check(
+      '正文栏被**重建**（不是留着已经不存在的旧剧情线）',
+      await cdp.eval(`(() => {
+        const t = document.querySelector('#app .prose')?.textContent || '';
+        return t.includes('你挡在了她身前') && !t.includes('随即记下了你的名字');
+      })()`),
+    )
+
     // =====================================================================
     // 创作工作台（N2a）：素材 → 进度 → 校验报告 → 试玩 → 发布
     // =====================================================================
@@ -753,10 +851,26 @@ async function main() {
     )
 
     // 点一张草稿 → 自动切到对话模式，并拉取会话现状
-    await cdp.eval(`(() => {
-      [...document.querySelectorAll('#app .studio .col-left .pack')]
-        .find(x => x.textContent.includes('过校验的一版')).click();
+    //
+    // ⚠️ **必须先等草稿列表渲染出来**：它是 `GET /api/packs/drafts` 的异步结果，
+    // 而 `.studio` 容器先出现、内容后到。少了这一等，`find(...)` 会返回 undefined、
+    // `.click()` 抛 TypeError——**偶发**失败（跑 5 次撞 1 次），且报错只有
+    // "页面内异常: Uncaught"，完全对不上是哪一条。
+    // 这也正是 N2a 那段注释里写过的同一个坑（"卡片是异步取回之后才渲染的"），
+    // 我在 N6 这段又踩了一次 —— 所以这次把"等列表"写进断言而不是靠运气。
+    await cdp.waitFor(
+      `[...document.querySelectorAll('#app .studio .col-left .pack')]
+         .some(x => x.textContent.includes('过校验的一版'))`,
+      { timeout: 8000, label: '草稿列表渲染出可点的那一张' },
+    )
+    const pickedDraft = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .studio .col-left .pack')]
+        .find(x => x.textContent.includes('过校验的一版'));
+      if (!b) return false;
+      b.click();
+      return true;
     })()`)
+    check('草稿列表里有可点的那一张', pickedDraft)
     await cdp.waitFor(`!!document.querySelector('#app .studio .chat')`, {
       timeout: 8000, label: '对话面板出现',
     })
