@@ -79,6 +79,12 @@ class FactGraph:
         return tok in self.token_set or tok in self.quoted
 
 
+def _npc_name(pack, npc_id: str) -> str:
+    """NPC id → 显示名（不在包内时回退 id，绝不抛错：事实图构建不能因数据问题中断）。"""
+    npc = getattr(pack, "npcs", {}).get(npc_id)
+    return npc.name if npc is not None else npc_id
+
+
 def build_graph(pack, state, history: list[dict] | None = None) -> FactGraph:
     """从世界包 + 状态构建事实图（与 status_text 材料同源；不含 flags）。
 
@@ -86,6 +92,12 @@ def build_graph(pack, state, history: list[dict] | None = None) -> FactGraph:
     长局中早期事实只活在摘要里，不入图会被缺席判定误报为"虚构"
     （证据面"该有的"必须有，宁可少拦不误拦）。choice_log 的选项文本
     是代码结算过的既成剧情，同理接地。
+
+    **契约（本模块的立身之本）：凡 status_text 注入的材料，都必须能接地。**
+    判官拿到的材料就是 status_text，若某块材料不入图，模型复述它就会被判
+    「虚构事实」——用引擎自己的真值去指控模型编造。约定（`<约定>` 区块，
+    2026-09-25 加入并**无条件常驻注入**）与关系洞察（注入角色卡）此前正落在
+    这个缺口里，是"新注入块必须同步入图"这条纪律的实证。
     """
     facts: list[str] = []
     if history is not None:
@@ -100,6 +112,15 @@ def build_graph(pack, state, history: list[dict] | None = None) -> FactGraph:
     for npc_id in state.present_npcs:
         if npc_id in state.npc_memories:
             facts += [m.fact for m in state.npc_memories[npc_id] if not m.superseded]
+    # 约定真值入图：<约定> 每轮无条件注入状态栏，转述约定内容不算编造。
+    # 同时并入 NPC 名（"与江屿约定：…"的整体语义），保证引用对象也接地。
+    for appt in getattr(state, "appointments", []):
+        facts.append(f"与{_npc_name(pack, appt.with_npc)}约定：{appt.what}")
+        if appt.status == "pending":
+            facts.append(appt.what)
+    # 关系洞察入图：洞察注入在场角色卡，其文本同样是模型可见材料
+    for insights in getattr(state, "npc_insights", {}).values():
+        facts += [i.text for i in insights]
     if getattr(pack.world, "lore", None):
         facts += [e.text for e in pack.world.lore]
     for npc_id in state.present_npcs:

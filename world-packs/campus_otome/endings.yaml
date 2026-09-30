@@ -1,0 +1,138 @@
+# 结局规则（校园乙游）——代码每轮自动判定，按文件顺序优先匹配
+# 顺序纪律：最苛刻的（真结局）在最前 → 普通恋爱结局 → 告白未果 → 友情 → 自我 → 兜底。
+# 每个结局的 when 都与 N5 的 route flag 呼应，玩家能回溯"哪个选择通向哪个结局"。
+endings:
+  - id: ending_jiang_true
+    title: 天台上的星图
+    kind: auto
+    when:
+      all:
+        - {flags: {route_jiang: true, jiang_secret: true, wrote_letter: true}}
+        - {affection: {jiang_yu: {gte: 65}}}
+    text: |
+      你把那封信放在他摊开的登记本上，他看完之后没有立刻说话——
+      只是把望远镜转过来，让你先看。木星的条纹在镜筒里慢慢移过去。
+      "志愿表我昨天交上去了。"他说，"天体物理。我爸还没签字，但我先填了。"
+      后半夜风很大，他把外套脱下来搭在你肩上，动作规矩得像在盖一枚章。
+      ——结局达成：天台上的星图
+
+  - id: ending_xia_true
+    title: 加时赛
+    kind: auto
+    when:
+      all:
+        - {flags: {route_xia: true, xia_secret: true, wrote_letter: true}}
+        - {affection: {xia_ming: {gte: 65}}}
+    text: |
+      他把信读了两遍，读到第二遍的时候笑不出来了。
+      "我膝盖的事，全国大赛之后就去查。"他说，"这次不骗你。"
+      你们在空球场上又打了一场，没有计时，没有观众，谁也没喊停。
+      最后一球进网的时候，他转过身，很轻地叫了一声你的名字，没有再往下说——
+      你已经听见了。
+      ——结局达成：加时赛
+
+  - id: ending_wen_true
+    title: 速写本的最后一页
+    kind: auto
+    when:
+      all:
+        - {flags: {route_wen: true, wen_secret: true, wrote_letter: true}}
+        - {affection: {wen_yan: {gte: 65}}}
+    text: |
+      他把速写本推过来，从第一页开始。
+      前面是教学楼、旧自行车、被雨打湿的窗——翻到后面，全是你低着头的侧脸。
+      "本来不打算给人看的。"他说，声音比平时低，"你自己翻到的，不算我给你看。"
+      你把那封信夹在最后一页，他没有抽出来，只是把本子合上，按了按。
+      ——结局达成：速写本的最后一页
+
+  - id: ending_jiang
+    title: 安静的喜欢
+    kind: auto
+    when:
+      all:
+        - {flags: {route_jiang: true}}
+        - {affection: {jiang_yu: {gte: 45}}}
+    text: |
+      他听完，点了点头，说"我知道了"，然后一路把你送到校门口，没说别的。
+      第二天早上，你的桌上多了一本他抄的物理笔记，扉页写着"第三章第四节"。
+      有些人的喜欢就是这样：慢半拍，但从不会漏掉。
+      ——结局达成：安静的喜欢
+
+  - id: ending_xia
+    title: 夏天的尾巴
+    kind: auto
+    when:
+      all:
+        - {flags: {route_xia: true}}
+        - {affection: {xia_ming: {gte: 45}}}
+    text: |
+      他愣了一下，然后大笑，笑完忽然安静下来，说"那你等我一下"。
+      他跑进球馆，把那个用了一年的球塞进你怀里，球上写着他的号码。
+      "先寄放在你那儿。"他说，"打完这一季，我来拿。"
+      ——结局达成：夏天的尾巴
+
+  - id: ending_wen
+    title: 没画完的侧脸
+    kind: auto
+    when:
+      all:
+        - {flags: {route_wen: true}}
+        - {affection: {wen_yan: {gte: 45}}}
+    text: |
+      他听完没抬头，只是把笔放下，说："知道了。"
+      灯灭了以后他还站在窗前。你走到楼下才发现，美术教室那扇窗又亮了起来——
+      有人在里面接着画，画到很晚。
+      ——结局达成：没画完的侧脸
+
+  - id: ending_unfinished
+    title: 说出口之后
+    kind: auto
+    when:
+      all:
+        - {flags: {confession_done: true}}
+        - {day: {gte: 17}}
+        - {any: [{flags: {route_jiang: true}}, {flags: {route_xia: true}}, {flags: {route_wen: true}}]}
+    text: |
+      话说出口之后，他没有立刻回答，你也没有追问。
+      接下来的几天照常上课、照常值日、照常在走廊上擦肩。
+      有些话像灯一样，放上去的时候很亮，落下来的时候也很安静。
+      那个夏天没能给出答案，但你已经不是那个站在教室门口不敢进去的人了。
+      ——结局达成：说出口之后
+
+  - id: ending_friends
+    title: 两个人的毕业照
+    kind: auto
+    when:
+      all:
+        - {flags: {route_self: true}}
+        - {affection: {su_qing: {gte: 60}}}
+    text: |
+      你把灯留在樱花道旁边，回头看见苏晴正蹲在地上系鞋带。
+      "走吧。"她站起来，"明年这时候，我们还来放一次。"
+      后来那张毕业照上，你们俩站在最后一排，肩膀挨着肩膀，笑得最响。
+      ——结局达成：两个人的毕业照
+
+  - id: ending_self
+    title: 先说自己想说的
+    kind: auto
+    when:
+      all:
+        - {flags: {route_self: true}}
+    text: |
+      你把灯放在樱花道尽头，一个人站到最后。
+      这一年你学会的东西——补习到熄灯的晚上、烤糊的第一盘点心、
+      还有那些最终没递出去的话——都长在你自己身上了。
+      志愿表你自己填的，没问任何人。
+      ——结局达成：先说自己想说的
+
+  - id: ending_unspoken
+    title: 那个没放灯的夏天
+    kind: auto
+    when:
+      all:
+        - {day: {gte: 20}}
+    text: |
+      学期结束得比想象中安静。学园祭的灯早就拆了，樱花道两旁的绳子也收走了。
+      你还是没弄清楚自己到底想要什么，好在这一年还长。
+      暑假过后，你还会回来。
+      ——结局达成：那个没放灯的夏天

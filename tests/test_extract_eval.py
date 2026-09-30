@@ -1,6 +1,6 @@
 """extract 直接评测的判分逻辑（离线单测）。
 
-判分规则（`docs/plan-phase1-data.md` §3 的 B 块）：
+判分规则（`archive/finetune/docs/plan-phase1-data.md` §3 的 B 块）：
 - **召回**：`must_recall` 的关键实体必须被抽出的事实覆盖（同义表述容忍 → 实体子串判定）
 - **去重纪律**：`must_not_output`（已有事实）不得被重复输出
 - **负例**：`expect_empty=true` 的回合应输出「无」→ `parse_facts` 得空列表

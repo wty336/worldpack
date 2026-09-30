@@ -96,14 +96,36 @@ def history_text(history: list[dict]) -> str:
 def rebuild_history(
     history: list[dict], summary_idx: int, new_summary: str, cut: int
 ) -> list[dict]:
-    """用新摘要重建历史：[旧前缀] + [摘要] + [切点之后的近窗]。"""
+    """用新摘要重建历史：**摘要原位替换** + 丢弃被摘要覆盖的部分 + 保留近窗。
+
+    为什么必须原位替换（而不是插在近窗前）——KV Cache 的字节前缀约束：
+
+    旧实现返回 `[旧前缀] + [新摘要] + [近窗]`（摘要插在 prefix 之后）。而近窗消息
+    在两次请求之间**逐字未变**，本应是缓存里最值钱的一段；插一条新消息进去，
+    缓存匹配到插入点就断了，**从摘要起往后全部失效**。
+    实测症状还包括摘要自身漂移：摘要最初在 index 0，第二次压缩起 index 变成 1、3……
+    且条数按 1→2→4 累积（旧摘要从未被删除，只是被推到前缀里）。
+
+    正确形态：
+    - `history[:summary_idx]` 逐字保留（前缀继续命中缓存）；
+    - 已有的摘要条目**被替换**（不是被保留）；
+    - `history[cut:]` 逐字保留（近窗不动，缓存可复用）；
+    - 其余被摘要覆盖的消息丢弃 —— 这才是压缩的目的。
+    """
     prefix = history[:summary_idx] if summary_idx > 0 else []
     summary_msg = {
         "role": "user",
         "name": "engine",  # A-2：剧情摘要是引擎元消息，排除出检索上下文
+        "origin": "engine",  # 血缘标记：本条由引擎注入，非模型/玩家产出
         "content": f"{SUMMARY_MARK}\n{new_summary}",
     }
-    return [*prefix, summary_msg, *history[cut:]]
+    # 关键：切点之后的区间里可能**残留着旧摘要**（摘要若在切点之前，它会被前缀或
+    # 被丢弃覆盖；但一旦 history 里已有摘要且 cut 落在它之后，不排除就会累积成
+    # 多条摘要 —— 实测按 1→2→4 增长）。故按内容标记剔除所有既有摘要消息。
+    tail = [
+        m for m in history[cut:] if not str(m.get("content") or "").startswith(SUMMARY_MARK)
+    ]
+    return [*prefix, summary_msg, *tail]
 
 
 def ensure_pairing(history: list[dict]) -> bool:

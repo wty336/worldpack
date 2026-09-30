@@ -64,6 +64,15 @@ def case_set_digest(case_ids: Iterable[str]) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:DIGEST_LEN]
 
 
+def normalized_bytes(path: str | Path) -> bytes:
+    """读文本工件并按统一口径归一化换行（`file_digest` 与 `worldpack.pack_digest` 共用）。
+
+    抽出来是为了让"换行归一"只有一个实现：口径一旦分叉，同一份内容会在两处算出
+    两个摘要，而摘要的全部意义就是可对账（见 `file_digest` 的实测教训）。
+    """
+    return Path(path).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def file_digest(path: str | Path) -> str:
     """文本评测工件的**内容摘要**（换行归一化后取 sha256）。
 
@@ -80,7 +89,7 @@ def file_digest(path: str | Path) -> str:
     这样摘要只反映**内容**，与检出平台/换行配置无关；历史报告里的旧值可按
     "CRLF 形态 vs LF 形态" 成对识别（见 `eval-sets/MANIFEST.md` §5 注）。
     """
-    data = Path(path).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    data = normalized_bytes(path)
     return hashlib.sha256(data).hexdigest()
 
 

@@ -53,19 +53,36 @@ class RunRecorder:
         history: list[dict],
         action: dict | None,
         outcome: dict | None,
+        rng=None,
     ) -> None:
         """记录一个回合：checkpoint = 回合结束后的全量状态 + 历史；runlog 一行 =
         动作 + 结果 + checkpoint 引用。``action`` = 玩家动作
         {kind: say/act/pick/start, payload}；``outcome`` = 回合结果摘要。
+
+        ``rng``（可选）：本局使用的 `random.Random`。**必须传**才能让重放确定性成立
+        ——检定掷骰、`chance` 日程事件、`{base, spread}` 收益曲线都吃 rng，
+        状态快照不覆盖它。`random.Random.getstate()` 返回纯 JSON 可序列化的
+        (版本, 625 个整数, 高斯缓存)，所以直接落盘即可，保持 checkpoint 的可读性。
+        缺省 None = 不记录（老行为，重放对含随机的回合不可复现）。
+
+        **`turn` 的口径**（K 系列统一时间轴）：调用方传入的应是 `state.turn_count`
+        （引擎的叙事回合编号，跨存档连续），而不是调用方自己的动作计数器——后者在
+        "关键抉择接管"这类不发请求、不推进 `turn_count` 的动作上会与引擎轴漂开，
+        导致 runlog 的行号对不上 trace / usage 的 `game_turn`。
+        `record_run.py` 另用一个密集的 `seq` 作 checkpoint 文件名，两者都留在条目里。
         """
         cp_path = self.checkpoint_dir / f"{turn:06d}.json"
+        payload: dict = {"state": state.to_dict(), "history": history}
+        if rng is not None:
+            payload["rng_state"] = rng.getstate()
         cp_path.write_text(
-            json.dumps({"state": state.to_dict(), "history": history}, ensure_ascii=False),
+            json.dumps(payload, ensure_ascii=False),
             encoding="utf-8",
         )
         entry = {
             "run_id": self.run_id,
             "turn": turn,
+            "game_turn": getattr(state, "turn_count", turn),  # 与 trace/usage 同轴
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "action": action,
             "outcome": outcome,
@@ -110,13 +127,29 @@ def apply_prompt_patch(patch_path: str | Path, engine_rules: str) -> str:
     return text
 
 
-def rebuild_game(pack, state_dict: dict, history: list[dict], llm):
-    """从 checkpoint 重建 Game（state/history 原位还原；turn_count 等随 state 走）。"""
+def rebuild_game(pack, state_dict: dict, history: list[dict], llm, rng_state=None):
+    """从 checkpoint 重建 Game（state/history 原位还原；turn_count 等随 state 走）。
+
+    ``rng_state``：`checkpoint(rng=...)` 记录的 `random.Random.getstate()`。
+    传入即还原随机流——**重放可复现性的必要条件**：不还原时，任何含检定/概率事件/
+    收益曲线的回合每次重放都会掷出不同结果，diff 会把随机噪声误报成提示词或模型
+    差异（正是 replay 工具要测的东西）。缺省 None = 老 checkpoint，退化为随机 rng。
+    """
+    import random
+
     from game_agent.game import Game
     from game_agent.state import GameState
 
     state = GameState.from_dict(state_dict)
-    game = Game(pack, state, llm)
+    rng = random.Random()
+    if rng_state is not None:
+        # JSON 回环把元组读成列表，而 `Random.setstate` **要求元组**（列表会抛
+        # TypeError: state vector must be a tuple）——故显式重建元组结构。
+        version, keys, gauss = rng_state
+        if gauss is not None:
+            gauss = tuple(gauss)
+        rng.setstate((version, tuple(keys), gauss))
+    game = Game(pack, state, llm, rng=rng)
     game.history = list(history)
     return game
 

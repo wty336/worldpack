@@ -19,7 +19,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Run tests (offline, 784 items)
+      # 注：原步骤名写死 "784 items"，早已过期且会掩盖"文件没入库导致测试静默变少"。
+      # 数量随微调线归档变动（843 → 633），故不再写进步骤名。
+      - name: Run tests (offline)
         run: uv run pytest -q
 
       - name: Validate all world packs (offline)

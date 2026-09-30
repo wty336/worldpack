@@ -46,6 +46,37 @@ def retry_tokens_for(max_tokens: int) -> int:
     return max(EMPTY_RETRY_TOKENS, max_tokens * 2)
 
 
+# 上下文溢出的错误特征（provider 拒绝"输入过长"时的措辞）。
+# 大小写不敏感匹配；任一命中即判定为溢出。**只用于分类**，不用于"猜"——
+# 匹配不到就按普通错误处理（宁可少恢复一次，不要误判成溢出后压缩有效历史）。
+_OVERFLOW_MARKERS = (
+    "context length",
+    "context_length",
+    "maximum context",
+    "context window",
+    "too many tokens",
+    "reduce the length",
+    "max_tokens",
+    "上下文长度",
+    "输入过长",
+)
+
+
+def is_context_overflow(exc: BaseException) -> bool:
+    """判断 API 异常是否为"上下文超出模型窗口"（而非限流/网络/配额）。
+
+    为什么要按文本分类：OpenAI 兼容端点（含 DeepSeek 及各类自建推理服务）在这类
+    错误上没有统一的结构化 code，只有 400 + 一段自然语言消息；``BadRequestError``
+    本身既可能是"参数非法"也可能是"输入过长"。因此按消息文本识别，保守取真：
+    判不出就返回 False，让调用方走原有的熔断/重试路径（行为不变）。
+
+    与 ``compression`` 侧的配合见 ``game.Game._overflow_retry``：命中后压缩一次
+    再重试，而不是把三个贵调用烧在同一个超长上下文上。
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker.lower() in text for marker in _OVERFLOW_MARKERS)
+
+
 def complete_checked(
     llm: Any,
     messages: list[dict],

@@ -1,0 +1,208 @@
+# 事件规则（校园乙游）：三类触发全用上
+#   condition —— 好感/取舍到位后的"秘密揭示"与关系推进（乙游的核心节拍）
+#   schedule  —— 行动附带的随机小事件（烤点心的香味、商店街打折）
+#   time      —— 时间线事件（考试周、学园祭前夜）
+# 触发判定全部由引擎代码完成，LLM 不参与。
+events:
+  # ---------- 三条线的秘密：好感 40 解锁（真结局的前置） ----------
+  - id: ev_jiang_secret
+    title: 天台的望远镜
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {jiang_yu: {gte: 40}}}
+    priority: high
+    script: |
+      天台的望远镜：他以为你走了，才把书包里那台旧望远镜架起来。
+      你退回去半步，又站住。他没有回头，只说了一句："今晚木星很亮。"
+      后来他把志愿表折起来塞回口袋，说那张表他改了四遍。
+    effects:
+      flags: {jiang_secret: true}
+      affections: {jiang_yu: 5}
+    once: true
+
+  - id: ev_xia_secret
+    title: 收球之后
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {xia_ming: {gte: 40}}}
+    priority: high
+    script: |
+      收球之后：人都走完了，他才在罚球线边坐下，把右腿伸得很直。
+      你递水过去，他接的时候没笑——那是你第一次看见他不笑的样子。
+      他说："别跟队里讲。也别可怜我，我家里那个摊子比这膝盖难多了。"
+    effects:
+      flags: {xia_secret: true}
+      affections: {xia_ming: 5}
+    once: true
+
+  - id: ev_wen_secret
+    title: 掉在地上的速写本
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {wen_yan: {gte: 40}}}
+    priority: high
+    script: |
+      掉在地上的速写本：他弯腰去捡，你比他快了一步。
+      本子翻开的那一页上是一个人的侧脸——头发别在耳后，正低头写着什么。
+      他把本子拿回去，扣上，隔了很久才说："别看。还没画完。"
+    effects:
+      flags: {wen_secret: true}
+      affections: {wen_yan: 5}
+    once: true
+
+  # ---------- 关系推进：取舍与努力的回响 ----------
+  - id: ev_suqing_talk
+    title: 可丽饼摊的深夜谈
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {affection: {su_qing: {gte: 50}}}
+    priority: normal
+    script: |
+      可丽饼摊的深夜谈：她忽然问你想考去哪里，问完自己先笑了，说"我妈让我读理科"。
+      摊子上的灯照着两张纸，一张是她的广播稿，一张是志愿调查表，都没填完。
+    effects:
+      affections: {su_qing: 5}
+    once: true
+
+  - id: ev_cram_light
+    title: 补习班的灯
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {flags: {chose_cram: true}}
+          - {stat: {study: {gte: 35}}}
+    priority: normal
+    script: |
+      补习班的灯：那天留下的人里只剩你一个，值日老师锁门时多看了你一眼，
+      把黑板上一道没讲完的题又写了一遍。
+    effects:
+      stats: {study: 3}
+    once: true
+
+  - id: ev_quiz_result
+    title: 成绩单贴在走廊上
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {flags: {quiz_top: true}}
+    priority: normal
+    script: |
+      成绩单贴在走廊上：你的名字第一次进了前十。
+      江屿在榜单前站了一会儿，用登记本挡住半边脸，说："下次物理还能再高五分。"
+    effects:
+      stats: {study: 2}
+      affections: {jiang_yu: 3}
+    once: true
+
+  - id: ev_club_photo
+    title: 招新墙上的合影
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {day: {gte: 9}}
+          - {any: [{flags: {club_council: true}}, {flags: {club_basketball: true}}, {flags: {club_art: true}}]}
+    priority: low
+    script: |
+      招新墙上的合影：一个月过去，招新墙上贴出了各部的新合影。
+      你在照片里找自己，苏晴在旁边说："你站得也太靠边了吧。"
+    effects:
+      stats: {grace: 2}
+      affections: {su_qing: 2}
+    once: true
+
+  - id: ev_stage_rehearsal
+    title: 彩排到天黑
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {flags: {festival_stage: true}}
+          - {day: {gte: 12}}
+    priority: normal
+    script: |
+      彩排到天黑：空场里只剩下你的声音，音响师让你再来一遍。
+      第二遍唱到一半，你听见后排有人坐下了，没回头也知道是谁。
+    effects:
+      stats: {grace: 2}
+    once: true
+
+  - id: ev_booth_bond
+    title: 摆摊的第三天
+    trigger:
+      kind: condition
+      when:
+        all:
+          - {flags: {festival_booth: true}}
+          - {day: {gte: 12}}
+    priority: normal
+    script: |
+      摆摊的第三天：炒面糊了两锅，展板倒了一次，你们谁也没抱怨。
+      收摊的时候有人把最后一瓶水递给你，瓶身上还带着凉气。
+    effects:
+      stats: {art: 2}
+    once: true
+
+  # ---------- 行动附带的随机小事件 ----------
+  - id: ev_bake_aroma
+    title: 厨房里的香味
+    trigger:
+      kind: schedule
+      action: bake_cookies
+      chance: 0.5
+    priority: low
+    script: |
+      厨房里的香味：外婆推门进来，尝了一块，说糖放少了，又说这样刚好。
+    effects:
+      stats: {art: 2}
+    once: true
+
+  - id: ev_shop_sale
+    title: 商店街打折
+    trigger:
+      kind: schedule
+      action: buy_ingredients
+      chance: 0.4
+    priority: low
+    script: |
+      商店街打折：老板娘说今天是月底清货，材料买一送一，多塞给你一包。
+    effects:
+      items: {gain: [ingredient]}
+    once: true
+
+  # ---------- 时间线 ----------
+  - id: ev_midterm_week
+    title: 考试周
+    trigger:
+      kind: time
+      when: {day: {gte: 6}}
+    priority: normal
+    script: |
+      考试周：走廊上贴满了复习提纲，连篮球部都提前收了训练。
+      你把错题抄进本子，抄到第三页时发现自己在写一个人的名字，又划掉了。
+    effects:
+      stats: {study: 2}
+    once: true
+
+  - id: ev_festival_eve
+    title: 学园祭前夜
+    trigger:
+      kind: time
+      when: {day: {gte: 13}}
+    priority: high
+    script: |
+      学园祭前夜：操场边上在搭灯架，樱花道两旁的绳子已经拉好了。
+      苏晴发来消息说，明天放灯的时候，谁站在你旁边，这一年就算数了。
+    effects:
+      stats: {grace: 2}
+    once: true

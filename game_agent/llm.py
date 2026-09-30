@@ -22,6 +22,7 @@ from typing import Any, Callable
 from openai import OpenAI
 
 from .budgets import TURN_MAX_TOKENS as MAX_OUTPUT_TOKENS
+from .budgets import is_context_overflow
 from .config import Settings
 from .registry import ToolRegistry, from_callbacks, from_schedule
 from .trace import TraceRecorder
@@ -82,11 +83,22 @@ def _assistant_to_dict(msg: Any) -> dict:
 
     保留 reasoning_content：DeepSeek V4 在携带 tools 时要求回传思考内容（章 2），
     缺失会导致 400 错误。
+
+    ``origin="model"`` / ``call_id``：**血缘标记**（B 系列观测加固）。此前带
+    tool_calls 的 assistant 消息里，`call_id` 是唯一能把"这次写入"关联回
+    trace 里那条 `tool` 事件（以及模型的哪一次 tool_call）的键；`origin`
+    则把"模型写的"与"引擎注入的"分开。两者都直接写进 payload 且**所有消费方
+    原样透传**：历史里存的就是请求里发的，不需要任何索引/旁路状态，因而压缩、
+    回滚、存档都不会让血缘失真。
     """
     d: dict[str, Any] = {
         "role": "assistant",
         "content": msg.content if msg.content is not None else "",
+        "origin": "model",
     }
+    response_id = getattr(msg, "id", None)
+    if response_id:
+        d["call_id"] = response_id
     rc = getattr(msg, "reasoning_content", None)
     if rc:
         d["reasoning_content"] = rc
@@ -107,12 +119,62 @@ def _tool_result(tool_call_id: str, content: str) -> dict:
     return {"role": "tool", "tool_call_id": tool_call_id, "content": content}
 
 
+def _reattach_origins(
+    msgs: list[dict],
+    by_identity: dict[int, str],
+    by_content: dict[str, str],
+) -> None:
+    """把调用方打过、在消息重建中丢失的 ``origin`` 标记还原（原地修改 ``msgs``）。
+
+    ``run_turn`` 返回的 ``messages`` 会被调用方整体采纳为新的 history
+    （``game._generate_turn``），因此这条路径上任何标记丢失都会让"history 自描述"
+    的不变量在**正常回合**上失效——最典型的是玩家输入：它由调用方以
+    ``{"role":"user","origin":"player",...}`` 传入，若返回时不还原，调用方下一次
+    就只能靠"没有 name 字段"反推，等于没做。
+
+    只还原调用方**明确标记过**的消息：模型产出的 assistant/tool 消息不在其中，
+    所以外部标记无法伪造模型的来源。
+    """
+    for m in msgs:
+        if not isinstance(m, dict) or "origin" in m:
+            continue
+        origin = by_identity.get(id(m))
+        if origin is None and m.get("role") == "user":
+            origin = by_content.get(str(m.get("content") or ""))
+        if origin is not None:
+            m["origin"] = origin
+
+
 def _protocol_fail(reason: str) -> dict:
     return {
         "role": "user",
         "name": "engine",  # A-2：协议重试提示是引擎元消息
+        "origin": "engine",  # 血缘标记：本条由引擎注入，非模型/玩家产出
         "content": f"[引擎提示] 你上一轮输出不符合协议：{reason}\n请重新生成本轮叙事。",
     }
+
+
+def _truncated_tool_calls_result(tc: Any, reason: str) -> str:
+    """截断响应的**全批作废**回执（llm.py 的 finish_reason=length 守卫用）。
+
+    为什么一个都不执行（对齐 pi-agent 的 ``failToolCallsFromTruncatedMessage``）：
+    ``finish_reason == "length"`` 说明输出被 ``max_tokens`` 砍断，此时 tool_call
+    的 arguments 是 SDK 从**流式分片**里尽力拼出来的——它可能恰好是合法 JSON、
+    也恰好通过引擎校验，但**内容被静默截断**。对引擎而言这是最坏的一类错误：
+    ``{"stat":"martial","delta":1`` 被补成 ``delta: 1``（本意 15）会静默通过
+    ``StatsSystem`` 的 ±10 幅度校验，数值错一个量级而审计不变量
+    ``after == before + delta`` 依然自洽（每笔记录都自洽），**结构性不可见**；
+    ``submit_narration`` 的 narration/choices 被腰斩同样"合法接收"。
+
+    故不做"能解析就执行"的尽力而为：整批回错误让模型重发（缩短后重发是本轮
+    重试提示的主旨）。每个 tool_call 都必须回配对结果——带 tool_calls 的
+    assistant 消息缺配对 tool 结果，下一次请求会被 API 拒绝。
+    """
+    return (
+        f"[引擎拒绝] 工具 '{tc.function.name}' 未被调用：上一次输出因超长被截断"
+        f"（finish_reason=length），其参数可能不完整——执行会写入错误的数值。{reason}"
+        "请缩短叙事（narration 两三句）重新发起本次调用。"
+    )
 
 
 def _estimate_input_tokens(messages: list[dict]) -> int:
@@ -165,6 +227,15 @@ class LLMClient:
         self.tracer = tracer
         self.calibrator = calibrator
         self._turn_seq = 0  # B1：本进程内的叙事回合序号（trace 关联键）
+        # K 系列：玩家回合编号（= GameState.turn_count），由 `Game._generate_turn` 设入。
+        # None = 未接入游戏层（如单测直接构造）：trace 事件就不带该字段。
+        self.game_turn: int | None = None
+        # K 系列：本玩家回合已发生的恢复痕迹，由 `Game._note_recovery` 维护，
+        # 附在 turn_begin 事件上（见 `_trace` 调用点）。
+        self.recovered: list[str] = []
+        # J 系列：最近一次主回合 API 调用是否被 provider 以"输入过长"（上下文溢出）拒绝。
+        # 调用方（Game._llm_round）据此选择"压缩后重试"而不是"整轮熔断回滚"。
+        self.last_overflow = False
 
     @classmethod
     def from_settings(
@@ -199,13 +270,23 @@ class LLMClient:
         return self.calibrator.factor(purpose) if self.calibrator is not None else 1.0
 
     def _trace(self, event: str, **fields: Any) -> None:
-        """B1：tracer 为 None 时零开销 no-op；落盘失败由 recorder 内部静默。"""
+        """B1：tracer 为 None 时零开销 no-op；落盘失败由 recorder 内部静默。
+
+        K 系列：所有事件自动带上 `game_turn`（玩家回合编号，由调用方设入
+        `self.game_turn`）。设置点唯一（`Game._generate_turn`），因此一次玩家回合里的
+        级联/判劣重写/溢出重试产生的所有事件共享同一个 `game_turn`，而各自的
+        `turn_seq` 仍是生成级序号——两个层级正交，报告可任选聚合粒度。
+        """
         if self.tracer is not None:
+            if self.game_turn is not None:
+                fields.setdefault("game_turn", self.game_turn)
             self.tracer.record(event, **fields)
 
     def _record_usage(self, model: str, purpose: str, resp: Any) -> None:
+        """usage 落盘（C2）。K 系列：附带 `game_turn`，使成本可按玩家回合归集
+        ——`summarize()` 仍按 (model, purpose) 聚合，多的字段不影响既有报告。"""
         if self.tracker is not None:
-            self.tracker.record(model, purpose, usage_fields(resp))
+            self.tracker.record(model, purpose, usage_fields(resp), game_turn=self.game_turn)
 
     def _calibrate(self, purpose: str, est_input: int, resp: Any) -> None:
         """批次 F：用真实 prompt_tokens 回填估算校正因子（无 usage/校准器则跳过）。"""
@@ -306,6 +387,21 @@ class LLMClient:
         on_text：提供时启用流式输出，内容增量实时回调（玩家边等边看）。
         """
         msgs = [dict(m) for m in messages]
+        # 血缘标记（③）：调用方在 history 里给消息打过 origin，但本函数只回传
+        # **模型 side 重建**的消息列表（assistant / tool 由响应重建），调用方若整体
+        # 采用它，此前打的标记就丢了。这里在返回前把标记还原回去——否则"history
+        # 自描述"这条不变量会在每一次正常回合上失守（玩家输入会变成来源不明）。
+        origin_by_identity = {
+            id(m): m["origin"] for m in messages if isinstance(m, dict) and "origin" in m
+        }
+        # 值匹配兜底：调用方可能传入副本（build_messages 会重建 system 前缀），
+        # 对象身份对不上，但内容一致。只对 user 消息兜底——assistant/tool 由模型
+        # 产出，绝不该被外部标记带偏。
+        user_origin_by_content = {
+            str(m.get("content") or ""): m["origin"]
+            for m in messages
+            if isinstance(m, dict) and m.get("role") == "user" and "origin" in m
+        }
         if registry is None:
             registry = from_callbacks(apply_change, remember, query_world)
             tools_schema = self.tools
@@ -316,9 +412,14 @@ class LLMClient:
         model = self.model_for("turn")
         self._turn_seq += 1  # B1：回合序号（trace 关联键）
         turn_seq = self._turn_seq
+        self.last_overflow = False  # J 系列：本回合的溢出标记，按回合重置
         self._trace(
             "turn_begin", turn_seq=turn_seq, model=model,
             messages=len(msgs), max_iters=max_iters,
+            # K 系列：把本回合已发生的恢复痕迹带上（同一玩家回合的后续生成继承）。
+            # 不这样记，trace 里就看不出"这次生成是判劣重写还是溢出重试"
+            # ——报告只能看到"同一个 game_turn 跑了几次生成"，不知道每次的来由。
+            recovered=list(getattr(self, "recovered", ()) or ()),
         )
         for i in range(1, max_iters + 1):
             kwargs: dict[str, Any] = dict(
@@ -399,7 +500,17 @@ class LLMClient:
                     usage=stream_usage,  # C2：可能为 None（provider 未回传）
                 )
             else:
-                resp = self._client.chat.completions.create(**kwargs, stream=False)
+                # J 系列：API 异常分类。上下文溢出（输入过长）是**确定性的上下文问题**，
+                # 不是瞬时故障——SDK 的 max_retries 会拿同一个超长请求再撞几次，
+                # 调用方则可能把它当协议失败熔断掉。这里只做**标记 + 原样抛出**：
+                # 异常照旧向上传播（行为不变），但要给上层留一个可靠信号，
+                # 使它能选择"压缩后重试"而不是"整轮回滚"。
+                try:
+                    resp = self._client.chat.completions.create(**kwargs, stream=False)
+                except Exception as e:  # noqa: BLE001
+                    if is_context_overflow(e):
+                        self.last_overflow = True
+                    raise
             latency_ms = round((time.monotonic() - t0) * 1000)
             self._record_usage(model, "turn", resp)
             self._calibrate("turn", est_input, resp)  # 批次 F
@@ -437,6 +548,34 @@ class LLMClient:
                 )
                 continue
 
+            # 截断守卫：finish_reason=length 时**没有任何** tool_call 可以执行。
+            # 有工具调用 ≠ 输出完整——流式拼接出的 arguments 可能"合法但被腰斩"，
+            # 照发会静默写错数值（详见 _truncated_tool_calls_result 的注释）。
+            # 放在派发之前、且与"无工具调用"同走协议重试路径：重试提示同样要求缩短。
+            if finish == "length":
+                truncation_tip = (
+                    "本次可能被截断的工具调用："
+                    + "、".join(tc.function.name for tc in tool_calls)
+                    + "。"
+                )
+                for tc in tool_calls:
+                    msgs.append(_tool_result(tc.id, _truncated_tool_calls_result(tc, truncation_tip)))
+                    self._trace(
+                        "tool", turn_seq=turn_seq, call_id=tc.id, origin="model",
+                        name=tc.function.name, status="truncated",
+                        detail=truncation_tip[:80],
+                    )
+                msgs.append(
+                    _protocol_fail(
+                        "输出因超长被截断（finish_reason=length），本轮全部工具调用已作废。"
+                        "必须调用 submit_narration 结束本轮"
+                        "（数值变化用 change_stat，记忆用 remember）。"
+                        "请大幅缩短叙事：narration 两三句即可，choices 照常 3~5 个，"
+                        "详细展开放到下一轮。"
+                    )
+                )
+                continue
+
             narration_args: dict | None = None
             for tc in tool_calls:
                 name = tc.function.name
@@ -444,16 +583,16 @@ class LLMClient:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError as e:
                     msgs.append(_tool_result(tc.id, f"[协议错误] 工具参数不是合法 JSON：{e}"))
-                    self._trace("tool", turn_seq=turn_seq, name=name, status="bad_json",
-                                detail=str(e)[:80])
+                    self._trace("tool", turn_seq=turn_seq, call_id=tc.id, origin="model",
+                                name=name, status="bad_json", detail=str(e)[:80])
                     continue
 
                 spec = registry.get(name)
                 if spec is None:
                     result_msg = f"[协议错误] 未知工具 '{name}'"
                     msgs.append(_tool_result(tc.id, result_msg))
-                    self._trace("tool", turn_seq=turn_seq, name=name, status="unknown",
-                                detail=result_msg[:80])
+                    self._trace("tool", turn_seq=turn_seq, call_id=tc.id, origin="model",
+                                name=name, status="unknown", detail=result_msg[:80])
                     continue
                 if spec.terminator:
                     # submit_narration：协议收尾工具——校验后终止本轮，不走 handler
@@ -469,19 +608,20 @@ class LLMClient:
                         if narration_args is None:
                             narration_args = args
                     msgs.append(_tool_result(tc.id, result_msg))
-                    self._trace("tool", turn_seq=turn_seq, name=name, status=status,
-                                detail=result_msg[:80])
+                    self._trace("tool", turn_seq=turn_seq, call_id=tc.id, origin="model",
+                                name=name, status=status, detail=result_msg[:80])
                     continue
 
                 dr = registry.dispatch(name, args)
                 msgs.append(_tool_result(tc.id, dr.message))
                 if spec.tag is not None and dr.status in ("ok", "rejected"):
                     buckets.setdefault(spec.tag, []).append({**args, "result": dr.message})
-                self._trace("tool", turn_seq=turn_seq, name=name, status=dr.status,
-                            detail=dr.message[:80])
+                self._trace("tool", turn_seq=turn_seq, call_id=tc.id, origin="model",
+                            name=name, status=dr.status, detail=dr.message[:80])
 
             if narration_args is not None:
                 narration = clean_narration(narration_args["narration"])
+                _reattach_origins(msgs, origin_by_identity, user_origin_by_content)
                 self._trace(
                     "turn_end", turn_seq=turn_seq, outcome="completed", iterations=i,
                     narration_chars=len(narration),

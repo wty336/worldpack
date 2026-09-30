@@ -1,0 +1,371 @@
+# E1 Judge 灵敏度语料（校园乙游 · 青槐高中）
+# 规模：6 OOC + 6 设定矛盾 + 6 虚构事实 + 12 正常 = 30 条（离线门禁：每类对抗 ≥5、正常 ≥10）
+#
+# 材料纪律（真机门禁教训，见手册 §7）：
+#   1. 违规点必须在材料内可见——Judge 只看状态栏 + 场景卡 + 关键事实 + 在场角色卡。
+#      因此 OOC 用例一律挂在**角色卡**的底线/禁忌/语气上（世界观 forbidden 表不进材料）；
+#   2. 正常用例的叙事前提必须显式进材料（facts / affections / stats），否则"判得对，是用例没给前提"；
+#   3. present 为空（材料"在场：无"）时，叙事不得出现任何互动角色；正常用例不得暗示 secrets。
+cases:
+  # ---------------- OOC：违背在场角色卡（性格/语气/底线/禁忌） ----------------
+  - id: ooc_jiang_meme_joke
+    category: ooc
+    narration: |-
+      江屿把登记本一合，冲你挤了挤眼：『这点小事拿捏不了我，家人们谁懂啊——行了行了，今天你最大，哥请你喝汽水。』
+    expected: false
+    day: 12
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 30.0}
+    note: '角色卡说话风格「句子短，措辞正式得像念稿」+ 禁忌「不会说网络流行语」；「拿捏/家人们谁懂啊/哥」三重违背。'
+
+  - id: ooc_jiang_panic
+    category: ooc
+    narration: |-
+      江屿猛地把登记本摔在地上，抓着头发大喊：『完了完了！我什么都不知道，我根本做不好，谁都别管我！』
+    expected: false
+    day: 12
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 30.0}
+    note: '角色卡性格「一丝不苟…用规矩把自己裹得很紧」+ 底线「不在人前显露慌乱」；摔本子大喊正面违背。'
+
+  - id: ooc_xia_pity_show
+    category: ooc
+    narration: |-
+      夏鸣坐在罚球线上，眼泪一直掉：『我妈摆摊到半夜，家里连鞋都买不起，你们能不能给我捐点钱？我知道你们都比我强。』
+    expected: false
+    day: 12
+    scene: '青槐高中·体育馆'
+    present: [xia_ming]
+    affections: {'xia_ming': 50.0}
+    facts:
+      - '夏鸣从未在你面前提过家里的事'
+    note: '角色卡底线「不接受施舍与同情」「不在人前示弱」+ 禁忌「不会诉苦」；当众哭诉并索要捐助三重违背。'
+
+  - id: ooc_wen_enthusiasm
+    category: ooc
+    narration: |-
+      温砚眼睛一亮，热情地抓住你的手腕：『太棒了！这幅画的意思是我对未来的全部憧憬，我讲给你听——第一层是光，第二层是希望！』
+    expected: false
+    day: 12
+    scene: '青槐高中·美术教室'
+    present: [wen_yan]
+    affections: {'wen_yan': 45.0}
+    note: '角色卡禁忌「不会说热情洋溢的话」「不会解释自己画里的意思」+ 性格「安静、疏离」；两处正面违背。'
+
+  - id: ooc_suqing_cliche_comfort
+    category: ooc
+    narration: |-
+      苏晴清了清嗓子，用播音腔一字一句地说：『人生总有起伏，请节哀顺变，望你调整心态、坚强面对。这点小事，不必放在心上。』
+    expected: false
+    day: 12
+    scene: '青槐高中·高二(2)班教室'
+    present: [su_qing]
+    affections: {'su_qing': 60.0}
+    note: '角色卡禁忌「不会说客套的场面话」「不会在你难过的时候讲大道理」；播音腔念慰问稿正是场面话+大道理。'
+
+  - id: ooc_role_break
+    category: ooc
+    narration: |-
+      苏晴忽然压低声音：『其实我一直想告诉你——我们不过是写出来的人物，你我都是一段程序罢了，连这场学园祭都是别人安排的。』
+    expected: false
+    day: 12
+    scene: '青槐高中·高二(2)班教室'
+    present: [su_qing]
+    affections: {'su_qing': 60.0}
+    note: '角色卡禁忌「不提及自己是角色、AI 或由程序生成」；第四面墙被打破。'
+
+  # ---------------- 设定矛盾：与材料中的场景/时间/属性/身份/在场冲突 ----------------
+  - id: setting_supernatural
+    category: setting
+    narration: |-
+      你站在天台边上，缓缓运转体内内力，一掌拍在护栏上。铁栏应声弯折，掌心腾起一缕白气，灵力顺着经脉流回丹田。
+    expected: false
+    day: 12
+    scene: '青槐高中·天台'
+    note: '材料身份「转学到青槐高中的高二女生」+ 场景为现代校园天台；内力/灵力/丹田是世界观外元素，无任何材料支持。'
+
+  - id: setting_time_conflict
+    category: setting
+    narration: |-
+      你在青槐已经待了整整三年，教室里每一张桌子的刻痕你都认得；转学手续仿佛是上辈子的事。
+    expected: false
+    day: 6
+    scene: '青槐高中·高二(2)班教室'
+    facts:
+      - '你刚转来青槐不到一周'
+    note: '材料场景卡「时间：第 6 天」+ 关键事实「刚转来不到一周」；叙事自称已经待了三年，时间矛盾。'
+
+  - id: setting_stat_conflict
+    category: setting
+    narration: |-
+      月考榜单贴出来，你的名字在最上面一行——年级第一。数学老师专门在课上念了你的卷子，说这是近五年唯一一份满分。
+    expected: false
+    day: 12
+    scene: '青槐高中·高二(2)班教室'
+    stats: {'study': 20.0}
+    facts:
+      - '你的成绩在班里排中下，数学还在补基础'
+    note: '材料状态栏学力 20 + 关键事实「成绩中下、还在补基础」；叙事称年级第一且满分，数值与事实双重矛盾。'
+
+  - id: setting_affection_conflict
+    category: setting
+    narration: |-
+      江屿合上登记本，很自然地把手搭在你肩上：『小栀，我一直都在等你开口。其实从你转来的第一天起，我就只看着你一个人。』
+    expected: false
+    day: 12
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 5.0}
+    note: '材料好感「江屿 5/100（公事公办，只谈正事，语气像在念通知）」；叙事却是亲昵称呼与表白式告白，与语气档严重不符。'
+
+  - id: setting_scene_conflict
+    category: setting
+    narration: |-
+      你在体育馆的看台上坐下，夏鸣正在场上热身，回头朝你比了个手势。你身边的温砚把画架往前推了推。
+    expected: false
+    day: 12
+    scene: '青槐高中·美术教室'
+    present: [wen_yan]
+    note: '材料场景卡「当前地点：青槐高中·美术教室 · 在场：温砚」；叙事把场景搬到体育馆并让不在场的夏鸣出场。'
+
+  - id: setting_identity_contradiction
+    category: setting
+    narration: |-
+      你以高三学长的身份走进教务处，把新生的转学名册交到主任手里，叮嘱他今年的插班生要多留意。
+    expected: false
+    day: 12
+    scene: '青槐高中·高二(2)班教室'
+    note: '材料身份「转学到青槐高中的高二女生」；叙事自称高三学长并经办转学名册，身份矛盾。'
+
+  # ---------------- 虚构事实：材料中没有的既成事实/约定/承诺 ----------------
+  - id: confab_promise
+    category: confab
+    narration: |-
+      江屿把登记本往你面前一推：『你上周答应过陪我去交志愿表的，怎么又忘了？说好的事总得算数。』
+    expected: false
+    day: 12
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 30.0}
+    facts:
+      - '你与江屿只在学生会与天台见过几次，从未约定过任何事'
+    note: '材料关键事实「从未约定过任何事」；叙事虚构"上周答应陪他交志愿表"的承诺。'
+
+  - id: confab_match_win
+    category: confab
+    narration: |-
+      夏鸣把球衣往肩上一搭，笑得露出一口白牙：『多亏你那天替我上场，对手的最后三分是你投进的——全国大赛的门票，有你一半。』
+    expected: false
+    day: 12
+    scene: '青槐高中·体育馆'
+    present: [xia_ming]
+    affections: {'xia_ming': 45.0}
+    facts:
+      - '篮球部的市赛还没开始'
+      - '你从没上过场，只在场边记过分'
+    note: '材料关键事实「市赛还没开始」「你从没上过场」；叙事虚构你上场投进关键球并拿到全国大赛门票。'
+
+  - id: confab_painting_gift
+    category: confab
+    narration: |-
+      温砚头也不抬地问：『上次送你的那幅画，你挂起来了吗？挂在书桌前那面墙上应该不错。』
+    expected: false
+    day: 12
+    scene: '青槐高中·美术教室'
+    present: [wen_yan]
+    affections: {'wen_yan': 45.0}
+    facts:
+      - '温砚从未送过你画，他的画也从不给人看'
+    note: '材料关键事实「从未送过你画、画从不给人看」；叙事虚构赠画与挂画的具体情节。'
+
+  - id: confab_suqing_confidence
+    category: confab
+    narration: |-
+      苏晴叹了口气：『广播稿被压的事，我早就跟你说过了，你当时还劝我别放弃。现在我又拿不定主意了。』
+    expected: false
+    day: 12
+    scene: '青槐高中·高二(2)班教室'
+    present: [su_qing]
+    affections: {'su_qing': 45.0}
+    facts:
+      - '苏晴没跟你提过广播稿的事'
+    note: '材料关键事实「没跟你提过广播稿的事」；叙事虚构她曾向你倾诉并获你劝告。'
+
+  - id: confab_welcome_party
+    category: confab
+    narration: |-
+      班长在黑板上写下你的名字：『欢迎会那天全班都到了，蛋糕还是林老师亲手切的，今天就不重复了。』
+    expected: false
+    day: 12
+    scene: '青槐高中·高二(2)班教室'
+    facts:
+      - '你转来时班里没有办过任何欢迎活动'
+    note: '材料关键事实「没有办过任何欢迎活动」；叙事虚构全班欢迎会与老师切蛋糕的既成事件。'
+
+  - id: confab_letter
+    category: confab
+    narration: |-
+      江屿从登记本里抽出一张折好的信纸：『你写给我的这封信，我一直带在身上。第三行那句，我看了很多遍。』
+    expected: false
+    day: 12
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 45.0}
+    facts:
+      - '你从未给任何人写过信'
+    note: '材料关键事实「从未给任何人写过信」；叙事虚构你写的信以及信中第三行的内容。'
+
+  # ---------------- 正常：与材料自洽（前提全部进 facts/affections/stats） ----------------
+  - id: normal_classroom_deskmate
+    category: normal
+    narration: |-
+      第三节课间，苏晴把橡皮从你笔袋里直接拿走，边擦边抱怨物理老师布置了二十道题。
+      她把最后一颗糖推到你桌角，说了句『快点吃，别让值周生看见』，转头又去抄作业了。
+    expected: true
+    day: 3
+    scene: '青槐高中·高二(2)班教室'
+    present: [su_qing]
+    affections: {'su_qing': 25.0}
+    note: '好感 25 对应「同桌，说话不客气，借橡皮直接拿」，言行一致。'
+
+  - id: normal_rooftop_formal
+    category: normal
+    narration: |-
+      天台的风把纸页吹得直响。江屿把登记本递过来一行一行指给你看：『缺勤栏这样填，周三之前交到学生会。』
+      说完他就收起本子，站在两步之外等你抄完，没有多余的话。
+    expected: true
+    day: 5
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 20.0}
+    note: '好感 20 对应「公事公办，只谈正事，语气像在念通知」，分寸一致。'
+
+  - id: normal_gym_manager
+    category: normal
+    narration: |-
+      训练结束，夏鸣一边用毛巾擦汗一边朝你喊：『欸，水还有没有？』
+      你递过去，他仰头灌了半瓶，顺手把战术板塞给你：『明天那场，你帮我把号码记一下。』
+    expected: true
+    day: 8
+    scene: '青槐高中·体育馆'
+    present: [xia_ming]
+    affections: {'xia_ming': 30.0}
+    facts:
+      - '你已经当了两周篮球部经理'
+    note: '好感 30 对应「开始只喊你的名字，训练时会往看台看一眼」；前提（当了两周经理）已进材料。'
+
+  - id: normal_artroom_silence
+    category: normal
+    narration: |-
+      美术教室里只有笔尖擦纸的声音。温砚头也没抬，把一盒旧颜料往你那边推了推，意思是随便用。
+      你调了半小时颜色，他一次也没说话，直到你收拾东西要走，才听见他嗯了一声。
+    expected: true
+    day: 8
+    scene: '青槐高中·美术教室'
+    present: [wen_yan]
+    affections: {'wen_yan': 30.0}
+    note: '好感 30 对应「允许你留在美术教室，但基本不说话」，全程无越界表达。'
+
+  - id: normal_bake_at_home
+    category: normal
+    narration: |-
+      外婆家的厨房很小，你把面粉筛了两遍，第一盘烤得有点焦，第二盘才勉强像样。
+      装盒的时候你挑出最圆的六块，剩下的留在盘子里，等外婆回来尝。
+    expected: true
+    day: 9
+    scene: '城南·外婆家'
+    stats: {'art': 20.0}
+    note: '无在场角色（材料「在场：无」），全程独处，无互动角色，无新事实。'
+
+  - id: normal_part_time_shift
+    category: normal
+    narration: |-
+      便利店的班从六点上到九点。你补了两次关东煮，扫了三箱货，收银台前排过一次小长队。
+      交班时店长把零钱数了两遍，说：『下次早点来，冰柜该擦了。』
+    expected: true
+    day: 10
+    scene: '城南·商店街'
+    stats: {'money': 240.0}
+    facts:
+      - '你在校门口的便利店做小时工'
+    note: '打工日常，与材料场景与事实一致；无数值宣称、无越界互动。'
+
+  - id: normal_library_study
+    category: normal
+    narration: |-
+      图书室靠里的那张桌子没人坐。你把错题本摊开，从函数单调性开始重抄了一遍定义。
+      闭馆铃响的时候，你才发现草稿纸写了小半本，窗外天已经黑透了。
+    expected: true
+    day: 7
+    scene: '青槐高中·图书室'
+    stats: {'study': 45.0}
+    note: '自习日常，与材料「在场：无」一致；只写过程，不宣称属性变化。'
+
+  - id: normal_suqing_gossip
+    category: normal
+    narration: |-
+      可丽饼摊前，苏晴咬着吸管给你排班：『学生会那个会长，上周值周记了三个老师的名字，你敢信？』
+      她压低声音又补一句：『还有啊，美术教室那扇窗天天亮到七点半，你自己想。』
+    expected: true
+    day: 11
+    scene: '城南·商店街'
+    present: [su_qing]
+    affections: {'su_qing': 55.0}
+    note: '好感 55 对应「什么八卦都第一个告诉你，把你算进自己人」；议论内容为公开可见的日常细节，未触及她自己的 secrets。'
+
+  - id: normal_jiang_trust
+    category: normal
+    narration: |-
+      江屿把望远镜架好，破天荒地先开口：『上周我爸把我的报名表收走了。』
+      他停顿了一下，像是整理措辞，才接着说：『我不是想让你替我想办法，就是……跟你说一声。』
+    expected: true
+    day: 13
+    scene: '青槐高中·天台'
+    present: [jiang_yu]
+    affections: {'jiang_yu': 70.0}
+    facts:
+      - '你已经知道他想读天文，他给你看过那台旧望远镜'
+    note: '好感 70 对应「开始主动找你说话，愿意让你看见他的犹豫」；前提（已知天文志愿与望远镜）已进材料。'
+
+  - id: normal_xia_quiet
+    category: normal
+    narration: |-
+      球馆的灯灭了一半，夏鸣坐在罚球线上，右腿伸得很直，声音比平时低：
+      『复查的日子定了，打完这季就去。你别跟队里讲——就你一个人知道。』
+    expected: true
+    day: 13
+    scene: '青槐高中·体育馆'
+    present: [xia_ming]
+    affections: {'xia_ming': 80.0}
+    facts:
+      - '你知道他右膝有旧伤'
+      - '他答应过你赛后去复查'
+    note: '好感 80 对应「把最要强的那一面也交给你」；膝盖与复查前提已进材料，故不是虚构。'
+
+  - id: normal_wen_sketchbook
+    category: normal
+    narration: |-
+      温砚把速写本放在膝盖上，翻到中间一页停住，没说话，也没合上。
+      你看见页角画着一小截校服袖口，别的他用手掌盖住了。过了会儿他说：『翻吧，别问。』
+    expected: true
+    day: 13
+    scene: '青槐高中·美术教室'
+    present: [wen_yan]
+    affections: {'wen_yan': 80.0}
+    facts:
+      - '他让你翻过他的速写本'
+    note: '好感 80 对应「让你翻他的速写本，从第一页开始」；速写本前提已进材料。'
+
+  - id: normal_festival_eve_alone
+    category: normal
+    narration: |-
+      樱花道两旁的绳子已经拉好，灯架还差最后一排没装。你一个人沿着水泥路走到底，
+      在尽头的台阶上坐了一会儿，看着操场上的人收工、关灯、锁门。
+    expected: true
+    day: 13
+    scene: '青槐高中·中庭樱花道'
+    facts:
+      - '明天是学园祭最后一天'
+    note: '无在场角色（材料「在场：无」），独处收尾，与材料场景一致。'

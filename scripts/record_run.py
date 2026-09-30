@@ -79,20 +79,30 @@ def main(argv: list[str] | None = None) -> int:
     llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(pack, GameState.from_pack(pack), llm, rng=__import__("random").Random(args.seed))
 
-    turn = 0
+    seq = 0  # checkpoint 序号：密集递增，只用于文件名（replay 按它取第 N 个 checkpoint）
 
     def record(action: dict, outcome: dict | None) -> None:
-        nonlocal turn
-        turn += 1
-        rec.checkpoint(turn, game.state, game.history, action, outcome)
+        """写一个 checkpoint。
+
+        K 系列：**回合编号用 `state.turn_count`**（引擎轴，与 trace/usage 的
+        `game_turn` 同源），不再用本地动作计数器——关键抉择接管这类动作不发请求、
+        不推进 `turn_count`，用本地计数器会让 runlog 行号与 trace 漂开，成本归因对不上。
+        checkpoint 文件名仍用密集的 `seq`（replay 依赖"第 N 个文件"这种稳定寻址）。
+        """
+        nonlocal seq
+        seq += 1
+        # 传 rng：checkpoint 必须带上随机流，否则 replay 无法复现含检定/概率的回合
+        rec.checkpoint(
+            game.state.turn_count, game.state, game.history, action, outcome, rng=game.rng
+        )
 
     # checkpoint 0：开局前初始状态（replay 第 1 回合的锚点）
-    rec.checkpoint(0, game.state, [], None, None)
+    rec.checkpoint(0, game.state, [], None, None, rng=game.rng)
     view = game.start()
     record({"kind": "start"}, None if view.narration is None else {"narration": view.narration[:120]})
 
     line_idx, said = 0, False
-    while game.state.day <= day_cap and view.ending is None and turn < 200:
+    while game.state.day <= day_cap and view.ending is None and seq < 200:
         if view.choice_prompt is not None:
             pick = profile["picks"][view.choice_prompt.id]
             before = len(game.state.stat_log)
@@ -129,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
             {"narration": (day_view.narration or "")[:120], "stat_changes": len(game.state.stat_log) - before},
         )
 
-    print(f"run_id={rec.run_id} · 回合数 {turn} · 结局 {view.ending.title if view.ending else '未达成'}")
+    print(f"run_id={rec.run_id} · 动作 {seq} · 叙事回合 {game.state.turn_count} · 结局 {view.ending.title if view.ending else '未达成'}")
     print(f"产物目录 {rec.run_dir}\n" + tracker.cost_report())
     return 0
 

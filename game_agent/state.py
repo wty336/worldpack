@@ -57,7 +57,7 @@ class MemoryEntry:
     superseded: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass
 class InsightEntry:
     """A3（P1）：从零散记忆合成的关系洞察（注入角色卡，带来源引用）。
 
@@ -68,6 +68,42 @@ class InsightEntry:
     day: int
     round: int
     sources: tuple[str, ...] = ()
+
+
+@dataclass
+class Appointment:
+    """与某 NPC 的约定（玩家实测缺陷修复：NPC 反复重问已约好的事）。
+
+    为什么必须是一等真值而不是记忆文本：约定是**有时限的承诺**——
+    「周五去学园祭」要么约了要么没约，有确定对错，正是"代码掌握真值"该管的。
+    放进记忆池会三重失败：
+    ① `rank_facts` 只注入 10 条（3 常驻 + 7 按分排），约定在「新近/重要性/相关性」
+       三维全吃亏——几天后 recency 衰减、到期日无人提及故 BM25 不命中；
+    ② 提取提示词把「剧情进展的瞬时状态」排除在外，约定常被判为不值得记；
+    ③ **没有「到期」概念**——即使记下，引擎也不知道"今天该把它捞出来"。
+
+    状态只存 pending / fulfilled 两态；**逾期不落盘**，由 `is_overdue()` 按
+    day 与 due_day 现算——少一个能进入非法组合的维度（约定不会"自动过期"，
+    它只是逾期，仍需玩家或引擎去收束）。
+
+    status 语义：pending = 待履行（含已逾期）；fulfilled = 已履行。
+    未追踪"错过"终态是刻意的：逾期本身就是要被叙事消化的剧情节拍。
+    """
+
+    id: str
+    with_npc: str  # NPC id（必须在 schedule.affections 声明内）
+    what: str  # 约定内容短语（如「去学园祭」）
+    due_day: int  # 约定日期（第 N 天）
+    made_day: int  # 定下约定的那天
+    status: str = "pending"  # pending / fulfilled
+
+    def is_overdue(self, day: int) -> bool:
+        """已过约定日且仍未履行。"""
+        return self.status == "pending" and day > self.due_day
+
+    def is_due(self, day: int) -> bool:
+        """约定日当天（叙事上「今天有约」）。"""
+        return self.status == "pending" and day == self.due_day
 
 
 @dataclass
@@ -100,6 +136,7 @@ class GameState:
     node_plan: list[str] = field(default_factory=list)  # agent-first 第 4 件：当前节点子步骤计划
     node_plan_step: int = 0  # 计划指针（0 起，上限 len-1；代码按 flag 增量推进，不采信自报）
     node_flags_snapshot: dict[str, bool] = field(default_factory=dict)  # 进节点时的 flags 快照
+    appointments: list[Appointment] = field(default_factory=list)  # 与 NPC 的约定（一等真值）
 
     # ---- 构造 ----
 
@@ -165,6 +202,8 @@ class GameState:
             "node_plan": list(self.node_plan),
             "node_plan_step": self.node_plan_step,
             "node_flags_snapshot": dict(self.node_flags_snapshot),
+            # 约定真值（老档缺省回退空表，version 不动）
+            "appointments": [vars(a) for a in self.appointments],
         }
 
     @classmethod
@@ -213,4 +252,5 @@ class GameState:
             node_plan=list(d.get("node_plan", [])),  # agent-first 第 4 件：老档缺省空计划
             node_plan_step=int(d.get("node_plan_step", 0)),
             node_flags_snapshot=dict(d.get("node_flags_snapshot", {})),
+            appointments=[Appointment(**a) for a in d.get("appointments", [])],
         )

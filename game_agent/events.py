@@ -29,7 +29,17 @@ class EventSystem:
     # ------------------------------------------------------------------
 
     def _untriggered(self, state: GameState) -> list[EventSpec]:
-        return [e for e in self.pack.events.events if e.id not in state.triggered_events]
+        """候选事件：已触发过的**一次性**事件排除在外。
+
+        校验批修复：此前无条件按 id 排除，导致 `once: false` 成为**死字段**——
+        手册承诺"可重复触发"，实际只触发一次，两个已发布包（P2_era_dual 的
+        ev_ma_borrow、P1_school_letters 的 ev_deskmate_snack）因此被静默阉割。
+        """
+        return [
+            e
+            for e in self.pack.events.events
+            if not (e.once and e.id in state.triggered_events)
+        ]
 
     def check_condition_events(self, state: GameState) -> EventSpec | None:
         """条件触发：数值/flags 变化后检查。返回优先级最高的一个（其余顺延）。"""
@@ -75,5 +85,6 @@ class EventSystem:
         return {
             "role": "user",
             "name": "engine",  # A-2：事件脚本是引擎元消息，排除出检索上下文
+            "origin": "engine",  # 血缘标记：本条由引擎注入，非模型/玩家产出
             "content": f"【事件】{event.title}\n{event.script}\n（事件效果：{note_str}）",
         }

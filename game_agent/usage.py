@@ -103,20 +103,44 @@ def usage_fields(resp: Any) -> dict[str, int] | None:
 
 
 class UsageTracker:
-    """逐次调用追加 JSONL 落盘 + 汇总/成本报告。落盘失败静默（不影响游戏）。"""
+    """逐次调用追加 JSONL 落盘 + 汇总/成本报告。落盘失败静默（不影响游戏）。
 
-    def __init__(self, path: str | Path):
+    ``session``（C1，多会话口径修复）：会话标识，写进每一条账。
+    此前 Web 侧所有会话共用一个进程级 tracker、共写同一个 `usage-web.jsonl`，
+    单包单玩家时只是"合并口径"，多会话/多剧本下变成**数据错误**——
+    无法回答"这一局花了多少钱"。现在**每个会话一个账本文件**（`usage-<sid>.jsonl`），
+    并同时在条目里带 `session` 字段，于是"按会话精确"与"跨会话聚合"两种读法都成立。
+    """
+
+    def __init__(self, path: str | Path, session: str | None = None):
         self.path = Path(path)
+        self.session = session
         self.entries: list[dict] = []
 
     def record(
-        self, model: str, purpose: str, usage: dict[str, int] | None = None, ts: str | None = None
+        self,
+        model: str,
+        purpose: str,
+        usage: dict[str, int] | None = None,
+        ts: str | None = None,
+        game_turn: int | None = None,
     ) -> None:
+        """落盘一次调用。``game_turn``（K 系列）是**玩家回合**编号，可选。
+
+        为什么单独一个字段而不是塞进 usage：`usage` 是提供方口径的 token 计数，
+        原样透传；`game_turn` 是引擎口径的时间轴，用于把"一次玩家操作"的成本
+        （主回合 + 级联 + 判劣重写 + 溢出重试 + 压缩）加总。两者来源不同，不该混。
+        `session` 同理：它是**会话轴**，与提供方的 token 口径无关。
+        """
         entry: dict[str, Any] = {
             "ts": ts or datetime.now().isoformat(timespec="seconds"),
             "model": model,
             "purpose": purpose,
         }
+        if self.session:
+            entry["session"] = self.session
+        if game_turn is not None:
+            entry["game_turn"] = game_turn
         if usage:
             entry.update(usage)
         self.entries.append(entry)

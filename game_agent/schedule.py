@@ -159,4 +159,5 @@ def _dump_effects(effects: ActionEffects) -> dict:
         },
         "counters": dict(effects.counters),  # 批次 E
         "items": {k: list(v) for k, v in effects.items.items()},  # 批次 E
+        "flags": dict(effects.flags),  # 手册 §3.2：行动效果写 flag（与关键选择/事件同权）
     }

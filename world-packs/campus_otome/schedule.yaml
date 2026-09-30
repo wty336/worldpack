@@ -1,0 +1,282 @@
+# 数值与日程（校园乙游养成）
+#
+# 养成闭环（数值先算一遍，避免阈值不可达）：
+#   零花 ← 便利店打工（仪态检定）→ 仪态练习 / 买烘焙材料
+#   材料 →（烤点心，+才艺）→ 手作点心 →（赠礼，仪态检定）→ 好感 + 赠礼计数
+#   学力/体力/才艺 各有专属行动，同时是三条路线的"接得住话"检定属性——
+#   专攻一人 ≈ 15 天可到 65+（真结局线），四处撒网则一路停在 45 上下（普通结局线）。
+day_action_points: 2
+
+stats:
+  study:   {label: 学力, min: 0, max: 100, initial: 20}
+  grace:   {label: 仪态, min: 0, max: 100, initial: 10}
+  art:     {label: 才艺, min: 0, max: 100, initial: 5}
+  stamina: {label: 体力, min: 0, max: 100, initial: 20}
+  money:   {label: 零花, min: 0, max: 9999, initial: 300}
+
+affections:
+  jiang_yu: {label: 江屿, min: 0, max: 100, initial: 0}
+  xia_ming: {label: 夏鸣, min: 0, max: 100, initial: 0}
+  wen_yan:  {label: 温砚, min: 0, max: 100, initial: 0}
+  su_qing:  {label: 苏晴, min: 0, max: 100, initial: 25}
+
+# 剧情旗标：全部在此声明（初始值），正文只引用不新增
+flags:
+  transfer_done: false    # N1 完成信号：转学第一天过去了
+  club_joined: false      # N2 完成信号：社团/值日定下来了
+  midterm_done: false     # N3 完成信号：期中考试周结束
+  festival_prep: false    # N4 完成信号：学园祭的活儿分派完了
+  confession_done: false  # N5 完成信号：告白之夜过去了
+  club_council: false     # N2 选择：进了学生会
+  club_basketball: false  # N2 选择：去篮球部当经理
+  club_art: false         # N2 选择：去美术部帮忙
+  chose_cram: false       # N3 选择：留下补习
+  chose_date: false       # N3 选择：翘掉补习去赴约
+  festival_stage: false   # N4 选择：上台
+  festival_booth: false   # N4 选择：做后勤
+  route_jiang: false      # N5 选择：去找江屿
+  route_xia: false        # N5 选择：去找夏鸣
+  route_wen: false        # N5 选择：去找温砚
+  route_self: false       # N5 选择：谁也不找
+  jiang_secret: false     # 江屿的秘密（天文志愿 / 天台望远镜）
+  xia_secret: false       # 夏鸣的秘密（膝盖旧伤 / 夜市的摊子）
+  wen_secret: false       # 温砚的秘密（被撕过的画 / 速写本）
+  quiz_top: false         # 模拟考进前十
+  wrote_letter: false     # 写过那封信（自定义工具 write_letter，全局一次）
+
+counters:
+  dates: {label: 同行次数, initial: 0, min: 0, max: 99}
+  gifts: {label: 赠礼次数, initial: 0, min: 0, max: 99}
+
+items:
+  - {id: ingredient, label: 烘焙材料, initial: false}
+  - {id: cookie, label: 手作点心, initial: false}
+
+tools:
+  - id: write_letter
+    label: 写一封信
+    description: 想把说不出口的话写下来时使用；要先和他真的相处过（同行三次以上），整局只能写一次
+    requires:
+      all:
+        - {counter: {dates: {gte: 3}}}
+    cost: 0
+    once: true
+    effects:
+      flags: {wrote_letter: true}
+      stats: {grace: 2}
+
+actions:
+  # ---------- 养成轴（只涨自己） ----------
+  - id: study_hall
+    label: 图书室自习
+    cost: 1
+    effects:
+      stats: {study: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
+    scene: 青槐高中·图书室
+    present: []
+
+  - id: run_morning
+    label: 清晨绕操场跑
+    cost: 1
+    effects:
+      stats: {stamina: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
+    scene: 青槐高中·中庭樱花道
+    present: []
+
+  - id: grace_practice
+    label: 仪态与穿搭练习
+    cost: 1
+    # 消费型行动必须有门槛：零花 → 仪态（钱不是白来的，打工要花行动点）
+    requires:
+      all:
+        - {stat: {money: {gte: 30}}}
+    effects:
+      stats: {money: -30, grace: {base: 4, spread: 1, decay_every: 20, decay_step: 1}}
+    scene: 城南·外婆家
+    present: []
+
+  - id: part_time
+    label: 便利店打工
+    cost: 1
+    check: {stat: grace, difficulty: 8, margin: 10}
+    effects:
+      stats: {money: {base: 30, spread: 5}}          # 成功档
+    critical_effects:
+      stats: {money: {base: 40, spread: 5}}          # 大成功：店长让你带班
+    failure_effects:
+      stats: {money: {base: 18, spread: 3}}          # 失败：算错账，扣了工钱
+    scene: 城南·商店街
+    present: []
+
+  - id: mock_exam
+    label: 参加模拟考
+    cost: 1
+    requires:
+      all:
+        - {day: {gte: 4}}
+    # 数值闭环：学力 20 起步掷出 10~30 → 多半失败；学力涨到 30 上下即可摸到大成功
+    # （≥25+10），故"进前十"是中期目标而非开局白送。
+    check: {stat: study, difficulty: 25, margin: 10}
+    effects:
+      stats: {study: {base: 2, spread: 1}}
+    critical_effects:
+      stats: {study: {base: 3, spread: 1}}
+      flags: {quiz_top: true}                        # 进前十（触发事件）
+    failure_effects:
+      stats: {study: {base: 1}}
+    scene: 青槐高中·高二(2)班教室
+    present: []
+
+  # ---------- 手作点心链：零花 → 材料 → 点心 → 好感 ----------
+  - id: buy_ingredients
+    label: 去商店街买烘焙材料
+    cost: 1
+    requires:
+      all:
+        - {stat: {money: {gte: 20}}}
+        - {item: {ingredient: false}}                # 手上还有材料就不必再买
+    effects:
+      stats: {money: -20}
+      items: {gain: [ingredient]}
+    scene: 城南·商店街
+    present: []
+
+  - id: bake_cookies
+    label: 在外婆家烤点心
+    cost: 1
+    requires:
+      all:
+        - {item: {ingredient: true}}
+    effects:
+      items: {lose: [ingredient], gain: [cookie]}
+      stats: {art: {base: 1}}
+    scene: 城南·外婆家
+    present: []
+
+  # ---------- 三条路线：走近他（各自检定一条养成轴） ----------
+  - id: visit_rooftop
+    label: 上天台找江屿
+    cost: 1
+    check: {stat: study, difficulty: 10, margin: 10}
+    effects:
+      counters: {dates: 1}
+      affections: {jiang_yu: 2}                      # 成功：跟得上他讲的话
+    critical_effects:
+      counters: {dates: 1}
+      affections: {jiang_yu: 4}                      # 大成功：他主动多说了两句
+    failure_effects:
+      counters: {dates: 1}
+      affections: {jiang_yu: 1}                      # 失败：冷场，但他记住了你来过
+    scene: 青槐高中·天台
+    present: [jiang_yu]
+
+  - id: visit_gym
+    label: 去体育馆看训练
+    cost: 1
+    check: {stat: stamina, difficulty: 10, margin: 10}
+    effects:
+      counters: {dates: 1}
+      affections: {xia_ming: 2}
+    critical_effects:
+      counters: {dates: 1}
+      affections: {xia_ming: 4}
+    failure_effects:
+      counters: {dates: 1}
+      affections: {xia_ming: 1}
+    scene: 青槐高中·体育馆
+    present: [xia_ming]
+
+  - id: art_practice
+    label: 去美术部帮忙
+    cost: 1
+    check: {stat: art, difficulty: 10, margin: 10}
+    effects:
+      stats: {art: {base: 2, spread: 1}}
+      counters: {dates: 1}
+      affections: {wen_yan: 2}
+    critical_effects:
+      stats: {art: {base: 3, spread: 1}}
+      counters: {dates: 1}
+      affections: {wen_yan: 4}
+    failure_effects:
+      stats: {art: {base: 1}}
+      counters: {dates: 1}
+      affections: {wen_yan: 1}
+    scene: 青槐高中·美术教室
+    present: [wen_yan]
+
+  - id: chat_suqing
+    label: 和苏晴去可丽饼摊
+    cost: 1
+    effects:
+      affections: {su_qing: 3}
+      stats: {grace: {base: 1}}
+    scene: 城南·商店街
+    present: [su_qing]
+
+  # ---------- 赠礼：点心 → 好感（仪态检定决定分寸） ----------
+  - id: give_cookie_jiang
+    label: 把点心带上天台
+    cost: 1
+    requires:
+      all:
+        - {item: {cookie: true}}
+    check: {stat: grace, difficulty: 10, margin: 10}
+    effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {jiang_yu: 5}
+    critical_effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {jiang_yu: 8}
+    failure_effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {jiang_yu: 3}
+    scene: 青槐高中·天台
+    present: [jiang_yu]
+
+  - id: give_cookie_xia
+    label: 把点心带去体育馆
+    cost: 1
+    requires:
+      all:
+        - {item: {cookie: true}}
+    check: {stat: grace, difficulty: 10, margin: 10}
+    effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {xia_ming: 6}
+    critical_effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {xia_ming: 9}
+    failure_effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {xia_ming: 4}
+    scene: 青槐高中·体育馆
+    present: [xia_ming]
+
+  - id: give_cookie_wen
+    label: 把点心带去美术教室
+    cost: 1
+    requires:
+      all:
+        - {item: {cookie: true}}
+    check: {stat: grace, difficulty: 10, margin: 10}
+    effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {wen_yan: 5}
+    critical_effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {wen_yan: 7}
+    failure_effects:
+      items: {lose: [cookie]}
+      counters: {gifts: 1}
+      affections: {wen_yan: 3}
+    scene: 青槐高中·美术教室
+    present: [wen_yan]

@@ -75,6 +75,15 @@ def _chunks_for_turn(delta_pieces=("测试", "叙事")):
             SimpleNamespace(choices=[], usage=None)]
 
 
+def _unused_tracker() -> web_module.UsageTracker:
+    """Session 需要一个账本对象（G1），但本文件的 fake LLM 不带 tracker → 永不落盘。
+
+    故路径只求合法、不求可写：这些守卫关心的是会话装配，不是记账
+    （记账隔离由 `test_web_accounting.py` 专门守）。
+    """
+    return web_module.UsageTracker("saves/usage-test-only.jsonl", session="test")
+
+
 def _seed_fake_session(sid: str, turns: int = 1, delta_pieces=("测试", "叙事")) -> None:
     """注入一个用流式 FakeClient 驱动的会话（离线，叙事分两段流式回传）。"""
     pack = load_worldpack(PACK_PATH)
@@ -84,7 +93,7 @@ def _seed_fake_session(sid: str, turns: int = 1, delta_pieces=("测试", "叙事
         "fake", build_tools(pack.schedule),
     )
     game = Game(pack, state, llm)
-    web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock())
+    web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock(), usage=_unused_tracker())
 
 
 def _sse_payload(body: bytes) -> list[tuple[str, str]]:
@@ -101,13 +110,23 @@ def _sse_payload(body: bytes) -> list[tuple[str, str]]:
 
 
 def test_index_page_served():
+    """F1（M3）：页面静态文案不含任何世界内容（标题由 /api/new 返回的包名动态渲染）。
+
+    Stage A 起 JS 移到 `/static/app.js`，于是**"页面"是两个东西**：
+    - `GET /`（HTML 外壳）——只该有通用文案与挂载点；
+    - `frontend_bundle()`（外壳+CSS+JS）——`api/new` 这类动态渲染证据在这里。
+    断言按这个分工拆开，否则"N 年前建的守卫"会因为文件搬家而假红。
+    """
     with TestClient(web_module.app) as client:
         r = client.get("/")
         assert r.status_code == 200
-        # F1（M3）：页面静态文案不含任何世界内容（标题由 /api/new 返回的包名动态渲染）
-        assert "文字养成游戏" in r.text and "api/new" in r.text
-        assert "江湖旧梦" not in r.text
+        assert "文字养成游戏" in r.text  # 通用标题（非世界内容）
+        assert "江湖旧梦" not in r.text  # 静态文案不含世界内容
         assert "game-title" in r.text  # 标题挂载点，JS 用 d.name 填充
+        assert "/static/app.js" in r.text  # 外壳必须挂到真实脚本
+    # 动态渲染证据（在脚本里，不在外壳里）
+    bundle = web_module.frontend_bundle()
+    assert "api/new" in bundle and "d.name" in bundle
 
 
 def test_pack_path_env_override(monkeypatch):
@@ -181,10 +200,11 @@ def test_turn_errors_are_reported_via_sse():
         events = _sse_payload(
             client.post(f"/api/{sid}/turn", json={"kind": "say", "text": "越界发言"}).content
         )
-        assert events[0][0] == "error"
+        assert events[0][0] == "start"  # 首帧心跳（D15）：先确认连接已建立
+        err = next(e for e in events if e[0] == "error")
         # B-2（M1）：error 帧数据与 delta/done 一样是 JSON——前端 JSON.parse 可解析
-        assert json.loads(events[0][1]) is not None
-        assert "关键抉择" in json.loads(events[0][1])
+        assert json.loads(err[1]) is not None
+        assert "关键抉择" in json.loads(err[1])
 
 
 def test_unknown_action_returns_error_frame_not_broken_stream():
@@ -202,8 +222,9 @@ def test_unknown_action_returns_error_frame_not_broken_stream():
         events = _sse_payload(
             client.post(f"/api/{sid}/turn", json={"kind": "act", "action_id": "nonexistent"}).content
         )
-        assert events[0][0] == "error"
-        assert "未知日程行动" in json.loads(events[0][1])
+        assert events[0][0] == "start"  # 首帧心跳
+        err = next(e for e in events if e[0] == "error")
+        assert "未知日程行动" in json.loads(err[1])
 
 
 def test_sse_streams_incrementally_before_llm_completes():
@@ -229,15 +250,17 @@ def test_sse_streams_incrementally_before_llm_completes():
 
     llm = LLMClient(_StreamingFake([chunk_gen()]), "fake", build_tools(pack.schedule))
     game = Game(pack, state, llm)
-    web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock())
+    web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock(), usage=_unused_tracker())
 
     resp = web_module._turn_stream(
         web_module.SESSIONS[sid], web_module.TurnRequest(kind="say", text="你好")
     )
-    frame = next(resp)  # 阻塞至首个帧——此刻 worker 应仍在 release 上等待
+    first = next(resp)  # 首帧 = 心跳（D15）：连接建立 + 回合已受理
+    assert first.startswith("event: start"), f"首帧应为心跳: {first!r}"
+    # 时序断言仍落在**首个增量**上：它到达时 LLM 仍在生成
+    frame = next(resp)  # 阻塞至首个 delta
     assert frame.startswith("event: delta")
     assert "第一段" in frame
-    # 关键时序断言：客户端已收到增量，而 LLM 工作线程尚未完成
     assert not worker_done.is_set(), "首个增量到达时 LLM 应仍在生成（伪流式回归）"
     release.set()
     rest = "".join(resp)
@@ -280,7 +303,7 @@ def test_autosave_per_session_isolated():
             _StreamingFake([_chunks_for_turn()]), "fake", build_tools(pack.schedule)
         )
         game = Game(pack, state, llm, autosave_path=f"saves/autosave-{sid}.json")
-        web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock())
+        web_module.SESSIONS[sid] = web_module.Session(game=game, lock=threading.Lock(), usage=_unused_tracker())
     with TestClient(web_module.app) as client:
         for sid in ("auto-a", "auto-b"):
             game = web_module.SESSIONS[sid].game

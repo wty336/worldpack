@@ -1,0 +1,148 @@
+# 主线节点链（校园乙游）：5 个节点，5 个关键抉择
+# 结构：初遇 → 站队 → 取舍（考试周 vs 赴约）→ 学园祭准备 → 告白之夜
+# 每个节点的所有选项都写同一完成 flag（否则玩家选了也完不成节点）。
+nodes:
+  - id: n1_transfer
+    title: 转学第一天
+    when: {all: []}                     # 恒真：开场即触发
+    goal: 在转学第一天决定先答应谁
+    completion: {flags: {transfer_done: true}}
+    steps:
+      - 放学铃响，三件事缺人手
+      - 你只来得及答应一件
+      - 决定答应谁
+    on_enter:
+      scene: 青槐高中·高二(2)班教室
+      present: [su_qing]
+      briefing: |
+        转学手续办完，班主任把你安排在靠窗第三排，同桌是广播站的苏晴。
+        放学铃响，三件事同时缺人手：学生会的迟到登记、体育馆的练习赛记分、
+        美术教室要搬的展板。你只来得及答应一件。
+        本节点目标：决定答应谁（完成信号 flag: transfer_done）。
+        本节点只交代你的选择与对方的第一反应——不必立刻赶去别处，
+        日程行动从明日起算。
+    critical_choices:
+      - id: first_day_choice
+        prompt: 放学铃响，三件事同时缺人手。你先答应谁？
+        options:
+          - {text: 答应帮江屿整理迟到登记, effects: {flags: {transfer_done: true}, affections: {jiang_yu: 3}, stats: {study: 1}}}
+          - {text: 答应替练习赛当记分员, effects: {flags: {transfer_done: true}, affections: {xia_ming: 3}, stats: {stamina: 1}}}
+          - {text: 答应帮温砚搬那批展板, effects: {flags: {transfer_done: true}, affections: {wen_yan: 3}, stats: {art: 1}}}
+    free_scope: 教室里的对话与你的第一反应自由发挥；答应下来即本节点完成，当天到此为止。
+
+  - id: n2_club
+    title: 社团招新
+    when: {flags: {transfer_done: true}}
+    goal: 在社团招新表上填一个空格
+    completion: {flags: {club_joined: true}}
+    steps:
+      - 招新表传到你手上
+      - 三个空格只填一个
+      - 报上名字
+    on_enter:
+      scene: 青槐高中·中庭樱花道
+      present: [su_qing, jiang_yu]
+      briefing: |
+        一周后是社团招新。樱花道两侧摆满了桌子，苏晴拉着你从头走到尾。
+        学生会缺一个记名册的帮手，篮球部在找一个经理，美术部的展板还差人钉。
+        志愿表上的空格只有一个。
+        本节点目标：决定加入哪个社团（完成信号 flag: club_joined）。
+    critical_choices:
+      - id: club_choice
+        prompt: 招新表传到你手里，三个空格只能填一个。你填哪个？
+        options:
+          - {text: 填学生会——跟着江屿做值周, effects: {flags: {club_joined: true, club_council: true}, affections: {jiang_yu: 5}, stats: {study: 2}}}
+          - {text: 填篮球部——当球队经理, effects: {flags: {club_joined: true, club_basketball: true}, affections: {xia_ming: 5}, stats: {stamina: 2}}}
+          - {text: 填美术部——帮着钉展板, effects: {flags: {club_joined: true, club_art: true}, affections: {wen_yan: 5}, stats: {art: 2}}}
+    free_scope: 招新现场的热闹、和部员们的初识自由发挥；填完表即本节点完成。
+
+  - id: n3_midterm
+    title: 考试周的那天下午
+    when:
+      all:
+        - {day: {gte: 6}}
+        - {flags: {club_joined: true}}
+    goal: 在考试周与赴约之间做一次取舍
+    completion: {flags: {midterm_done: true}}
+    steps:
+      - 期中考试周到了
+      - 练习赛与补习撞在同一天
+      - 只能去一边
+    on_enter:
+      scene: 青槐高中·高二(2)班教室
+      present: [su_qing]
+      briefing: |
+        期中考试周。班主任在黑板上写满了复习范围，苏晴一边抄一边抱怨。
+        可同一天下午，体育馆有练习赛，美术教室要赶参展作品，
+        学生会那边还堆着一摞没整理的备考资料。
+        你只有一次下午。
+        本节点目标：做出取舍（完成信号 flag: midterm_done）。
+    critical_choices:
+      - id: exam_week_choice
+        prompt: 考试周的下午只有一次，你去哪儿？
+        options:
+          - {text: 留在教室补习，把落下的功课补回来, effects: {flags: {midterm_done: true, chose_cram: true}, stats: {study: 5}}}
+          - {text: 翘掉补习，去看夏鸣的练习赛, effects: {flags: {midterm_done: true, chose_date: true}, affections: {xia_ming: 6}, stats: {stamina: 2}}}
+          - {text: 陪温砚把参展作品赶完, effects: {flags: {midterm_done: true, chose_date: true}, affections: {wen_yan: 6}, stats: {art: 2}}}
+          - {text: 帮江屿整理学生会的备考资料, effects: {flags: {midterm_done: true, chose_date: true}, affections: {jiang_yu: 6}, stats: {study: 2}}}
+    free_scope: 考场的紧张、补习或赴约的具体过程自由发挥；做出选择即本节点完成。
+
+  - id: n4_festival
+    title: 学园祭的准备会
+    when:
+      all:
+        - {day: {gte: 10}}
+        - {flags: {midterm_done: true}}
+    goal: 在学园祭的准备会上认领一件活儿
+    completion: {flags: {festival_prep: true}}
+    steps:
+      - 准备会上的报名表
+      - 台前还是幕后
+      - 认领一件活儿
+    on_enter:
+      scene: 青槐高中·中庭樱花道
+      present: [su_qing, jiang_yu, xia_ming]
+      briefing: |
+        学园祭定在六月最后一个周末。准备会上，报名表从第一排传到最后一排。
+        苏晴在纸上画了三个圈：上台、布展、摆摊。
+        江屿站在讲台上念流程，念到"最后一天傍晚放灯"时，教室里安静了一瞬。
+        本节点目标：认领一件活儿（完成信号 flag: festival_prep）。
+    critical_choices:
+      - id: festival_choice
+        prompt: 报名表传到你手里。学园祭上你做什么？
+        options:
+          - {text: 报名上台，唱一首, effects: {flags: {festival_prep: true, festival_stage: true}, stats: {grace: 3}}}
+          - {text: 和美术部一起布置展厅, effects: {flags: {festival_prep: true, festival_booth: true}, affections: {wen_yan: 3}, stats: {art: 3}}}
+          - {text: 帮体育部摆炒面摊, effects: {flags: {festival_prep: true, festival_booth: true}, affections: {xia_ming: 3}, stats: {stamina: 2}}}
+          - {text: 跟学生会跑流程，当现场调度, effects: {flags: {festival_prep: true, festival_stage: true}, affections: {jiang_yu: 3}, stats: {study: 2}}}
+    free_scope: 准备期的忙碌、排练与争执自由发挥；认领完活儿即本节点完成。
+
+  - id: n5_confession
+    title: 放灯的那一晚
+    when:
+      all:
+        - {day: {gte: 14}}
+        - {flags: {festival_prep: true}}
+    goal: 在放灯之前决定把灯送到谁手上
+    completion: {flags: {confession_done: true}}
+    steps:
+      - 学园祭最后一晚
+      - 灯要在樱花道放
+      - 决定走去哪个方向
+    on_enter:
+      scene: 青槐高中·中庭樱花道
+      present: []
+      briefing: |
+        学园祭最后一天。天黑下来，樱花道上的人渐渐往两头散。
+        天台的门今晚是开着的，体育馆还亮着一盏灯，美术教室那扇窗也还亮着。
+        你手里这盏灯，得在放灯之前送到一个地方去。
+        本节点目标：做出选择（完成信号 flag: confession_done）。
+    critical_choices:
+      - id: confession_choice
+        prompt: 灯要放了。你往哪个方向走？
+        options:
+          - {text: 上天台——他说过今晚会在那儿, effects: {flags: {confession_done: true, route_jiang: true}, affections: {jiang_yu: 3}}}
+          - {text: 去体育馆——他还在收球, effects: {flags: {confession_done: true, route_xia: true}, affections: {xia_ming: 3}}}
+          - {text: 去美术教室——那扇窗还亮着, effects: {flags: {confession_done: true, route_wen: true}, affections: {wen_yan: 3}}}
+          - {text: 谁也不找，先把这一年的自己想清楚, effects: {flags: {confession_done: true, route_self: true}, stats: {grace: 2}}}
+    free_scope: 这一晚的见闻、灯下的对话与沉默自由发挥；无论选了哪边，本节点都到此为止。

@@ -266,6 +266,50 @@ def _query_world_spec() -> ToolSpec:
     )
 
 
+def _appointment_spec(schedule: ScheduleSpec) -> ToolSpec:
+    """约定工具：把「和谁约好哪天做什么」交给引擎当真值记下来。
+
+    修复的缺陷：玩家与 NPC 约好后，NPC 仍反复重问同一件事——根因是约定不是引擎
+    真值（记忆池检索不到、无到期概念）。与 change_stat/remember 同范式：
+    模型提议 → 引擎校验（NPC 白名单 / 日期不得在过去 / 长度 / 待履行条数上限）→ 落盘，
+    之后由状态栏**无条件常驻**注入，不再依赖检索。
+
+    使用边界（写进 description，避免模型滥用）：只在**双方明确约定**时调用；
+    玩家单方面打算、或 NPC 随口一提不算约定。
+    """
+    npc_ids = sorted(schedule.affections)
+    return ToolSpec(
+        name="make_appointment",
+        description=(
+            "记录一次**已明确约定**的会面（与某 NPC 约好某天做某事）。"
+            "当叙事中双方说定了一个具体日期要做的事（如「周五去学园祭」「三日后在茶寮见」），"
+            "**必须**调用本工具——否则该 NPC 之后会忘记约定、重新问同一件事。"
+            "引擎会记住并在你每轮的状态栏 <约定> 中常驻显示（含到期与逾期标记）。"
+            "玩家单方面打算、或只是随口一提、或日期不具体时**不得**调用。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "npc": {
+                    "type": "string",
+                    "enum": npc_ids,
+                    "description": "与谁约定（NPC id）",
+                },
+                "what": {
+                    "type": "string",
+                    "description": "约定内容短语，如「去学园祭」「在茶寮见」（≤40 字）",
+                },
+                "due_day": {
+                    "type": "integer",
+                    "description": "约定日期：第 N 天（必须晚于今天）",
+                },
+            },
+            "required": ["npc", "what", "due_day"],
+        },
+        rejects=(ValueError,),
+    )
+
+
 def _do_action_spec(schedule: ScheduleSpec) -> ToolSpec:
     """玩家反馈（剧情推进体验）新增：对话中发起的日程行动与按钮殊途同归。
 
@@ -338,6 +382,10 @@ def from_schedule(schedule: ScheduleSpec) -> ToolRegistry:
     reg.register(_query_world_spec())
     if schedule.actions:  # 无日程行动的包不注册（避免空枚举 schema）
         reg.register(_do_action_spec(schedule))
+    if schedule.affections:  # 无好感对象的包没有"和谁约定"可言
+        reg.register(_appointment_spec(schedule))
+        # 在场真值：只要有可声明的 NPC 就允许调整在场（与约定同一门槛）
+        reg.register(_change_presence_spec(schedule))
     seen = set(ENGINE_TOOL_NAMES)
     for tool in schedule.tools:
         if tool.id in seen:
@@ -377,6 +425,51 @@ def build_registry(pack: WorldPack) -> ToolRegistry:
     if pack.world.locations:
         reg.register(_change_scene_spec(pack.world))
     return reg
+
+
+def _change_presence_spec(schedule: ScheduleSpec) -> ToolSpec:
+    """在场增减提议：把"谁在场"从**上次行动的残留副作用**升为受校验真值。
+
+    修复的缺陷：`present_npcs` 全仓只在「进节点 / 节点结束 / 执行日程行动」三处被写，
+    **对话回合完全不动它**，模型也没有任何工具能改变在场。于是叙事里角色离开后
+    引擎仍把他当在场（角色卡 + 记忆照发，白烧上下文），角色登场时引擎又认为他不在
+    （角色卡与记忆都不注入）——更根本的是，"谁见证了这件事"这个信号不存在，
+    NPC 记忆的归因无从谈起。
+
+    与 change_scene 同范式：模型提议 → 引擎校验（NPC 白名单 / 进出不矛盾 / 关键抉择期锁定）
+    → 落盘真值。语义上 enter/leave 是**幂等**的：退场一个本就不在场的人不报错
+    （叙事里很常见），重复入场不产生重复条目（否则角色卡会注入两次）。
+    """
+    npc_ids = sorted(schedule.affections)
+    return ToolSpec(
+        name="change_presence",
+        description=(
+            "提议一次在场人物的增减（由引擎校验后执行）。"
+            "叙事中有角色**进入或离开**当前场景时**必须**调用——否则引擎会继续把"
+            "已离开的角色当作在场（状态栏与角色卡失真、白耗上下文），"
+            "或把刚登场的角色当作不在场（他的角色卡与记忆都不会加载）。"
+            "enter/leave 填 NPC id 数组（用不到的一侧传空数组）；reason 必填。"
+            "只调整**当前场景**的在场，不改变地点（改地点用 change_scene）。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "enter": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": npc_ids},
+                    "description": "进入当前场景的 NPC id（无则传 []）",
+                },
+                "leave": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": npc_ids},
+                    "description": "离开当前场景的 NPC id（无则传 []）",
+                },
+                "reason": {"type": "string", "description": "剧情原因（谁因何进场/离场）"},
+            },
+            "required": ["reason"],
+        },
+        rejects=(ValueError,),
+    )
 
 
 def _change_scene_spec(world) -> ToolSpec:

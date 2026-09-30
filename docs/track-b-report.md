@@ -23,7 +23,7 @@ Track B 的选型判据：**不改变任何 LLM 调用的输入/输出契约**�
   材料装配器（逐字复用 `status_text`）全部继续有效；
 - 不需要重跑 flash / 14B 任何一侧的基线；
 - 与 Phase 1 训练主线零冲突：**截至 2026-09-24 正式训练尚未完成**（数据已就绪
-  `data/training/` 9 个 jsonl、100 步试跑已过，见 `reports/train-debug-20260919.md`），
+  `archive/finetune/data/training/` 9 个 jsonl、100 步试跑已过，见 `archive/finetune/reports/train-debug-20260919.md`），
   Track B 只做观测与调度，不参与训练数据与配方。
 
 | 项 | 改动面 | 契约影响 |
@@ -135,3 +135,6 @@ l1-check 1.4s ✓ · l1-pytest 29.9s ✓ · 报告 `reports/qa_gate_20260924-142
   暗示正式训练已在进行/已完成——**与事实不符**。核实本地仓库：`data/training/` 数据就绪、
   仅 100 步试跑报告（`train-debug-20260919.md`），**无 `runs/` 产物、无正式训练完成报告**。
   已改为"正式训练尚未完成（截至 2026-09-24）"，后续训练完成时更新本报告。
+- **2026-09 补记**：微调线**已决定不做**，`data/`（含 `training/` 与 `route-a/`）、数据工厂、
+  训练器与相关证据整体移入 `archive/finetune/`（移动而非删除）。本报告的运行时交付物
+  （B1 trace / B2 qa_gate / B3 模型路由）不受影响，仍在 `game_agent/` 与 `scripts/` 中。

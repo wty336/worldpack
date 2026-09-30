@@ -19,6 +19,7 @@ from fakes import FakeClient, msg, resp, tool_call
 from game_agent.game import Game
 from game_agent.llm import LLMClient, build_tools
 from game_agent.mcp_server import build_player_registry, handle_request, serve
+from game_agent.registry import build_registry
 from game_agent.state import GameState
 from game_agent.worldpack import load_worldpack
 
@@ -91,6 +92,46 @@ def test_tools_list_player_only():
     # 叙述者内部工具不对外——玩家代理无权直改数值
     assert "change_stat" not in names and "remember" not in names
     assert all("inputSchema" in t for t in tools)
+
+
+# ---------------------------------------------------------------------------
+# 工具面边界（注册表层，不只列表层）
+# ---------------------------------------------------------------------------
+
+
+def test_player_registry_is_built_from_scratch():
+    """边界不是"挑几个删掉"，而是**另建**一个注册表。
+
+    这条防的是重构退化：若哪天改成 `build_registry(pack).schemas(include_internal=False)`
+    复用叙述者注册表，`change_stat` 这类会改真值的工具就可能顺着 MCP 流出去。
+    断言两套注册表**没有任何同名工具**，且玩家面拿不到叙述者的真值入口。
+    """
+    from game_agent.registry import build_registry
+
+    pack, state, game = _game()
+    narrator = build_registry(pack)
+    player = build_player_registry(game)
+
+    assert set(narrator.names()) & set(player.names()) == set(), (
+        "玩家面与叙述者面出现同名工具——边界被复用破坏了"
+    )
+    # 叙述者面必须**有**真值入口（否则这条测试就没有意义）
+    for name in ("change_stat", "submit_narration", "remember"):
+        assert name in narrator.names()
+        assert player.get(name) is None, f"{name} 泄漏到玩家面"
+
+
+def test_narrator_protocol_tools_are_marked_internal():
+    """协议收尾工具（terminator）在叙述者面也不该走外部工具面导出。
+
+    `schemas(include_internal=False)` 是 narrative 侧导出给外部工具面时的口子；
+    钉住它确实会剔除 `submit_narration`，避免"叙述协议"被当成可调用的操作。
+    """
+    pack, state, game = _game()
+    narrator = build_registry(pack)
+    external = {t["function"]["name"] for t in narrator.schemas(include_internal=False)}
+    assert "submit_narration" not in external
+    assert "change_stat" in external  # 只剔协议工具，不是把全部工具都删掉
 
 
 def test_call_status_and_actions():

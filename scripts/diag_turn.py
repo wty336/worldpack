@@ -1,6 +1,6 @@
 """协议熔断诊断：拦截 chat.completions.create 逐次打印模型原始输出。
 
-local-14b 实验 Phase 0 阶段 1 引入（见 docs/local14b-p012-retro.md §3.4）：
+local-14b 实验 Phase 0 阶段 1 引入（见 archive/finetune/docs/local14b-p012-retro.md §3.4）：
 14B 零样本协议熔断的失败模式靠此脚本定位（纯文本不调工具 / 输出逼近上限 / 重试后纠正）。
 
 用法（默认 .env 指向的端点；指本地则加 env 覆盖）：

@@ -73,3 +73,47 @@ def fingerprint_for(settings: Any, purpose: str = "judge") -> dict[str, Any]:
         settings.model_for(purpose),
         settings.api_key,
     )
+
+
+_DWINDOW_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+
+
+def context_window_from_endpoint(
+    settings: Any,
+    purpose: str = "turn",
+    *,
+    timeout: float = PROBE_TIMEOUT_S,
+) -> int:
+    """端点自报的 ``max_model_len`` → 主回合模型的上下文窗（token）；未知返回 0。
+
+    为什么值得自动取：本模块**已经在**探测 ``max_model_len``（8 个脚本用它做部署指纹），
+    而"上下文窗多大"正是 J 系列溢出预检需要的同一个数——让使用者再手工配一份
+    ``DEEPSEEK_CONTEXT_WINDOW`` 是重复真源，且换量化/换 ``max_model_len`` 后会漂
+    （见 `tests/test_endpoint_fingerprint.py` 的文件头：当初就是为这件事做的指纹）。
+
+    纪律：
+    - **探测失败/字段缺失一律返回 0**（fail-soft）：云端 OpenAI 兼容端点不报这个字段
+      （`test_cloud_api_without_deployment_fields` 已钉住"缺字段就不写"），
+      此时调用方回落到显式配置或"预检关闭"，绝不猜一个窗口出来；
+    - **缓存"端点答了什么"，不缓存"探测失败"**：Web 每次请求都会走 `_make_game`，
+      探测带超时，不缓存会把网络往返放进每个请求的路径上。故分两种结果：
+      ① 端点答了（带 `max_model_len`，或答了但没这个字段）→ 缓存，之后零成本；
+      ② 探测抛错（超时/连不上）→ **不**缓存，下一次仍会试（端点稍后可达要能自愈）。
+      实测：DeepSeek 云端属于 ①（答得快、但没有该字段），若不缓存会每回合白花约 0.5s。
+    """
+    base_url = str(getattr(settings, "base_url", "") or "")
+    model = str(settings.model_for(purpose) if hasattr(settings, "model_for") else "") or ""
+    if not base_url or not model:
+        return 0
+    key = (base_url, model)
+    if key not in _DWINDOW_CACHE:
+        fp = fingerprint(base_url, model, getattr(settings, "api_key", ""), timeout=timeout)
+        # 只缓存"端点确实答了"的结果（含"答了但没这个字段"→ None）。
+        # 探测失败（超时/连不上）不缓存：端点稍后可达时应能自愈。
+        if "probe_error" not in fp:
+            _DWINDOW_CACHE[key] = fp
+    value = _DWINDOW_CACHE.get(key, {}).get("max_model_len")
+    try:
+        return int(value) if value else 0
+    except (TypeError, ValueError):
+        return 0

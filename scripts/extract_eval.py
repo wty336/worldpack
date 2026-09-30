@@ -6,7 +6,7 @@
     python scripts/extract_eval.py --dry-run    # 只打印用例（零 API）
     python scripts/extract_eval.py --limit 5    # 抽样调试
 
-判分口径见 `tests/test_extract_eval.py` 与 `docs/plan-phase1-data.md` §3（B 块）。
+判分口径见 `tests/test_extract_eval.py` 与 `archive/finetune/docs/plan-phase1-data.md` §3（B 块）。
 评测集是冻结的（`eval-sets/MANIFEST.md`）：本脚本只读不写。
 """
 

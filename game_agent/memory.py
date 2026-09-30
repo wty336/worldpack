@@ -34,6 +34,10 @@ PLAYER_FACTS_LIMIT = 24  # 玩家事实存储上限（检索注入后上限可�
 FACT_MAX_LEN = 120
 IMPORTANCE_DEFAULT = 5.0  # A2：事实重要性缺省值（1~10）
 
+# 提炼输出的「目标」前缀形状：世界包 NPC id 的合法形状（字母/数字/下划线）。
+# 用于把「目标|重要性|事实」与「普通事实文本里含 |」区分开——中文前缀不算目标。
+_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9_]+")
+
 # A1（P1）检索参数：score = α·recency + β·importance + γ·relevance
 RETRIEVAL_ALPHA = 0.4
 RETRIEVAL_BETA = 0.4
@@ -118,6 +122,9 @@ EXTRACT_SYSTEM = (
     "每条输出一行，格式：重要性|事实，重要性为 1~10 的整数"
     "（8-10：身份身世、生死承诺、命运级转折；5-7：重要关系进展与关键事件；"
     "1-4：日常喜好与琐事）。"
+    "**若某条事实只有在场某个角色才知道**（私下告知、只有他在场目睹、"
+    "是他与玩家之间的约定），把该行写成「角色id|重要性|事实」——"
+    "归属只能填在场角色 id 或 player；不确定就填 player。"
     "不要编号、不要解释；没有值得长期记住的事实就只输出「无」。"
     "日常琐事（吃了什么、天气如何）不算事实；剧情进展的瞬时状态也不算。"
     "「已有事实」中已经存在的（含近义改写）不要重复输出。"
@@ -161,29 +168,69 @@ def parse_insights(output: str) -> list[tuple[str, tuple[int, ...]]]:
 
 
 def parse_facts(output: str) -> list[tuple[str, float]]:
-    """解析提炼输出为 (事实, 重要性) 列表。
+    """解析提炼输出为 (事实, 重要性) 列表（只取归属 `player` 的条目）。
 
-    支持两种行格式：
-    - A2 格式「重要性|事实」（如 8|我的剑名听雨；无前缀 → 重要性 5）；
-    - 容忍编号/项目符号/空行/「无」哨兵及其标点变体（M2b #3）。
+    兼容入口，保留给既有调用方与测试；需要按归属分流时用 `parse_targeted_facts`。
     """
-    facts: list[tuple[str, float]] = []
+    return [
+        (fact, importance)
+        for target, importance, fact in parse_targeted_facts(output)
+        if target == "player"
+    ]
+
+
+def parse_targeted_facts(
+    output: str, roster: set[str] | None = None
+) -> list[tuple[str, float, str]]:
+    """解析提炼输出为 (归属, 重要性, 事实) 列表。
+
+    支持的行格式（前缀都可缺省，`|` 分隔）：
+    - 「重要性|事实」——A2 原格式，归属缺省 player；
+    - 「目标|重要性|事实」——NPC 侧确定性提取新增：目标 = `player` 或某个 NPC id；
+    - 「目标|事实」——仅在目标属于 `roster` 时识别（见下）。
+
+    容忍编号/项目符号/空行/「无」哨兵及其标点变体（M2b #3）。
+
+    **消歧规则**（这是侧信道：解析失败只损失一条记忆，但**误判会写错归属**）：
+    - 三段式 `a|b|c` 要求首段是标识符形状（ASCII 字母/数字/下划线，世界包 NPC id
+      正是此形），否则整行按普通事实文本；
+    - 两段式 `a|b` 只在**首段确实属于 roster**（`player` 或在场 NPC id）时才算归属；
+      否则保持旧行为（整行是事实）——否则 `abc|非法前缀` 这类普通文本会被误拆。
+    """
+    facts: list[tuple[str, float, str]] = []
+    known = roster or {"player"}
     for line in output.splitlines():
         line = re.sub(r"^\s*[\d一二三四五]+[.、)）]\s*", "", line).strip()
         line = line.lstrip("-*·•").strip()
         core = line.rstrip("。.！!，,；;：: ")
-        if not core or core == "无" or core == "没有":
+        if not core or core in ("无", "没有"):
             continue
+        parts = [p.strip() for p in core.split("|")] if "|" in core else [core]
         importance = IMPORTANCE_DEFAULT
-        if "|" in core:
-            head, _, rest = core.partition("|")
-            head = head.strip()
+        target = "player"
+        if len(parts) >= 3 and _IDENTIFIER_RE.fullmatch(parts[0]):
+            # 目标|重要性|事实
+            target = parts[0]
+            head = parts[1]
             if head.isdigit() and 1 <= int(head) <= 10:
                 importance = float(int(head))
+            core = "|".join(parts[2:]).strip()
+        elif len(parts) == 2:
+            head, rest = parts[0], parts[1]
+            if head.isdigit():
+                # 形如「数字|事实」：1~10 视作重要性；越界（如 15|…）**整行按普通事实**
+                # 保留原文 —— 不能把它当成"目标 id"（数字不是角色 id），也不能吞掉原文。
+                if 1 <= int(head) <= 10:
+                    importance = float(int(head))
+                    core = rest.strip()
+            elif head in known:
+                target = head  # 目标|事实（目标可识别才认）
                 core = rest.strip()
-        if not core:
+        else:
+            core = parts[0]
+        if not core or core in ("无", "没有"):
             continue
-        facts.append((core, importance))
+        facts.append((target, importance, core))
         if len(facts) >= EXTRACT_MAX_FACTS:
             break
     return facts
@@ -239,10 +286,14 @@ class MemorySystem:
             )
 
         # 去重：包含关系（v1）+ 语义判定（A4）
-        for m in bucket:
+        # **跳过 superseded**（记忆批修复）：被取代的死事实不能拦住"重新成立"的同一条
+        # 事实。否则剧情回摆（剑名改回来）时写入被拦下，而旧条目本身又不注入（A5）
+        # → 状态栏持续注入与剧情相反的版本，两版都不可见。
+        active = [m for m in bucket if not m.superseded]
+        for m in active:
             if m.fact in fact or fact in m.fact:
                 return f"[记忆跳过] 与既有记忆重复（{m.fact}）"
-        if self._is_semantic_duplicate(bucket, fact):
+        if self._is_semantic_duplicate(active, fact):
             return "[记忆跳过] 与既有记忆语义重复"
 
         # A5（runtime 平台化 ①）：写入时时序冲突判定——"取代"→ 旧条目打 superseded
@@ -250,13 +301,28 @@ class MemorySystem:
 
         entry = MemoryEntry(fact=fact, day=state.day, round=state.turn_count,
                             importance=importance)
-        bucket.append(entry)
 
-        # 满额淘汰（A2）：superseded 优先淘汰（死权重最轻）→ 低重要性 → 同重要性按时间
-        if len(bucket) > limit:
-            bucket.sort(key=lambda m: (0 if m.superseded else 1, m.importance, m.round))
-            removed_count = len(bucket) - limit
-            del bucket[:removed_count]
+        # 满额淘汰（A2）：superseded 优先淘汰（死权重最轻）→ 低重要性 → 同重要性按时间。
+        # **先算受害者再落盘**（记忆批修复）：旧实现先 append 再 `del bucket[:n]`，
+        # 于是"重要性低于全部存量"的新事实会**把自己删掉**，却回传"已写入 + 淘汰了旧记忆"
+        # ——模型据此不再重提，状态栏永远没有它（真值与模型信念分叉）。实测提取器常把
+        # 日常事实判为 1-4 分，长局里这类事实因此**永远进不了库**。
+        ordered = sorted(
+            [*bucket, entry], key=lambda m: (0 if m.superseded else 1, m.importance, m.round)
+        )
+        removed_count = len(ordered) - limit
+        victims = ordered[:removed_count] if removed_count > 0 else []
+        if any(v is entry for v in victims):
+            # 新事实竞争不过存量：明确告知未入库（模型可据此调整，而不是误以为记住了）
+            return (
+                f"[记忆未写入] {label}：{fact}（重要性 {importance:g}）"
+                f"——满额且重要性不高于任何既有条目，未记入长期记忆。"
+                f"可提高重要性或先精简既有记忆。"
+            )
+        for victim in victims:
+            bucket.remove(victim)
+        bucket.append(entry)
+        if removed_count > 0:
             return (
                 f"[记忆已写入] {label}：{fact}（重要性 {importance:g}）"
                 f"（满额，按重要性+时间淘汰 {removed_count} 条旧记忆）"

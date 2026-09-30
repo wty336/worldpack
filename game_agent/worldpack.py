@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +19,8 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 
 from .conditions import ConditionError, validate_condition
+from .evalmeta import DIGEST_LEN, normalized_bytes
+from .lore import LORE_LOGIC_MODES, LoreKeyError, validate_key
 
 
 class WorldPackError(Exception):
@@ -27,6 +30,8 @@ class WorldPackError(Exception):
 # 引擎内置工具名（批次 C）：自定义工具不得与之重名（registry 与交叉校验共用此清单）
 ENGINE_TOOL_NAMES = (
     "change_stat", "submit_narration", "remember", "query_world", "do_action",
+    "make_appointment",  # 约定真值（玩家实测缺陷修复）
+    "change_scene",  # 校验批：地点表声明时 registry 会注册它，此前漏在本表外
 )
 
 
@@ -46,6 +51,9 @@ class WorldSpec(BaseModel):
     forbidden: list[str] = Field(default_factory=list)
     opening: str = ""
     lore: list["LoreSpec"] = Field(default_factory=list)  # B1（P3）：Lorebook 条目（按需注入）
+    # A-4：递归扫描层数（0 = 关闭，默认）。命中条目的正文可作为下一层扫描输入，
+    # 用于表达「提到 A 才需要知道 B」的二级知识。默认 0 而非无限——与旧行为一致。
+    max_recursion: int = 0
     locations: list["LocationSpec"] = Field(default_factory=list)  # 批次 D：地点表（声明后 scene 受校验）
 
 
@@ -53,13 +61,36 @@ class LoreSpec(BaseModel):
     """B1（P3）：一条 Lorebook 条目（地点/势力/物品/传闻）。
 
     keys：触发关键词（命中任一即候选）；text：注入文本。lore 不进静态前缀，
-    由上下文组装器按「场景 + 节点目标 + 近对话」动态注入（字符预算内）。
+    由上下文组装器按「场景 + 节点目标 + 近对话」动态注入（预算内）。
+
+    A-2（对照 SillyTavern `selectiveLogic`）：
+    - secondary_keys：次级关键词。**不声明则退化为纯主键命中**；
+    - logic：主键命中后如何用次键收窄，四值（见 LORE_LOGIC_MODES）。
+      **声明了 secondary_keys 就必须显式给 logic**——否则默认值会把某一种
+      语义静默强加给作者（加载期拒绝，见 worldpack `_cross_check`）。
+      `NOT_ANY` 是 lorebook 里最有表达力的一档：命中 A **但没提到** B 才注入。
     """
 
     id: str
     keys: list[str]
     text: str
+    secondary_keys: list[str] = Field(default_factory=list)
+    logic: str = "AND_ANY"
+    # A-3：大小写敏感（默认 True——中文场景下更安全；仅在匹配英文/拼音变体时关闭）
+    case_sensitive: bool = True
+    # A-1：预算豁免（引擎强制接管的设定）。与 A-4 的 `constant` 是**两个独立维度**：
+    # `ignore_budget` 管"是否占预算额度"，`constant` 管"是否需要关键词命中"。
+    ignore_budget: bool = False
+    # A-4：常驻注入——跳过关键词判定、总是候选（世界通则类设定：货币/历法/忌讳）。
+    # **仍受预算约束**（常驻 ≠ 无限）。
+    constant: bool = False
+    # A-4：递归闸——本条目**不被**递归层激活（只能靠直接关键词命中）。
+    exclude_from_recursion: bool = False
+    # A-4：本条目正文**不作为**下一层扫描输入（不传染）。
+    no_recursion_trigger: bool = False
 
+
+# A-2：次级关键词四值逻辑语义见 `game_agent/lore.py`（此处直接复用其常量）
 
 class LocationSpec(BaseModel):
     """批次 D：地点表条目——把场景从自由字符串升级为一等公民。
@@ -168,6 +199,11 @@ class ActionEffects(BaseModel):
     affections: dict[str, EffectValue] = Field(default_factory=dict)
     counters: dict[str, int] = Field(default_factory=dict)  # 批次 E：计数器增减
     items: dict[str, list[str]] = Field(default_factory=dict)  # 批次 E：{"gain": [...], "lose": [...]}
+    # 日程行动写 flag（手册 §3.2/§5 守则 3 声明的合法写入路径之一：关键选择选项 /
+    # 事件 / 日程行动）。此前缺该字段 → pydantic 默认 extra="ignore" 静默丢弃，
+    # 校验器的 writable_flags 收集（effects.model_dump()）因此对行动永远为空：
+    # 作者按手册写"行动效果写 flag"会得到静默 no-op（2026-09-25 由 campus_otome 包发现）。
+    flags: dict[str, bool] = Field(default_factory=dict)
 
 
 class ActionCheck(BaseModel):
@@ -354,6 +390,63 @@ class WorldPack:
 
 
 # ---------------------------------------------------------------------------
+# 剧本身份戳（G2）：存档必须记住"这一局玩的是哪份内容"
+# ---------------------------------------------------------------------------
+
+PACK_CONTENT_FILES = (
+    "world.yaml",
+    "schedule.yaml",
+    "mainline.yaml",
+    "events.yaml",
+    "endings.yaml",
+)  # npcs/*.yaml 另按目录枚举
+"""参与 `pack_digest` 的**玩法内容**文件。
+
+为什么**不**把 `judge_corpus*.yaml` 算进去：那是门禁语料，不属于玩法。作者重跑
+`build_judge_corpus.py` 会让它变化；若参与摘要，旧存档会被判成"剧本已改"而误拒——
+把"质量门的尺子"当成"游戏规则"是口径混淆。同理 `smoke_profile.yaml` 也不参与。
+摘要只回答一个问题：**这一局玩的规则有没有变。**
+"""
+
+
+def pack_digest(root: str | Path) -> str:
+    """世界包玩法内容的**内容摘要**（换行归一化，跨机可对账）。
+
+    口径与 `evalmeta.file_digest` 完全一致（共用 `normalized_bytes`）：读字节 →
+    换行归一 → sha256。逐文件喂入「相对路径 + NUL + 内容 + NUL」，于是
+    **改内容会变、改名会变、与枚举顺序无关**。
+
+    为什么必须换行归一：同一份包在 Windows 检出是 CRLF、Linux 是 LF。
+    不做归一，跨机/跨 CI 的存档会被判成"剧本不匹配"——正是 `file_digest`
+    在 2026-09-12 踩过的那个坑（当时让 `test_eval_frozen` 在 Linux 上必红）。
+
+    缺失的文件直接跳过：`load_worldpack` 已经负责报"必需文件缺失"，
+    本函数不重复报错，只做摘要。
+    """
+    base = Path(root)
+    rels: list[Path] = [Path(n) for n in PACK_CONTENT_FILES if (base / n).is_file()]
+    npcs_dir = base / "npcs"
+    if npcs_dir.is_dir():
+        rels += [p.relative_to(base) for p in npcs_dir.glob("*.yaml")]
+    h = hashlib.sha256()
+    for rel in sorted(rels, key=lambda p: p.as_posix()):
+        h.update(rel.as_posix().encode("utf-8"))
+        h.update(b"\0")
+        h.update(normalized_bytes(base / rel))
+        h.update(b"\0")
+    return h.hexdigest()[:DIGEST_LEN]
+
+
+def pack_meta(pack: WorldPack) -> dict[str, str]:
+    """存档用的剧本身份戳：`id`（目录名，人可读）+ `digest`（内容指纹，可对账）。
+
+    两个字段各司其职：`id` 让人一眼看出"这是哪个包"，`digest` 才能发现
+    **同名但改过版**的情况（改 NPC id、改旗标名——正是旧存档静默穿帮的成因）。
+    """
+    return {"id": pack.root.name, "digest": pack_digest(pack.root)}
+
+
+# ---------------------------------------------------------------------------
 # 加载与交叉校验
 # ---------------------------------------------------------------------------
 
@@ -432,21 +525,47 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
     events: EventsSpec = pack_parts["events"]
     endings: EndingsSpec = pack_parts["endings"]
     npcs: dict[str, NpcSpec] = pack_parts["npcs"]
+    world: WorldSpec = pack_parts["world"]
 
     declared_flags = set(schedule.flags)
     declared_affections = set(schedule.affections)
     declared_stats = set(schedule.stats)
     action_ids = {a.id for a in schedule.actions}
 
-    # 0) lore 条目校验（B1：id 唯一、keys/text 非空）
+    # 0) lore 条目校验（B1：id 唯一、keys/text 非空；A-2：次键与 logic；A-3：正则键）
+    if pack_parts["world"].max_recursion < 0:
+        raise WorldPackError(
+            f"max_recursion 必须 >= 0（当前 {pack_parts['world'].max_recursion}）；0 = 关闭递归"
+        )
     lore_ids = [l.id for l in pack_parts["world"].lore]
     if len(lore_ids) != len(set(lore_ids)):
         raise WorldPackError(f"lore 条目 id 重复: {lore_ids}")
     for lore in pack_parts["world"].lore:
-        if not lore.keys or any(not k.strip() for k in lore.keys):
-            raise WorldPackError(f"lore '{lore.id}' 的 keys 不能为空且每项非空")
+        try:
+            if not lore.keys:
+                raise LoreKeyError("keys 不能为空")
+            for k in lore.keys:
+                validate_key(k, kind="keys", owner=f"lore '{lore.id}'",
+                             case_sensitive=lore.case_sensitive)
+            if any(not k.strip() for k in lore.secondary_keys):
+                raise LoreKeyError("secondary_keys 每项必须非空")
+            for k in lore.secondary_keys:
+                validate_key(k, kind="secondary_keys", owner=f"lore '{lore.id}'",
+                             case_sensitive=lore.case_sensitive)
+        except LoreKeyError as exc:
+            raise WorldPackError(f"lore '{lore.id}': {exc}") from exc
         if not lore.text.strip():
             raise WorldPackError(f"lore '{lore.id}' 的 text 不能为空")
+        if lore.secondary_keys and "logic" not in lore.model_fields_set:
+            raise WorldPackError(
+                f"lore '{lore.id}' 声明了 secondary_keys 就必须显式声明 logic"
+                f"（可选：{'/'.join(LORE_LOGIC_MODES)}）——默认值不得静默替你决定语义"
+            )
+        if "logic" in lore.model_fields_set and lore.logic not in LORE_LOGIC_MODES:
+            raise WorldPackError(
+                f"lore '{lore.id}' 的 logic 非法: {lore.logic!r}"
+                f"（可选：{'/'.join(LORE_LOGIC_MODES)}）"
+            )
 
     # 0.5) 地点表校验（批次 D）：id/name 唯一；声明后 scene 引用必须落在表内
     locations = pack_parts["world"].locations
@@ -501,6 +620,130 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         if not item.label.strip():
             raise WorldPackError(f"物品 '{item.id}' 的 label 不能为空")
 
+    # 0.7) 数值范围约束（校验批）：initial 越界会让首次收益"饱和"回边界
+    #      （实测：initial=5000 + effect +1 → 实际 -4900），min>max 同理不可玩。
+    for name, stat in schedule.stats.items():
+        if stat.min > stat.max:
+            raise WorldPackError(f"属性 '{name}' 的 min > max")
+        if not stat.min <= stat.initial <= stat.max:
+            raise WorldPackError(
+                f"属性 '{name}' 的 initial {stat.initial:g} 在范围 "
+                f"[{stat.min:g}, {stat.max:g}] 之外"
+            )
+    for name, aff in schedule.affections.items():
+        if aff.min > aff.max:
+            raise WorldPackError(f"好感对象 '{name}' 的 min > max")
+        if not aff.min <= aff.initial <= aff.max:
+            raise WorldPackError(
+                f"好感对象 '{name}' 的 initial {aff.initial:g} 在范围 "
+                f"[{aff.min:g}, {aff.max:g}] 之外"
+            )
+
+    # 0.8) memory_limit 下界（校验批）：0 会让该 NPC 的记忆"写一条淘汰一条"却回报
+    #      已写入 —— 功能静默全灭，无任何报错。
+    for npc_id, npc in npcs.items():
+        if npc.memory_limit < 1:
+            raise WorldPackError(
+                f"角色卡 '{npc_id}' 的 memory_limit 必须 ≥1，当前为 {npc.memory_limit}"
+                f"（0 会让该 NPC 的记忆每次写入后立即被淘汰，功能静默失效）"
+            )
+
+    # 0.9) 禁用表有效性（校验批）：`_forbidden_tokens` 只从「（括号）内示例词 + 、顿号
+    #      分隔项」里取 2~6 字短词。一条整句规则（无分隔符且 >6 字）会切出 0 个 token
+    #      → 世界观边界防线**静默失效**（模型照写不误，过滤不拦）。宁可加载期报错，
+    #      也不要一条看起来生效、实际不存在的规则。
+    from .storyline import _forbidden_tokens  # 局部导入避免模块级环
+
+    dead_rules = [
+        entry
+        for entry in world.forbidden
+        if not _forbidden_tokens(WorldSpec(name="probe", era="probe", forbidden=[entry]))
+    ]
+    if dead_rules:
+        raise WorldPackError(
+            "以下禁用规则切不出任何可匹配词，这些防线会静默失效：\n"
+            + "\n".join(f"  - {e!r}" for e in dead_rules)
+            + "\n  修法：把具体禁用词放进括号或用顿号分隔，例如"
+            "『现代事物（手机、微信、汽车等）』；确需概括性表述时，"
+            "请把概括词压缩到 6 字以内（如『现代品牌』）。"
+        )
+
+    # 0.10) 实体 id 唯一性（校验批）：此前只校验 lore/地点/物品/自定义工具/角色卡，
+    #       节点/抉择/行动/事件/结局五类漏网。重复 id 不会崩，但会**语义错位**：
+    #       节点重复 → 第二个永久不可达；行动重复 → 点 B 执行 A；抉择重复 →
+    #       pending_choice 取到另一个；事件/结局重复 → 第二个永不触发。
+    node_ids = [n.id for n in mainline.nodes]
+    if len(node_ids) != len(set(node_ids)):
+        dup = sorted({i for i in node_ids if node_ids.count(i) > 1})
+        raise WorldPackError(
+            f"主线节点 id 重复: {dup}——重复会让后一个节点永久不可达（作者拿到绿灯却丢内容）"
+        )
+    for node in mainline.nodes:
+        choice_ids = [c.id for c in node.critical_choices]
+        if len(choice_ids) != len(set(choice_ids)):
+            raise WorldPackError(
+                f"主线节点 '{node.id}' 内关键抉择 id 重复: "
+                f"{sorted({i for i in choice_ids if choice_ids.count(i) > 1})}"
+            )
+        for choice in node.critical_choices:
+            if not choice.options:
+                raise WorldPackError(
+                    f"关键抉择 '{choice.id}'（节点 '{node.id}'）的 options 为空——"
+                    "引擎会进入「有抉择但无可选项」的死锁态：玩家无法选择、"
+                    "say/act/end_day 全被抉择守卫拦下，CLI 的选项提问会无限循环。"
+                )
+    action_ids = [a.id for a in schedule.actions]
+    if len(action_ids) != len(set(action_ids)):
+        raise WorldPackError(
+            f"日程行动 id 重复: {sorted({i for i in action_ids if action_ids.count(i) > 1})}"
+            "——按 id 派发会执行到另一个同名行动"
+        )
+    event_ids = [e.id for e in events.events]
+    if len(event_ids) != len(set(event_ids)):
+        raise WorldPackError(
+            f"事件 id 重复: {sorted({i for i in event_ids if event_ids.count(i) > 1})}"
+            "——triggered_events 按 id 去重，后一个永不触发"
+        )
+    ending_ids = [e.id for e in endings.endings]
+    if len(ending_ids) != len(set(ending_ids)):
+        raise WorldPackError(
+            f"结局 id 重复: {sorted({i for i in ending_ids if ending_ids.count(i) > 1})}"
+        )
+
+    # 0.11) 好感阶段连续性（校验批）：好感是 float 且可由 0.5 增量驱动，而作者习惯写
+    #       整数区间 [0,20] [21,50]……。若两段之间留出真空隙，落在空隙里的好感值会让
+    #       语气退化成字面量「（无阶段定义）」——恰好出现在好感最高的剧情高潮段落。
+    #       规则：升序不重叠、相邻间隙 ≤1（容纳整数区间写法）、整体覆盖 [min, max]。
+    for npc_id, npc in npcs.items():
+        spec = schedule.affections.get(npc_id)
+        lo_bound = spec.min if spec is not None else 0.0
+        hi_bound = spec.max if spec is not None else 100.0
+        stages = sorted((float(s.range[0]), float(s.range[1])) for s in npc.affection_stages)
+        if not stages:
+            continue  # 无阶段 = 语气恒为「（无阶段定义）」，由作者自行决定是否写
+        if stages[0][0] > lo_bound:
+            raise WorldPackError(
+                f"角色卡 '{npc_id}' 的好感阶段未覆盖下界："
+                f"[{lo_bound:g}, {stages[0][0]:g}) 无阶段定义"
+            )
+        for i in range(len(stages) - 1):
+            if stages[i][1] >= stages[i + 1][0]:
+                raise WorldPackError(
+                    f"角色卡 '{npc_id}' 的好感阶段重叠: {stages[i]} 与 {stages[i + 1]}"
+                )
+            if stages[i + 1][0] - stages[i][1] > 1.0:
+                raise WorldPackError(
+                    f"角色卡 '{npc_id}' 的好感阶段留有空隙: "
+                    f"({stages[i][1]:g}, {stages[i + 1][0]:g}) 内的好感值语气会退化为"
+                    "「（无阶段定义）」"
+                )
+        if stages[-1][1] < hi_bound:
+            raise WorldPackError(
+                f"角色卡 '{npc_id}' 的好感阶段未覆盖上界："
+                f"({stages[-1][1]:g}, {hi_bound:g}] 无阶段定义"
+            )
+
+
     # 1) 收集全部引用 + 校验条件结构（when/completion 语法错误在加载期暴露）
     def _check_cond(cond: dict[str, Any], where: str) -> None:
         try:
@@ -520,6 +763,13 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
         dumped = node.model_dump()
         _collect_refs(dumped, "flags", flag_refs)
         _collect_refs(dumped, "stat", stat_refs)
+        # C1（校验批，Critical）：关键抉择的**选项效果**用复数键 `stats`/`affections`
+        # 声明（ActionEffects 形状），而上面两行只收条件侧的单数键 `stat`/`affection`。
+        # 漏收的后果：`options[].effects.stats: {ghost_stat: 5}` 通过加载，
+        # 玩家点下该选项时抛未捕获的 StatChangeError（CLI 崩溃存档退出），
+        # 且排在坏键之前的效果已经落盘。事件路径（下方 :547）本来就收复数键，此处补齐。
+        _collect_refs(dumped, "stats", stat_refs)
+        _collect_refs(dumped, "affections", aff_refs)
         _collect_refs(dumped, "counter", counter_refs)
         _collect_refs(dumped, "item", item_refs)
         for choice in node.critical_choices:  # 批次 E：选项效果的 counters/items 引用
@@ -920,6 +1170,144 @@ def _cross_check(pack_parts: dict[str, Any]) -> None:
                 raise WorldPackError(
                     f"主线节点 '{node.id}' 的 steps 第 {i} 条超过 40 字（{len(step)} 字）"
                 )
+
+    # 6) 数值可达性（校验批）：结局条件里的**数值阈值**必须在行动点预算内够得着。
+    #    此前只校验 flag/counter/item 的写入路径（步骤 5/5.5），数值阈值完全不管——
+    #    实测 8 个包里有 4 个存在"永远无法达成的结局"（要求好感 ≥50，上限仅 5~25），
+    #    作者拿到绿灯、玩家却永远刷不出该结局。判据只取**保守上界**：
+    #    "上限 < 阈值"才算不可达（不误杀有随机/门槛/检定的合法剧本）。
+    #    预算天数 = 全部结局 day 门槛的最大值（没有 day 门槛则无法界定预算，跳过）。
+    _day_hits: list[int] = []
+
+    def _collect_day_thresholds(node: Any) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "day" and isinstance(v, dict) and "gte" in v:
+                    _day_hits.append(int(v["gte"]))
+                else:
+                    _collect_day_thresholds(v)
+        elif isinstance(node, list):
+            for item in node:
+                _collect_day_thresholds(item)
+
+    for ending in endings.endings:
+        _collect_day_thresholds(ending.when)
+    if _day_hits:
+        stat_caps, aff_caps = _numeric_caps(schedule, max(_day_hits))
+        # 收集**全部**不可达项后一次性报出（与 0.9 禁用表同一策略）：作者拿到的
+        # 是一张待修清单，而不是修一个跑一次、下次再冒一个。
+        unreachable: list[str] = []
+        for ending in endings.endings:
+            needs_stats: dict[str, list[tuple[str, float]]] = {}
+            needs_affs: dict[str, list[tuple[str, float]]] = {}
+            _numeric_conditions(ending.when, "stat", needs_stats)
+            _numeric_conditions(ending.when, "affection", needs_affs)
+            for label, needs, caps in (
+                ("属性", needs_stats, stat_caps),
+                ("好感", needs_affs, aff_caps),
+            ):
+                for name, conditions in needs.items():
+                    if name not in caps:
+                        continue  # 未声明的引用已由步骤 2 报错，此处不重复
+                    for op, threshold in conditions:
+                        if op not in ("gte", "gt"):
+                            continue  # lte/lt 是上限约束，不构成"够不着"
+                        cap = caps[name]
+                        if cap + 1e-9 < threshold:
+                            display = (
+                                schedule.stats[name].label
+                                if label == "属性" and name in schedule.stats
+                                else schedule.affections[name].label
+                                if name in schedule.affections
+                                else name
+                            )
+                            unreachable.append(
+                                f"  结局 '{ending.id}'（{ending.title}）要求{label}"
+                                f"『{display}』{op} {threshold:g}，"
+                                f"但全投上限仅 {cap:.1f}（差 {threshold - cap:.1f}）"
+                                f" → 把阈值改为 ≤{cap:.0f}，或给 '{name}' 增加收益路径"
+                            )
+        if unreachable:
+            raise WorldPackError(
+                f"以下结局的数值阈值在行动点预算内永远够不着"
+                f"（预算 = {max(_day_hits)} 天 × {schedule.day_action_points} 点）：\n"
+                + "\n".join(unreachable)
+                + "\n  说明：判据取**保守上界**（只算成功档、忽略门槛未解锁），"
+                "所以这里的每一条都是「确定不可达」，不是估算误差。"
+            )
+
+
+def _numeric_caps(schedule: ScheduleSpec, days: int) -> tuple[dict[str, float], dict[str, float]]:
+    """数值可达上限（校验批步骤 6 的核心）：该维度**独占全部行动点**时的理论上界。
+
+    刻意取上界而非精确预测——门禁只回答"**有没有可能**够得着"：
+    - 只取成功档（忽略检定失败/大成功、忽略 requires 门槛未解锁）→ 结果偏乐观，
+      所以"上限 < 阈值 → 确定不可达"这个判据不会误杀合法剧本；
+    - 收益曲线按 `decay_every/decay_step` 逐次递减累加（与运行时同口径）；
+    - spread 对称，取期望值（不加不减）。
+
+    返回 (属性上限, 好感上限)。
+    """
+    budget = max(0, days) * max(0, schedule.day_action_points)
+
+    def cap_for(kind: str, key: str) -> float:
+        table = schedule.stats if kind == "stats" else schedule.affections
+        spec = table[key]
+        cur = float(spec.initial)
+        top = float(spec.max)
+        for _ in range(budget):
+            best = 0.0
+            for action in schedule.actions:
+                eff = action.effects
+                src = eff.stats if kind == "stats" else eff.affections
+                if key not in src:
+                    continue
+                value = src[key]
+                if isinstance(value, EffectSpec):
+                    gain = value.base
+                    if value.decay_every and value.decay_every > 0:
+                        gain = max(0.0, gain - int(cur // value.decay_every) * value.decay_step)
+                else:
+                    gain = float(value)
+                best = max(best, gain)
+            if best <= 0:
+                break
+            cur = min(top, cur + best)
+        return cur
+
+    return (
+        {k: cap_for("stats", k) for k in schedule.stats},
+        {k: cap_for("affections", k) for k in schedule.affections},
+    )
+
+
+def _numeric_conditions(node: Any, kind: str, out: dict[str, list[tuple[str, float]]]) -> None:
+    """收集条件里的数值要求 → {名字: [(op, 阈值)]}。
+
+    **只走"触发因果路径"**（校验批修正）：`all` 下每个分支都是达成条件的一部分；
+    `any` 下必须所有分支一起算（只满足其一不算）；而 `not` 下的条件取反后
+    **不是达成要求**——例如 ancient_jianghu 的 `ending_wanderer` 写作
+    `not: {all: [{affection: {shen_qingqiu: {gte: 60}}}, ...]}`，
+    含义是"好感 <60 **或** 未进前三"，该结局**很容易达成**。
+    若把取反分支里的 60 当成硬要求，就会把合法剧本误判为不可达（本函数的由来）。
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "not":
+                continue  # 取反分支不构成达成要求
+            if key == kind and isinstance(value, dict):
+                for name, spec in value.items():
+                    if isinstance(spec, dict):
+                        for op, threshold in spec.items():
+                            if op in ("gte", "gt", "lte", "lt") and isinstance(
+                                threshold, (int, float)
+                            ):
+                                out.setdefault(name, []).append((op, float(threshold)))
+            else:
+                _numeric_conditions(value, kind, out)
+    elif isinstance(node, list):
+        for item in node:
+            _numeric_conditions(item, kind, out)
 
 
 def load_worldpack(root: str | Path) -> WorldPack:

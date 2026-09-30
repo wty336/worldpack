@@ -62,7 +62,11 @@ actions:
   - id: visit_bai
     label: 拜访白芷
     cost: 1
-    effects: {}
+    # 可达性修复（校验批）：此前 effects 为空 → 白芷的好感**没有任何日程来源**，
+    # 而结局「丹心相许」要求白芷 ≥50（剧情最多只能给到 ~15）→ 该结局永远无法达成。
+    # 按苏晚晴的赠丹量级给一个纯叙事的日常互动（无门槛/无检定：让"专心攻略"可行）。
+    effects:
+      affections: {bai_zhi: 4}
     scene: 青云仙宗·丹峰药庐
     present: [bai_zhi]
   - id: gift_pill

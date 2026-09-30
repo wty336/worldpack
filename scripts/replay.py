@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         cp = rec.load_checkpoint(args.resume)
         pack = _pack_from_state(cp)
         llm = LLMClient.from_settings(settings, build_tools(pack.schedule))
-        game = rebuild_game(pack, cp["state"], cp["history"], llm)
+        game = rebuild_game(pack, cp["state"], cp["history"], llm, rng_state=cp.get("rng_state"))
         from game_agent.cli import _repl
 
         print(f"已从 checkpoint {args.resume} 恢复，进入交互（Ctrl+C 退出）")
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         ctx.ENGINE_RULES = apply_prompt_patch(args.prompt_patch, original)
         print(f"[prompt-patch] 已应用 {args.prompt_patch}（规则文本 {len(original)} → {len(ctx.ENGINE_RULES)} 字）")
 
-    game = rebuild_game(pack, cp["state"], cp["history"], llm)
+    game = rebuild_game(pack, cp["state"], cp["history"], llm, rng_state=cp.get("rng_state"))
     view, label = _apply_action(game, entry)
     replay_tokens = None
     if tracker.entries:

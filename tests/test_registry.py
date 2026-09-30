@@ -43,6 +43,8 @@ def test_build_tools_golden_shape():
     tools = build_tools(pack.schedule)
     assert [t["function"]["name"] for t in tools] == [
         "change_stat", "submit_narration", "remember", "query_world", "do_action",
+        "make_appointment",  # 约定真值（玩家实测缺陷修复）
+        "change_presence",  # 在场真值（在场从行动残留副作用升为受校验真值）
     ]
     change_stat = tools[0]["function"]
     assert change_stat["parameters"]["properties"]["target"]["enum"] == [

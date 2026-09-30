@@ -64,7 +64,11 @@ actions:
   - id: visit_zero
     label: 拜访阿零
     cost: 1
-    effects: {}
+    # 可达性修复（校验批）：此前 effects 为空 → 阿零的好感**没有任何日程来源**，
+    # 而结局「数字归途」要求阿零 ≥50（剧情最多只能给到 ~17）→ 该结局永远无法达成。
+    # 按林澈的送器材量级给一个纯叙事的日常互动（无门槛/无检定：让"专心攻略"可行）。
+    effects:
+      affections: {a_ling: 4}
     scene: 夜澜市·旧终端区
     present: [a_ling]
   - id: gift_gear

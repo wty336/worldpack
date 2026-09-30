@@ -116,12 +116,95 @@ def render_turn_chain(events: list[dict], turn_seq: int) -> str:
     return "\n".join(lines)
 
 
+def per_game_turn(events: list[dict], usage_rows: list[dict] | None = None) -> list[dict]:
+    """按**玩家回合**（``game_turn`` = ``state.turn_count``）聚合一行（K 系列）。
+
+    为什么需要这一层：`aggregate()` 的分组键是 ``turn_seq``（生成级）——一次玩家回合
+    可能产生 1~3 次生成（条件事件级联）、外加判劣重写与溢出重试，于是"这一轮花了多少钱、
+    有没有走过恢复路径"在生成级视图里是散开的，只能靠人数。这里把同一 ``game_turn``
+    的所有事件收拢，并（可选）并入 usage 的成本，回答"玩家第 N 个操作花了多少"。
+
+    ``usage_rows`` 传 ``route_a_cost.load_usage`` 的结果即可：其条目带 ``game_turn``
+    （由 ``LLMClient._record_usage`` 写入），按同一时间轴对齐。
+    """
+    from scripts.route_a_cost import entry_cost
+
+    groups: dict[int, list[dict]] = defaultdict(list)
+    for e in events:
+        gt = e.get("game_turn")
+        if gt is not None:
+            groups[gt].append(e)
+
+    cost_by_turn: dict[int, float] = defaultdict(float)
+    calls_by_turn: dict[int, Counter] = defaultdict(Counter)
+    for row in usage_rows or []:
+        gt = row.get("game_turn")
+        if gt is None:
+            continue
+        cost_by_turn[gt] += entry_cost(row)
+        calls_by_turn[gt][row.get("purpose", "?")] += 1
+
+    rows: list[dict] = []
+    for gt in sorted(groups):
+        evs = groups[gt]
+        begins = [e for e in evs if e["event"] == "turn_begin"]
+        ends = [e for e in evs if e["event"] == "turn_end"]
+        calls = [e for e in evs if e["event"] == "call"]
+        tools = [e for e in evs if e["event"] == "tool"]
+        recoveries = sorted({r for e in begins for r in (e.get("recovered") or [])})
+        rows.append({
+            "game_turn": gt,
+            "sub_turns": len(begins),  # 本玩家回合实际跑了几次生成
+            "iterations": sum(e.get("iterations") or 0 for e in ends),
+            "outcomes": [e.get("outcome") for e in ends],
+            "latency_ms": sum(c.get("latency_ms") or 0 for c in calls),
+            "prompt_tokens": sum((c.get("usage") or {}).get("prompt_tokens", 0) for c in calls),
+            "completion_tokens": sum((c.get("usage") or {}).get("completion_tokens", 0) for c in calls),
+            "tool_statuses": dict(Counter(t.get("status") for t in tools)),
+            "recovered": recoveries,  # J/K 系列：本回合用过的恢复手段
+            "cost": round(cost_by_turn.get(gt, 0.0), 6),
+            "side_calls": dict(calls_by_turn.get(gt, {})),  # 含 compress/extract 等侧信道
+        })
+    return rows
+
+
+def render_game_turns(rows: list[dict], *, only_recovered: bool = False) -> str:
+    """把 ``per_game_turn`` 的行渲染成表（``only_recovered`` 只看走过恢复路径的回合）。"""
+    lines = [
+        "  回合    生成  迭代    时延     入tok    出tok  成本¥     恢复          工具",
+        "  " + "-" * 84,
+    ]
+    shown = 0
+    for r in rows:
+        if only_recovered and not r["recovered"]:
+            continue
+        shown += 1
+        ts = " ".join(f"{k}:{v}" for k, v in r["tool_statuses"].items()) or "-"
+        rec = ",".join(r["recovered"]) or "-"
+        lines.append(
+            f"  #{r['game_turn']:<5} {r['sub_turns']:>4}  {r['iterations']:>4} "
+            f"{r['latency_ms']:>7}ms {r['prompt_tokens']:>8,} {r['completion_tokens']:>8,} "
+            f"{r['cost']:>8.4f}  {rec:<14} {ts}"
+        )
+    if shown == 0:
+        lines.append("  （无匹配回合）")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="trace_report", description="trace 查看器")
     parser.add_argument("--trace", required=True)
     parser.add_argument("--turn", type=int, default=None, help="展开该回合完整事件链")
     parser.add_argument("--usage", default=None, help="usage jsonl（成本分用途表）")
     parser.add_argument("--out", default=None, help="汇总 JSON 输出路径")
+    parser.add_argument(
+        "--by-game-turn", action="store_true",
+        help="按玩家回合（game_turn）聚合：生成次数/恢复痕迹/每轮成本（K 系列）",
+    )
+    parser.add_argument(
+        "--recovered-only", action="store_true",
+        help="仅列出走过恢复路径（判劣重写/溢出重试/熔断）的回合",
+    )
     args = parser.parse_args(argv)
 
     events = load_trace(args.trace)
@@ -136,6 +219,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[!] 熔断回合: {agg['failures']['meltdown']}")
     if agg["failures"]["tool_issues"]:
         print(f"[!] 工具异常回合: {agg['failures']['tool_issues']}")
+    if args.by_game_turn or args.recovered_only:
+        usage_rows = load_usage(Path(args.usage)) if args.usage else None
+        gt_rows = per_game_turn(events, usage_rows)
+        title = "按玩家回合聚合（game_turn = state.turn_count）"
+        if args.recovered_only:
+            title += " · 仅恢复路径"
+        print(f"\n===== {title} =====")
+        print(render_game_turns(gt_rows, only_recovered=args.recovered_only))
+        if usage_rows is None:
+            print("  （未传 --usage：成本列为 0，无法按轮归集侧信道成本）")
+        agg["game_turns"] = gt_rows
     if args.turn is not None:
         print(f"\n=== 第 {args.turn} 回合事件链 ===")
         print(render_turn_chain(events, args.turn))

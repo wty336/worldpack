@@ -14,9 +14,14 @@ def tool_call(call_id: str, name: str, arguments: dict | str):
     )
 
 
-def msg(content=None, tool_calls=None, reasoning_content=None):
+def msg(content=None, tool_calls=None, reasoning_content=None, response_id=None):
     return SimpleNamespace(
-        content=content, tool_calls=tool_calls, reasoning_content=reasoning_content
+        content=content,
+        tool_calls=tool_calls,
+        reasoning_content=reasoning_content,
+        # assistant 消息的调用 id：真实 SDK 恒有；血缘标记（llm._assistant_to_dict）
+        # 会把它落成 history 的 call_id，故替身与真机同形。
+        id=response_id,
     )
 
 

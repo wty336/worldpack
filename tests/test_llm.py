@@ -107,6 +107,89 @@ def test_length_truncation_retry_instructs_shorten():
     assert "finish_reason=length" in fail_msg and "缩短" in fail_msg
 
 
+# ---------------------------------------------------------------------------
+# 截断守卫：finish_reason=length 时**整批** tool_call 作废
+# ---------------------------------------------------------------------------
+
+
+def _truncated(tool_calls, content=None):
+    """带工具调用、但 finish_reason=length 的响应（参数已被 max_tokens 砍断）。"""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                finish_reason="length",
+                message=_msg(content=content, tool_calls=tool_calls),
+            )
+        ]
+    )
+
+
+def test_length_truncated_tool_calls_are_not_executed():
+    """截断响应里的 tool_call 一个都不得执行（核心真实性守卫）。
+
+    流式拼出的 arguments 可能"合法但被腰斩"：``{"delta": 1`` 补成 ``delta: 1``
+    （本意 15）能通过 StatsSystem 的 ±10 幅度校验，数值静默错一个量级，而审计
+    不变量 ``after == before + delta`` 依然自洽——结构性不可见。故宁可整批作废，
+    让模型缩短后重发（对齐 pi-agent 的 failToolCallsFromTruncatedMessage）。
+    """
+    executed: list[dict] = []
+
+    def apply(args):
+        executed.append(args)
+        return "ok"
+
+    client = LLMClient(
+        FakeClient([_truncated([CHANGE]), _resp(_msg(tool_calls=[SUBMIT]))]),
+        model="fake",
+        tools=build_tools(load_worldpack(PACK_PATH).schedule),
+    )
+    result = client.run_turn([{"role": "user", "content": "hi"}], apply)
+
+    assert executed == [], "截断响应里的工具调用被派发了：数值可能被静默写错"
+    assert result.stat_changes == []
+    assert result.narration  # 缩短后重发成功
+    assert result.iterations == 2
+
+
+def test_length_truncated_tool_call_still_gets_paired_result():
+    """整批作废也必须回配对 tool 结果——缺配对的下一次请求会被 API 拒绝。"""
+    client = LLMClient(
+        FakeClient([_truncated([CHANGE, REMEMBER]), _resp(_msg(tool_calls=[SUBMIT]))]),
+        model="fake",
+        tools=build_tools(load_worldpack(PACK_PATH).schedule),
+    )
+    result = client.run_turn([{"role": "user", "content": "hi"}], lambda a: "ok")
+    ids = {
+        tc["id"]
+        for m in result.messages
+        if m["role"] == "assistant" and m.get("tool_calls")
+        for tc in m["tool_calls"]
+    }
+    paired = {m["tool_call_id"] for m in result.messages if m["role"] == "tool"}
+    assert ids <= paired, f"缺配对: {ids - paired}"
+    assert any(
+        m["role"] == "tool" and "被截断" in m["content"] for m in result.messages
+    )
+
+
+def test_length_truncated_prompt_tells_model_to_shorten():
+    """作废后的重试提示必须点明"截断 + 缩短"，否则模型会重复同样行为直到熔断。"""
+    client = LLMClient(
+        FakeClient([_truncated([CHANGE]), _resp(_msg(tool_calls=[SUBMIT]))]),
+        model="fake",
+        tools=build_tools(load_worldpack(PACK_PATH).schedule),
+    )
+    result = client.run_turn([{"role": "user", "content": "hi"}], lambda a: "ok")
+    fail_msg = next(
+        m["content"]
+        for m in result.messages
+        if m["role"] == "user" and "不符合协议" in m["content"]
+    )
+    assert "截断" in fail_msg and "缩短" in fail_msg and "change_stat" in fail_msg
+
+
 def test_meltdown_after_consecutive_failures():
     """连续 3 次协议失败 → 熔断抛 LLMTurnError。"""
     bad = _resp(_msg(content="没有工具调用"))
@@ -166,8 +249,12 @@ def test_tool_schema_enums_injected_from_pack():
     tools = build_tools(pack.schedule)
     # change_stat / submit_narration / remember（M2a）/ query_world（agent-first 第一件）
     # / do_action（对话发起的日程行动，与按钮同结算核）
-    assert len(tools) == 5
+    # / make_appointment（约定真值：玩家实测"NPC 反复重问已约好的事"缺陷修复）
+    # / change_presence（在场真值：在场从行动残留副作用升为受校验真值）
+    assert len(tools) == 7
     assert "do_action" in {t["function"]["name"] for t in tools}
+    assert "make_appointment" in {t["function"]["name"] for t in tools}
+    assert "change_presence" in {t["function"]["name"] for t in tools}
     by_name = {t["function"]["name"]: t for t in tools}
     change = by_name["change_stat"]["function"]["parameters"]["properties"]
     assert set(change["target"]["enum"]) == {"player", "shen_qingqiu"}

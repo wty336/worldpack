@@ -36,18 +36,35 @@ RECHECK_SYSTEM = (
     "只要同类问题不再出现即算修正。只输出：已修正 或 未修正"
 )
 
+# parse_verdict 的问题类别标记（JUDGE_SYSTEM 的 ①②③ 三类；模型可能省略「问题类型：」前缀）。
+# 判定头部命中任一标记 → False（有问题）；一个都不命中 → None（未知），不再默认判"有问题"。
+PROBLEM_MARKS = ("问题类型", "OOC", "设定矛盾", "虚构事实")
+
 
 def parse_verdict(output: str) -> tuple[bool | None, str]:
     """解析判定输出：True = 通过 / False = 有问题 / **None = 未知**。
 
-    空输出是「未知」而不是「通过」——思考模式吃光预算时 ``content`` 为空，
-    旧实现把它当通过，等于静默放行假阴性（素材导入工具 B 与 retro §5.3 两次踩到）。
+    严格按 JUDGE_SYSTEM 约定的输出形态解析，**认不出来的一律判未知**：
+
+    - 空输出 = 未知而非通过——思考模式吃光预算时 ``content`` 为空，
+      旧实现把它当通过，等于静默放行假阴性（素材导入工具 B 与 retro §5.3 两次踩到）；
+    - 认不出的非空输出（如「材料不足，无法判断」）= 未知而非"有问题"——旧实现
+      把任何非「通过」开头的文本判为 False，judge 的困惑会变成一条**误伤反馈**
+      注入历史，模型被要求"修正"一个根本不存在的问题（还会占用一次复查名额）。
+      三态纪律（"未知 ≠ 通过"）的另一半是"未知 ≠ 有问题"。
+
+    模型有时省略「问题类型：」前缀直接写类别名（既有测试与 E1 语料都依赖这一点），
+    故 False 的判据是**问题类别标记**而非固定前缀。
     """
     text = (output or "").strip()
     if not text:
         return None, ""
-    head = text[:10].replace(" ", "")
-    return head.startswith("通过"), text
+    head = text[:20].replace(" ", "").replace("\n", "").upper()
+    if head.startswith("通过"):
+        return True, text
+    if any(mark in head for mark in PROBLEM_MARKS):
+        return False, text
+    return None, text
 
 
 class JudgeSystem:
@@ -124,4 +141,12 @@ def recheck_feedback(llm, narration: str, verdict: str, materials: str = "") -> 
     text = (output or "").strip()
     if not text:
         return None
-    return text[:10].replace(" ", "").startswith("已修正")
+    # 只认 RECHECK_SYSTEM 约定的两种形态；认不出的（如「无法判断」）判未知——
+    # 旧实现把任何非「已修正」开头的文本判为"未修正"，会让复查员的困惑升级成
+    # 一条「仍未修正，本轮必须正面处理」的强制指令（game._recheck_feedback）。
+    head = text[:20].replace(" ", "").replace("\n", "")
+    if head.startswith("已修正"):
+        return True
+    if head.startswith("未修正"):
+        return False
+    return None

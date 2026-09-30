@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fakes import FakeClient, msg, resp
 
-from game_agent.judge import JudgeSystem, parse_verdict
+from game_agent.judge import JudgeSystem, parse_verdict, recheck_feedback
 from game_agent.judge_corpus import load_corpus, majority_hit
 from game_agent.llm import LLMClient
 from game_agent.worldpack import load_worldpack
@@ -24,6 +24,11 @@ PACK_PATH = REPO_ROOT / "world-packs" / "ancient_jianghu"
 
 def _judge(responses):
     return JudgeSystem(LLMClient(FakeClient(responses), "fake", []))
+
+
+def _llm_with(answer: str):
+    """固定应答一次无工具补全的假客户端（复查/判定解析用）。"""
+    return LLMClient(FakeClient([resp(msg(content=answer))]), "fake", [])
 
 
 def _load_script(name: str, filename: str):
@@ -44,6 +49,40 @@ def test_parse_verdict_empty_is_unknown():
     assert parse_verdict("   \n ")[0] is None
     assert parse_verdict("通过")[0] is True
     assert parse_verdict("OOC：角色说出网络用语。")[0] is False
+
+
+def test_parse_verdict_unrecognized_is_unknown_not_problem():
+    """认不出的非空输出 = 未知，**不是**"有问题"。
+
+    旧实现 `head.startswith("通过")` 把任何非「通过」开头的文本判为 False——
+    judge 答"材料不足，无法判断"时，引擎会注入一条「上一轮叙事存在质量问题」的
+    误伤反馈（game._judge_turn → _inject_feedback），模型被要求修正一个根本不存在
+    的问题，复查名额也被占用。三态纪律的另一半：未知 ≠ 有问题。
+    """
+    for text in ("材料不足，无法判断", "无法确定", "不知道", "需要更多上下文"):
+        ok, _ = parse_verdict(text)
+        assert ok is None, f"{text!r} 应判未知，实际 {ok!r}"
+
+
+def test_parse_verdict_recognizes_problem_categories():
+    """问题类别标记仍判 False——含模型省略「问题类型：」前缀直接写类别的写法。"""
+    for text in (
+        "问题类型：设定矛盾：剑名冲突",
+        "OOC：角色说出网络用语。",
+        "ooc：角色说出网络用语。",
+        "虚构事实：他编造了约定。",
+        "设定矛盾：与既定事实冲突",
+    ):
+        ok, _ = parse_verdict(text)
+        assert ok is False, f"{text!r} 应判有问题，实际 {ok!r}"
+
+
+def test_recheck_unrecognized_is_unknown_not_unfixed():
+    """复查认不出的输出 = 未知，不得升级成「仍未修正」的强制指令。"""
+    assert recheck_feedback(_llm_with("已修正"), "新叙事", "旧问题") is True
+    assert recheck_feedback(_llm_with("未修正"), "新叙事", "旧问题") is False
+    assert recheck_feedback(_llm_with("无法判断"), "新叙事", "旧问题") is None
+    assert recheck_feedback(_llm_with(""), "新叙事", "旧问题") is None
 
 
 def test_judge_double_empty_is_unknown_not_pass():

@@ -9,7 +9,7 @@ Step 0 换成题材中性枚举 + 跨题材示例；本文件守住两条**可�
 2. **输出契约**不变：`重要性|事实` 行式 + 「无」哨兵，`parse_facts` 能原样解析。
 
 提示词的**效果**（换题材后是否仍能抽出正确事实）只能真机验证，
-执行记录见 `docs/plan-phase1-data.md` §2。
+执行记录见 `archive/finetune/docs/plan-phase1-data.md` §2。
 """
 
 from __future__ import annotations

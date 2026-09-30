@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文字养成游戏 · Web</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<h1 id="game-title">文字养成游戏（Web 演示）</h1>
+<div id="story" class="only-current"><div class="entry">（正在开局……）</div></div>
+<div id="gen"></div>
+<div id="prompt"></div>
+<div id="choices"></div>
+<div id="inputrow">
+  <input id="in" placeholder="说些什么……（回车发送）">
+  <button onclick="say()">发言</button>
+  <button id="historyBtn" onclick="toggleHistory()">剧情回顾</button>
+  <button onclick="doSave()">存档</button>
+  <button onclick="doLoad()">读档</button>
+</div>
+<div id="status"></div>
+<script>window.__GAME_FREE_INPUT__ = "__FREE_INPUT__";</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

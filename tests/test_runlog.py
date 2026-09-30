@@ -133,6 +133,51 @@ def test_replay_same_input_reproduces_turn(tmp_path):
     entry = next(e for e in rec.entries() if e["turn"] == 3)
     view2, _ = _apply_action(game2, entry)
     assert view2.narration == "她轻声讲起长安旧事。"
+
+
+def test_replay_restores_rng_state(tmp_path):
+    """checkpoint 必须能还原 rng：否则带随机的结算每次重放结果都不同。
+
+    缺陷背景：`rebuild_game` 此前用 `Game(pack, state, llm)`（rng 缺省 = OS 熵），
+    而 `record_run.py` 原始录制是 `rng=Random(seed)` 且 seed 只写进 meta.json 从不回读。
+    于是动作检定掷骰、chance 日程事件、`{base, spread}` 收益曲线在重放时全部重新随机
+    ——`replay.py` 的 diff 会把随机噪声误报成"提示词补丁/模型切换带来的差异"，
+    恰好废掉这个工具存在的意义。
+    """
+    import random
+
+    rec = RunRecorder.create(tmp_path, run_id="rng")
+    pack = load_worldpack(PACK_PATH)
+    llm = LLMClient(FakeClient([]), "fake", build_tools(pack.schedule))
+    game = Game(pack, GameState.from_pack(pack), llm, rng=random.Random(11))
+
+    # 推进 rng：让状态偏离初始种子，这样"未还原"一定会被发现
+    for _ in range(5):
+        game.rng.random()
+
+    rec.checkpoint(1, game.state, game.history, None, None, rng=game.rng)
+    cp = rec.load_checkpoint(1)
+    assert "rng_state" in cp, "checkpoint 未记录 rng 状态"
+
+    llm2 = LLMClient(FakeClient([]), "fake", build_tools(pack.schedule))
+    game2 = rebuild_game(pack, cp["state"], cp["history"], llm2, rng_state=cp["rng_state"])
+
+    # 还原后继续掷骰，必须与原始轨迹逐位一致
+    original = [game.rng.random() for _ in range(5)]
+    replayed = [game2.rng.random() for _ in range(5)]
+    assert replayed == original, f"rng 未还原: {replayed} != {original}"
+
+
+def test_checkpoint_without_rng_still_loads(tmp_path):
+    """老 checkpoint（无 rng_state）不得炸——缺省退化为随机 rng（现状行为）。"""
+    rec = RunRecorder.create(tmp_path, run_id="norng")
+    pack, game = _game([])
+    rec.checkpoint(0, game.state, game.history, None, None)
+
+    cp = rec.load_checkpoint(0)
+    llm2 = LLMClient(FakeClient([]), "fake", build_tools(pack.schedule))
+    game2 = rebuild_game(pack, cp["state"], cp["history"], llm2, rng_state=cp.get("rng_state"))
+    assert isinstance(game2.rng.random(), float)
     assert game2.state == game.state  # 状态同样复现
 
 

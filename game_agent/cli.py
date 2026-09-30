@@ -13,7 +13,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from .config import load_settings
+from .config import load_settings, resolve_context_window
 from .game import Game, GameError, TurnView
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game
@@ -83,6 +83,7 @@ def _cmd_play(args: argparse.Namespace) -> int:
         critique_on_critical=True,  # agent-first 第 2 件：关键节点内轮自校正
         plan_node=True,  # agent-first 第 4 件：节点目标拆子步骤（进节点一次侧信道调用）
         factcheck_every=1,  # 设计加固 B1：缺席证据检查每轮常开（确定性层；judge 保持降频）
+        context_window=resolve_context_window(settings),  # J 系列：显式配置 > 端点自报
     )
     # 流式显示：内容增量实时输出（修复"等很久才有反应"的体验）
     game.on_text = _make_stream_display(game)
@@ -112,6 +113,7 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         pack, state, llm,
         extract_every=2, compress_threshold=30000, judge_every=5,
         reflect_every=10, critique_on_critical=True, plan_node=True, factcheck_every=1,
+        context_window=resolve_context_window(settings),  # J 系列：显式配置 > 端点自报
     )
     serve(game)
     return 0
@@ -277,6 +279,9 @@ def _recover_view(game: Game) -> TurnView:
     若有关键抉择待决，重建**固定选项视图**（把玩家带回模态选择，选项由引擎接管、
     不可绕过）；否则保守视图（仅自由输入入口）。用途：GameError 是玩家可恢复的
     误操作，不该走崩溃存档——恢复现场继续玩。
+
+    注：这里**不**带 `recovered`/`sub_turns`——本函数不产生新回合（没有 LLM 参与），
+    默认空值即正确语义，带上反而会让前端以为"这一轮发生过恢复"。
     """
     choice = game.story.pending_choice(game.state)
     if choice is not None:

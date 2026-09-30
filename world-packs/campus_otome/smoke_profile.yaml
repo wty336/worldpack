@@ -1,0 +1,39 @@
+# 冒烟 profile（校园乙游 · 青槐高中）：worldpack_smoke.py 未登记该包，按本文件执行
+# 纪律：picks 必须覆盖全部 5 个关键抉择 id（冒烟脚本按下标取值，缺一即 KeyError）；
+#       action 必须是**无 requires** 的行动（脚本每日无脑调用，被门槛挡住会中断）。
+picks:
+  first_day_choice: 0     # 留下帮学生会长（江屿 +3）
+  club_choice: 0          # 进学生会（江屿 +5）
+  exam_week_choice: 3     # 考试周帮他整理备考资料（江屿 +6）
+  festival_choice: 3      # 学园祭跟学生会跑流程（江屿 +3）
+  confession_choice: 0    # 放灯之夜上天台（route_jiang）
+action: visit_rooftop
+days: 16
+lines:
+  - （放学后绕到天台，风把登记本的纸页吹得直响）
+  - （把课上没听懂的那道题又问了一遍）
+  - （和苏晴在可丽饼摊前站了一会儿）
+forbidden_scan:
+  - 修仙
+  - 灵力
+  - 内力
+  - 御剑
+  - 魔法
+  - AI
+  - 程序生成
+  - 绝绝子
+  - 家人们
+  - 星巴克
+archaic_scan:
+  - 公子
+  - 姑娘
+  - 师尊
+  - 门派
+observe_modern:
+  - 学园祭
+  - 可丽饼
+  - 便利店
+  - 学生会
+  - 篮球部
+  - 志愿表
+target: 安静的喜欢（江屿线；真结局另需秘密 flag + 亲笔信 write_letter）
