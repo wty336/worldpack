@@ -359,6 +359,27 @@ def test_cli_is_a_thin_shell():
     )
 
 
+def test_repair_routing_ignores_pack_names_in_paths():
+    """路由读的是**校验消息**，不是作者起的包名/目录名。
+
+    **真机 bug 的墓碑**（离线导入真实世界书时暴露）：一份叫 `gundam_lore` 的包报
+    "npcs/ 目录下没有任何角色卡: C:…\\gundam_lore\\npcs"，命中了 `"lore" in err`，
+    于是修复路由去重生成 world——真正缺的 npcs 一直没生成，4 轮全废。
+    放到真机上这就是"钱花了、卡没做出来"。
+    """
+    err = "npcs/ 目录下没有任何角色卡: C:\\Users\\x\\Temp\\gundam_lore\\npcs"
+    assert worldgen.repair_sections(err) == ["npcs"]
+
+    # 相对路径同样要收敛（否则包名继续漏进关键词判定）
+    err2 = "缺少文件: world-packs/gundam_lore/npcs/shen.yaml"
+    assert worldgen.repair_sections(err2) == ["npcs"]
+
+    # 真信号不能被误伤：文件名 world.yaml 仍要指向 world
+    assert worldgen.repair_sections(
+        "缺少文件: world-packs/gundam_lore/world.yaml"
+    ) == ["world", "world_extra"]
+
+
 def test_cli_offline_run_end_to_end(tmp_path):
     """CLI 契约：`--offline` 一条命令跑通，退出码 0，产出可校验的包。
 

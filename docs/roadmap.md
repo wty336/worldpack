@@ -18,7 +18,7 @@
 
 ## 0. 当前状态（2026-10）
 
-**离线测试 1185 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **85/85** · CI 绿。
+**离线测试 1188 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **85/85** · CI 绿。
 
 ### 已完成
 
@@ -116,7 +116,7 @@
 - N2a 创作工作台共享外壳：本文 **§2.3**（含"三次假绿"与"桩会同意我"两条教训）
 - N6 创作者 Agent：本文 **§2.4**；逐条推理见 `plan-tavern-shaped-product.md` §6.8
 - N6 补记（对话式做卡 + 两个引擎 bug + N12 的由来）：本文 **§2.5**
-- N5 / N12 / N7 / N8 / N10 / N4 / N9 / N11 / N13 / N14 的执行记录：本文 **§2.7–§2.16**
+- N5 / N12 / N7 / N8 / N10 / N4 / N9 / N11 / N13 / N14 / N15 的执行记录：本文 **§2.7–§2.17**
 - 平台化 1：`plan-tavern-shaped-product.md` §6.1（含"为什么 `pack_digest` 不吃 judge_corpus"）
 - 平台化 2：同文 §6.2（含"缓存指纹为什么必须逐文件 stat"）
 - 平台化 3：同文 §6.3（含三处"文件都在、只是不对"的坑）
@@ -1083,6 +1083,53 @@ N13 之后剩下的两个明显口子，这条补掉。
 
 ---
 
+### 2.17 N15 执行记录（2026-10）：拿**真实世界书**跑一遍，修掉三个 bug
+
+作者问"有没有现成的卡/世界书能放进来玩"，于是去找了并真的下了两份：
+
+| 来源 | 内容 | 许可 |
+|---|---|---|
+| [NewEden/Mango-CharacterCard-Json](https://huggingface.co/datasets/NewEden/Mango-CharacterCard-Json) | 一批 V2 人物卡（`Akari.json` 等；纯散文，**无 character_book**） | AGPL-3.0 |
+| [NewEden/Silly-lorebook](https://huggingface.co/datasets/NewEden/Silly-lorebook) | **真实 ST 世界书导出**（`gundum_lorebook_early.json`，27 条，Gundam 设定） | 未标许可 |
+
+> **许可结论**：两份都**不进仓库**。AGPL-3.0 会传染整个项目；未标许可默认保留所有权利。
+> 它们只在本机跑验证——这正是期 4 纪律"由真实卡驱动"要的东西（驱动验证，不是转售语料）。
+> 想把它们变成能玩的卡，在你本地跑 `import_story.py --format sillytavern` 即可。
+
+#### 真卡一跑就露出三个 bug（都在 N9 的代码里）
+
+1. **独立世界书读不出来**。`parse_card` 的 docstring 写着支持"裸世界书（顶层就是
+   `entries`）"，**代码只认 `character_book`** → probe 报"0 条可导入"，27 条一条也进不来。
+   教训：**docstring 承诺的东西必须有代码路径**。
+2. **驼峰字段名没映射**。真实世界书用 `ignoreBudget` / `excludeRecursion` /
+   `preventRecursion`，而映射表只写了小写形式 → 三个语义字段被静默丢掉。
+   已加 `ST_CAMEL_ALIASES` 归一，且**只在值非默认时计数**——第一版按"字段出现"计入
+   warnings，于是在一份三个字段全 `false` 的语料上报"识别到 27 处"，夸大了覆盖面。
+3. **修复路由被包名带跑**。包叫 `gundam_lore`，校验消息
+   "npcs/ 目录下没有任何角色卡: C:…\\gundam_lore\\npcs" 命中 `"lore" in err` →
+   路由去重生成 **world**，真正缺的 npcs 一直没生成，4 轮全废、失败退出。
+   修法：路由前把路径换成**契约信号段**（`world.yaml`/`npcs`/… 白名单），盘符、
+   临时目录、包名一律不参与关键词判定。
+   （第一版收敛成 basename，把 `…/npcs/shen.yaml` 压成 `shen.yaml`，又丢了 `npcs`
+   这个真信号——所以是"只保留信号段"，不是"保留文件名"。）
+
+顺带：`_entry_id` 现在优先用 ST 的 **`uid`**（真实世界书自带、稳定），序号只作最后
+兜底——否则作者改了字典顺序，lore id 跟着变，存档/时间线上就对不上了。
+另外 `selective: true` 但没有 `keysecondary` 会明确报"等价于无次键收窄"。
+
+#### 现在的结论
+
+- **25/27** 条真实世界书条目能导入（2 条 `disable: true` 被正确跳过）；
+- `import_story.py --format sillytavern --offline` 一条命令产出**可玩**的包
+  （`check-worldpack` 通过、25 条 lore 进去、离线免费）；
+- 纯世界书（没有散文）也能当素材：`card_to_source_text` 退到用"条目标题 + 正文开头"
+  拼设定素材。**质量**取决于是否去掉 `--offline`（真机约 ¥0.1–0.3）。
+
+离线 **1188 项全绿**（+7 条守卫），`test_st_convert.py` 里"真实卡自动发现"仍 skip
+（`samples/st_cards/` 是空的——真实语料按上面说的不进仓库）。
+
+---
+
 ## 3. 明确不做（三份文档合并去重）
 
 **不做 DSH 插件 / TS 重写**——宿主明确禁止插件拥有回合循环，而本项目的护城河
@@ -1102,7 +1149,7 @@ N13 之后剩下的两个明显口子，这条补掉。
 
 ## 4. 纪律（改代码时照着做）
 
-1. **改完必须跑离线全量**（1185 项）；前端改动还要跑 `node scripts/webui_smoke.mjs`。
+1. **改完必须跑离线全量**（1188 项）；前端改动还要跑 `node scripts/webui_smoke.mjs`。
 2. **改了 `game_agent/webui/src/**` 必须 `npm run build`**——`dist/` 入库，忘了重建测试会红
    （`tests/test_webui_build.py` 用内容哈希判定，不依赖 mtime）。
 3. **分发改动要跑 `python scripts/dist_probe.py`**（打 wheel + 装到临时目录 + 空 cwd 跑起来，

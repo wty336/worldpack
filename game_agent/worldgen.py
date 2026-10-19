@@ -735,8 +735,39 @@ def summary(draft: dict) -> str:
     return "\n".join(f"  {x}" for x in lines)
 
 
+_PATH_TOKEN = re.compile(r"[^\s:：,，。；;()（）]+[\\/][^\s:：,，。；;()（）]*")
+
+#: 世界包的**契约文件名/目录**——修复路由真正认的信号。
+#: 路径里的其它段（盘符、临时目录、作者起的包名）一律**不参与**关键词判定。
+_SIGNAL_SEGMENTS = frozenset({
+    "world.yaml", "schedule.yaml", "mainline.yaml", "events.yaml", "endings.yaml", "npcs",
+})
+
+
+def _signal_only(text: str) -> str:
+    """把消息里的路径替换成它**包含的契约信号段**，再做关键词路由。
+
+    **为什么必须这么做**（导入真实世界书时暴露的真 bug）：校验消息按项目惯例带路径，
+    而路径里有**包名**。一份叫 `gundam_lore` 的包，在报
+    "npcs/ 目录下没有任何角色卡: C:…\\gundam_lore\\npcs" 时命中了 `"lore" in err`，
+    于是修复路由去重生成 **world**——真正缺的 npcs 一直没生成，4 轮全废。
+    放到真机上，这就是"钱花了、卡没做出来"。
+
+    第一版把路径收敛成 basename，结果 `…/npcs/shen.yaml` 被压成 `shen.yaml`，
+    把 `npcs` 这个**真信号**也丢了。所以这里不是"保留文件名"，而是"只保留
+    `_SIGNAL_SEGMENTS` 里那些段"——既祛包名噪声，又不丢路由依据。
+    """
+    def repl(m: re.Match[str]) -> str:
+        segs = [s for s in re.split(r"[\\/]", m.group(0)) if s]
+        hits = [s for s in segs if s in _SIGNAL_SEGMENTS]
+        return f" {' '.join(hits)} " if hits else " "
+
+    return _PATH_TOKEN.sub(repl, text)
+
+
 def repair_sections(err: str) -> list[str]:
     """按校验错误关键词路由到需要重生成的小块（只重生成相关块，不整包重来）。"""
+    err = _signal_only(err)
     # N12：数值可达性错误（"阈值够不着 / 机制上够不着"）有**两处可修**——
     # 降阈值（endings）或补增益路径（schedule/actions）。必须在通用关键词**之前**判：
     # 否则会被下面的 "行动" 抢走，只重生成 schedule，模型永远想不到"也可以降阈值"。
@@ -745,7 +776,9 @@ def repair_sections(err: str) -> list[str]:
         return ["endings", "schedule", "actions"]
     if "lore" in err or "world.yaml" in err:
         return ["world", "world_extra"]
-    if "角色卡" in err or "/npcs" in err:
+    if "角色卡" in err or "npcs" in err:
+        # 裸词 `npcs` 就够：`_signal_only` 已经把路径换成契约信号段（` npcs `），
+        # 不需要再靠 `/npcs` 这种带斜杠的写法去区分"路径里的"与"正文里的"。
         return ["npcs"]
     if "好感对象" in err:
         return ["schedule", "npcs"]

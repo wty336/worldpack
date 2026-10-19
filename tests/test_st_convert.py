@@ -373,6 +373,50 @@ def test_card_to_source_text_carries_the_prose_fields():
 # ---------------------------------------------------------------------------
 # 5. 合并进世界包：换掉生成器瞎编的 lore，且结果仍过严格校验
 # ---------------------------------------------------------------------------
+def test_bare_world_book_is_detected_and_imported():
+    """**独立世界书**（顶层就是 `entries`）必须能导入。
+
+    这条来自一份真实世界书（`gundum_lorebook_early.json`，27 条 ST 导出）当场戳穿的 bug：
+    docstring 写着支持裸世界书，代码只认 `character_book` → probe 报"0 条可导入"。
+    **docstring 承诺的东西必须有代码路径。**
+
+    同时钉住真实数据里的两处形状差异：`entries` 是 **uid 字典**，语义字段用
+    **驼峰**（`ignoreBudget` / `excludeRecursion` / `preventRecursion`）。
+    """
+    book = {
+        "entries": {
+            "3": {"key": ["沈府"], "content": "沈府家风极严。", "comment": "shen"},
+            "7": {"key": ["历法"], "content": "本朝用夏历。", "uid": 7,
+                  "constant": True, "ignoreBudget": True},
+            "2": {"key": ["赌坊"], "content": "西市有赌坊。", "disable": True},
+        }
+    }
+    w = st.StWarnings()
+    card = st.parse_card(book, w)
+    assert card["character_book"] is book, "裸世界书没被识别"
+    assert any("独立世界书" in m for m in w.items), w.items
+
+    rows = st.character_book_to_lore(book, warnings=w)
+    by_id = {r["id"]: r for r in rows}
+    assert set(by_id) == {"shen", "entry_7"}, f"关掉的那条被带进来了：{set(by_id)}"
+    # 顺序按 **uid 数值升序**：uid 3（沈府）在前、uid 7（历法）在后
+    assert [r["id"] for r in rows] == ["shen", "entry_7"], rows
+    assert by_id["entry_7"]["constant"] is True
+    assert by_id["entry_7"].get("ignore_budget") is True, "驼峰 ignoreBudget 没映射"
+    assert any("ignoreBudget" in m for m in w.items), w.items
+
+
+def test_selective_without_secondary_is_reported_as_noop():
+    """`selective: true` 但没有次键 = 无收窄效果；要说出来，不能假装读懂了。"""
+    w = st.StWarnings()
+    rows = st.character_book_to_lore(
+        {"entries": [{"keys": ["a"], "content": "正文", "selective": True}]},
+        warnings=w,
+    )
+    assert rows and "secondary_keys" not in rows[0]
+    assert any("selective: true" in m for m in w.items), w.items
+
+
 def test_cli_sillytavern_import_end_to_end(tmp_path):
     """`--format sillytavern --offline` 一条命令跑通（**真跑 CLI**，不是只调函数）。
 

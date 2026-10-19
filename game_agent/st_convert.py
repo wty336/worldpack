@@ -60,6 +60,19 @@ ST_UNSUPPORTED = {
     "delay": "延迟注入（D-4）",
     "group": "条目分组（未实现）",
     "role": "注入角色（本项目固定 user/engine）",
+    "vectorized": "向量化索引（本项目用 BM25 + 关键词，不建向量库）",
+    "addMemo": "编辑器备注（不影响注入）",
+}
+
+#: ST 的**驼峰写法** → 本项目/世界书里的小写写法（N9 真卡实测发现的差异）。
+#:
+#: 真实世界书导出（`gundum_lorebook_early.json`，27 条）用的是 `ignoreBudget` /
+#: `excludeRecursion` / `preventRecursion`，而文档里那张映射表只写了小写形式。
+#: 只认一种写法 = 静默丢掉三个语义字段——这正是"对着映射表写、拿真实数据一跑就露"。
+ST_CAMEL_ALIASES = {
+    "ignoreBudget": "ignore_budget",
+    "excludeRecursion": "exclude_from_recursion",
+    "preventRecursion": "no_recursion_trigger",
 }
 
 #: 我们导出时写的 schema 版本（ST V2 的 `character_book`）
@@ -149,6 +162,18 @@ def parse_card(raw: dict, warnings: StWarnings | None = None) -> dict:
         if spec or "name" in raw:
             warnings.add("V1 老卡（字段在顶层，没有 data 块）——已按标准模型归一")
 
+    # **裸世界书**：顶层就是 `entries`（ST 的"世界书导出"正是这个形状：没有 name/data）。
+    # 这条最初只写在 docstring 里、**代码没实现**——被一份真实世界书当场戳穿
+    # （`gundum_lorebook_early.json`，27 条，probe 报"0 条可导入"）。
+    # 教训与项目里那条一样：**docstring 承诺的东西必须有代码路径**。
+    book = data.get("character_book") or data.get("characterBook")
+    if book is None and isinstance(data.get("entries"), (list, dict)):
+        book = data
+        warnings.add(
+            f"这是一本**独立世界书**（顶层就是 entries，"
+            f"{len(data['entries'])} 条），按世界书读取"
+        )
+
     card = {
         "name": str(data.get("name") or "").strip(),
         "description": str(data.get("description") or "").strip(),
@@ -160,9 +185,9 @@ def parse_card(raw: dict, warnings: StWarnings | None = None) -> dict:
         "creator_notes": str(data.get("creator_notes") or "").strip(),
         "tags": _as_list(data.get("tags")),
         "alternate_greetings": _as_list(data.get("alternate_greetings")),
-        "character_book": data.get("character_book") or data.get("characterBook"),
+        "character_book": book,
     }
-    if not card["name"]:
+    if not card["name"] and book is not data:
         warnings.add("卡片没有 name 字段——生成世界包时必须显式给名字")
     if card["alternate_greetings"]:
         warnings.add(
@@ -212,8 +237,17 @@ def _uid_key(key):
 
 
 def _entry_id(entry: dict, index: int, used: set[str]) -> str:
-    """条目 id：优先用 `comment`（作者写的人话），否则 `entry_<n>`。保证包内唯一。"""
+    """条目 id：优先用 `comment`（作者写的人话），其次 `uid`（ST 世界书自带、稳定），
+    最后才是 `entry_<序号>`。
+
+    **为什么 `uid` 排在序号前面**：真实世界书导出（`{"entries": {"7": {...}}}`）的
+    键就是 uid，而且条目自己也带 `uid` 字段。用序号等于把作者那边的稳定标识换成了
+    "我读它的顺序"——顺序一变（有人改了字典顺序），lore id 跟着变，时间线/存档里
+    对不上的就不只是 id 了。
+    """
     base = str(entry.get("comment") or entry.get("id") or "").strip()
+    if not base and entry.get("uid") is not None:
+        base = f"entry_{entry['uid']}"
     if not base:
         base = f"entry_{index}"
     slug = re.sub(r"[^\w\-]+", "_", base, flags=re.UNICODE).strip("_") or f"entry_{index}"
@@ -247,12 +281,26 @@ def character_book_to_lore(
     rows: list[dict] = []
     used: set[str] = set()
     dropped_disabled = 0
+    selective_noop = 0
     unsupported_seen: dict[str, int] = {}
 
     for index, entry in enumerate(_book_entries(book, warnings), 1):
         for key in ST_UNSUPPORTED:
             if key in entry and entry[key] not in (None, "", 0, False, [], {}):
                 unsupported_seen[key] = unsupported_seen.get(key, 0) + 1
+        # 驼峰别名先归一到小写（真实世界书就是这么写的，见 `ST_CAMEL_ALIASES`）。
+        # **只在值真的非默认时计数**：第一版按"字段存在"计，于是在一份 27 条、
+        # 三个驼峰字段全是 `false` 的真实世界书上报告"识别到 27 处"——夸大了覆盖面。
+        # 计数要回答的是"这套映射被真实数据检验到了吗"，不是"字段名出现了几次"。
+        for camel, snake in ST_CAMEL_ALIASES.items():
+            if camel not in entry:
+                continue
+            if snake not in entry:
+                entry = {**entry, snake: entry[camel]}
+            if entry[camel] not in (None, "", 0, False):
+                unsupported_seen[f"{camel}→{snake}"] = (
+                    unsupported_seen.get(f"{camel}→{snake}", 0) + 1
+                )
 
         # `enabled: false` 或 ST 世界书的 `disable: true` 都表示"这条不参与注入"
         enabled = _bool(entry.get("enabled"), True)
@@ -289,14 +337,34 @@ def character_book_to_lore(
                 f"（ST 的 selectiveLogic 数字枚举**未做映射**——本环境无法核对它的数值顺序，"
                 f"不做猜测；请按语义自己确认一次）"
             )
+        elif _bool(entry.get("selective"), False):
+            # ST 的 `selective: true` 但没给 keysecondary → 实际没有收窄效果。
+            # 不静默：说清"我们按 keysecondary 是否有值决定，不读 selective"。
+            selective_noop += 1
         if _bool(entry.get("constant"), False):
             row["constant"] = True
+        # A-1/A-4 的三个语义字段（驼峰/小写都认）
+        if _bool(entry.get("ignore_budget"), False):
+            row["ignore_budget"] = True
+        if _bool(entry.get("exclude_from_recursion"), False):
+            row["exclude_from_recursion"] = True
+        if _bool(entry.get("no_recursion_trigger"), False):
+            row["no_recursion_trigger"] = True
         rows.append(row)
 
     if dropped_disabled:
         warnings.add(f"跳过 {dropped_disabled} 条 `enabled: false` 的条目（ST 里本来就是关掉的）")
+    if selective_noop:
+        warnings.add(
+            f"{selective_noop} 条 `selective: true` 但没有 keysecondary——等价于无次键收窄。"
+            f"本项目按 `secondary_keys` 是否有值决定，不读 `selective` 标志"
+        )
     for key, count in sorted(unsupported_seen.items()):
-        warnings.add(f"忽略 {count} 处 `{key}`：{ST_UNSUPPORTED[key]}")
+        if "→" in key:  # 驼峰别名：映射上了（只在值非默认时才会出现在这里）
+            camel, snake = key.split("→")
+            warnings.add(f"识别到 {count} 处驼峰写法 `{camel}`，已按 `{snake}` 映射")
+        else:
+            warnings.add(f"忽略 {count} 处 `{key}`：{ST_UNSUPPORTED[key]}")
     if not rows:
         warnings.add("这本世界书没有可导入的条目（全部为空或被关掉）")
     return rows
@@ -379,7 +447,38 @@ def card_to_source_text(card: dict) -> str:
             parts.append(f"## {label}\n{value}")
     if card.get("tags"):
         parts.append("## 标签\n" + "、".join(card["tags"]))
+    if not parts:
+        # **纯世界书**（没有任何散文）：没有素材就没法生成世界包。
+        # 但世界书的条目本身就是设定素材——用它们的标题 + 正文开头当 source，
+        # 让生成管线至少有东西可依。真实世界书（27 条 Gundam 设定）就是这么来的。
+        parts = _book_as_source(card.get("character_book"))
     return "\n\n".join(parts)
+
+
+def _book_as_source(book, max_entries: int = 40, head_chars: int = 160) -> list[str]:
+    """把世界书条目压成"设定素材"文本（纯世界书导入时的 source）。"""
+    if book is None:
+        return []
+    try:
+        entries = _book_entries(book, StWarnings())
+    except StConvertError:
+        return []
+    lines: list[str] = []
+    for i, entry in enumerate(entries, 1):
+        enabled = _bool(entry.get("enabled"), True) and not _bool(entry.get("disable"), False)
+        if not enabled:
+            continue
+        title = str(entry.get("comment") or "").strip() or f"条目 {i}"
+        body = str(entry.get("content") or entry.get("text") or "").strip()
+        body = " ".join(body.split())[:head_chars]
+        keys = _as_list(entry.get("keys")) or _as_list(entry.get("key"))
+        hint = f"（关键词：{'、'.join(keys[:4])}）" if keys else ""
+        lines.append(f"- {title}{hint}：{body}")
+        if len(lines) >= max_entries:
+            break
+    if not lines:
+        return []
+    return ["## 世界书设定（供生成世界观/角色/主线参考）\n" + "\n".join(lines)]
 
 
 # ---------------------------------------------------------------------------
