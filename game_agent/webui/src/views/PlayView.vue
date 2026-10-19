@@ -12,6 +12,9 @@ import ProseStream from '../components/ProseStream.vue'
 import StatusPanel from '../components/StatusPanel.vue'
 import { api } from '../api/client'
 import { useTurnStream } from '../composables/useTurnStream'
+// 恢复痕迹文案与 ProseStream 共用同一张表（src/lib/recovery.js）：
+// 两处各存一份时，新增一种恢复手段只会改到其中一处，另一处把英文 key 露给玩家。
+import { recoveryNote } from '../lib/recovery'
 
 const props = defineProps({
   session: { type: Object, required: true }, // { sid, pack_id, name, mode }
@@ -35,21 +38,29 @@ let timer = null
 
 const modeLabel = computed(() => (props.session.mode === 'free' ? '自由探索' : '跟着主线'))
 
-function recoveryText(list, sub) {
-  const LABELS = {
-    overflow_recovered: '本轮上下文超限，已压缩历史后重试成功',
-    critique: '本轮初稿未通过自检，已重写',
-    meltdown: '本轮多次未达协议，已跳过（效果未生效）',
-  }
-  const parts = (list || []).map((r) => LABELS[r] || r)
-  if (!parts.length) return ''
-  return `（${parts.join('；')}${sub > 1 ? `，共生成 ${sub} 次` : ''}）`
+/** N10-2：本轮上下文账本（`done` 事件里的 `context_audit`）。 */
+const audit = computed(() => view.value.context_audit || null)
+const omittedTotal = computed(() =>
+  ((audit.value && audit.value.omitted) || []).reduce((sum, r) => sum + (r.count || 0), 0),
+)
+/** 引擎侧 kind → 玩家能读的名字（与 `context.ContextAudit` 的 kind 一一对应）。 */
+const KIND_LABELS = {
+  'system-prefix': '系统前缀',
+  history: '历史对话',
+  scene: '场景卡',
+  identity: '身份与目标',
+  'agent-status': '状态栏真值',
+  appointments: '约定',
+  'npc-card': '在场角色卡',
+  'npc-memories': '角色记忆',
+  lore: '世界书条目',
+  'player-fact': '玩家关键事实',
 }
 
 function applyView(v) {
   view.value = v
   const text = (v.briefing && v.choice_prompt ? '' : '') + (v.narration || '')
-  const note = recoveryText(v.recovered, v.sub_turns)
+  const note = recoveryNote(v.recovered, v.sub_turns)
   if (text || note) {
     entries.value = [...entries.value, { text, recovery: note }]
     if (entries.value.length > 60) entries.value = entries.value.slice(-60) // 防无界增长
@@ -275,6 +286,39 @@ defineExpose({ refresh })
         @act="(id) => turn(api.turnBody.act(id))"
         @end-day="() => turn(api.turnBody.endDay())"
       />
+
+      <!-- N10-2：**这一轮模型到底看到了什么**。
+           README 主打的"模型看到的与玩家看到的同源"此前只有一半证据：玩家能看见
+           状态栏，看不见"这一轮省掉了什么、为什么"。省略是静默的，于是长局调参
+           只能靠猜，作者写满世界书也可能一直没进过上下文。 -->
+      <details v-if="audit" class="audit">
+        <summary>模型本轮看到了什么</summary>
+        <p class="t">
+          共 {{ audit.total_chars }} 字符 · 注入 {{ audit.included.length }} 块 ·
+          省略 {{ omittedTotal }} 项
+        </p>
+        <ul>
+          <li v-for="(row, i) in audit.included" :key="'in' + i">
+            {{ KIND_LABELS[row.kind] || row.kind }}：{{ row.chars }} 字符
+            <span v-if="row.required" class="t">（必有）</span>
+            <span v-if="row.detail" class="t">— {{ row.detail }}</span>
+          </li>
+        </ul>
+        <template v-if="audit.omitted.length">
+          <p class="t">被省略的（每一项都有原因，不是"悄悄少了"）：</p>
+          <ul>
+            <li v-for="(row, i) in audit.omitted" :key="'om' + i">
+              {{ KIND_LABELS[row.kind] || row.kind }} ×{{ row.count }} —— {{ row.reason }}
+              <span v-if="row.detail" class="t">（{{ row.detail }}）</span>
+            </li>
+          </ul>
+        </template>
+        <p v-for="(w, i) in audit.warnings" :key="'w' + i" class="warn">⚠️ {{ w }}</p>
+        <p v-if="audit.budgets" class="t">
+          预算：lore {{ audit.budgets.lore }} token · 角色卡 {{ audit.budgets.card }} 字符 ·
+          记忆 {{ audit.budgets.memory }} · 玩家事实 {{ audit.budgets.player_fact }}
+        </p>
+      </details>
     </aside>
   </div>
 </template>

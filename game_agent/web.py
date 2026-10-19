@@ -479,6 +479,8 @@ def _view(game: Game, view) -> dict:
         "compress_failures": list(getattr(view, "compress_failures", []) or []),
         "sub_turns": view.sub_turns,  # 本回合实际跑了几次生成（含级联）
         "turn": game.state.turn_count,  # 统一回合轴（与 trace 的 game_turn 同源）
+        # N10-2：本轮上下文账本（模型看到的 ↔ 玩家看到的。右栏据此渲染"省了什么"）
+        "context_audit": getattr(view, "context_audit", None),
     }
 
 

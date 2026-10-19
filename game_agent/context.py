@@ -8,7 +8,7 @@ KV Cache 三铁律落地（章 2）：
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .compression import est_tokens
 from .lore import match_score
@@ -56,6 +56,79 @@ PLAYER_FACT_BUDGET = 900  # 玩家事实分项上限（低于记忆总预算，�
 # 否则压缩永远压不到阈值以下 → 每轮都触发一次压缩 LLM 调用（实测 24/30 轮）。
 STATUS_BUDGET = 6200
 
+
+# ---------------------------------------------------------------------------
+# N10-2：上下文组装的结构化审计（"模型这一轮看到了什么、省略了什么、为什么"）
+# ---------------------------------------------------------------------------
+#
+# **被修的东西**：预算一直存在（lore / 角色卡 / 记忆 / 玩家事实各自有上限），但
+# **省略是静默的**——`select_lore` 遇到预算不足就 `continue`，`_clip_block` 逐行
+# 保到预算用完为止，谁都看不见"这一轮丢了哪几条"。于是：
+#   - 长局调参只能靠猜（"是不是 lore 没注入？"无法验证）；
+#   - 前期花大成本写进世界包的设定，可能**一直**因为预算而没进过上下文，
+#     而校验器只能检查"字段有值"，检查不了"运行时真的被用了"（A 系列十个字段
+#     零用量的同类风险）；
+#   - README 主打的"模型看到的与玩家看到的同源"缺一半证据：玩家能看见状态栏，
+#     看不见"这一轮省略了什么"。
+#
+# 口径取舍（与 dsh-tavern 的 `context-planner` 同构，但不是照抄字段名）：
+#   - `included`：**进了上下文的块**，带 kind 与字符数；`required=True` 表示它不受
+#     裁剪（核心真值：场景/属性/好感/主线目标/约定）；
+#   - `omitted`：**被丢掉的**，带 kind + 原因（+ 数量），**永远有原因**；
+#   - `warnings`：人话级提示（"lore 预算已耗尽"），给玩家/作者看的；
+#   - `total_chars` / `budgets`：体积与预算的对照，调参时先看这两个数。
+# 纯增量：不改变任何既有预算判定，只**记录**判定结果。
+
+
+@dataclass
+class ContextAudit:
+    """一轮上下文组装的结构化账本（N10-2）。序列化形状即前端消费形状。
+
+    **`included` 不是预算账**：它回答"哪些块进去了、各自多大"，几块会重叠
+    （`agent-status` 里就含 `player-fact`）。要总量请读 `total_chars`，
+    要"哪块被裁、为什么"请读 `omitted`——别拿 `included.chars` 求和去对什么，
+    那个等式不成立，也不该成立。
+    """
+
+    included: list[dict] = field(default_factory=list)
+    omitted: list[dict] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    total_chars: int = 0
+    budgets: dict[str, int] = field(default_factory=dict)
+
+    def add(self, kind: str, chars: int, *, required: bool = False, detail: str = "") -> None:
+        """登记一个进上下文的块（同 kind 多次 → 各自一条，便于看到"两个角色卡"）。"""
+        row: dict = {"kind": kind, "chars": chars, "required": required}
+        if detail:
+            row["detail"] = detail
+        self.included.append(row)
+
+    def drop(self, kind: str, *, count: int = 1, reason: str, detail: str = "") -> None:
+        """登记一次省略。**同 (kind, reason, detail) 累加计数**——列表要可读，
+        不要 20 条一模一样的"预算不足"。"""
+        for row in self.omitted:
+            if row["kind"] == kind and row["reason"] == reason and row.get("detail", "") == detail:
+                row["count"] += count
+                return
+        row = {"kind": kind, "reason": reason, "count": count}
+        if detail:
+            row["detail"] = detail
+        self.omitted.append(row)
+
+    def warn(self, message: str) -> None:
+        if message not in self.warnings:
+            self.warnings.append(message)
+
+    def to_dict(self) -> dict:
+        """JSON 形状（前端直接渲染）。`total_chars` 在 `finish` 时补。"""
+        return {
+            "included": list(self.included),
+            "omitted": list(self.omitted),
+            "warnings": list(self.warnings),
+            "total_chars": self.total_chars,
+            "budgets": dict(self.budgets),
+        }
+
 # agent-first 第 6 件：canary 密语（提示注入泄露的报警信号——正常叙事绝无理由出现）。
 # 注入门禁（scripts/injection_gate.py）据此测量"提示词是否被玩家套出"。
 INJECTION_CANARY = "金丝雀密语-XJ7Q3"
@@ -96,9 +169,16 @@ def select_lore(
     context: str,
     budget: int = LORE_BUDGET,
     max_recursion: int = 0,
+    audit: ContextAudit | None = None,
 ) -> list[LoreSpec]:
     """B1（P3）：Lorebook 式按需选择——命中关键词（场景/目标/近对话）→ 按命中数降序、
-    文件序取至预算。lore 不进静态前缀，只在命中时注入动态区。
+    文件序取至预算。lore 不进静态前缀，只在命中时动态注入。
+
+    A-1：`budget` 是 **token** 预算（`est_tokens` 口径），由 `resolve_lore_budget`
+    按上下文窗口推导；逐条累加判溢出（不选完再截断），`ignore_budget` 条目豁免。
+
+    N10-2：给出 `audit` 时，**因预算被丢掉的命中项**会记进去（带条目 id）——
+    这是最容易被静默吃掉的一块：作者写满世界书，运行时可能一条都没进上下文。
 
     A-1：`budget` 是 **token** 预算（`est_tokens` 口径），由 `resolve_lore_budget`
     按上下文窗口推导；逐条累加判溢出（不选完再截断），`ignore_budget` 条目豁免。
@@ -140,6 +220,11 @@ def select_lore(
                 continue
             cost = est_tokens(f"- 【{entry.id}】{entry.text}") + 1  # +1 = 行分隔符
             if used + cost > budget:
+                # N10-2：命中但进不去 → 记下来（"预算不足"是最常被静默吃掉的一类）
+                if audit is not None:
+                    audit.drop(
+                        "lore", reason=f"预算不足（{budget} token 已用尽）", detail=entry.id
+                    )
                 continue
             level_selected.append(entry)
             used += cost
@@ -232,19 +317,54 @@ class ContextBuilder:
 
         A1（P1）：状态栏内的记忆区按检索式注入（常驻区 + top-K），
         relevance 的上下文 = 场景 + 节点目标 + 最近玩家发言。
+
+        N10-2：要审计账本请用 `plan()`——本方法保持"只回消息列表"的老签名，
+        免得所有调用点（引擎、脚本、冒烟）跟着改。
         """
-        msgs: list[dict] = [self.system_message]
-        msgs.extend(history)
+        return self.plan(state, history, node, extra_status)[0]
+
+    def plan(
+        self,
+        state: GameState,
+        history: list[dict],
+        node: NodeSpec | None = None,
+        extra_status: list[str] | None = None,
+    ) -> tuple[list[dict], ContextAudit]:
+        """组装消息列表 + **结构化审计**（N10-2）：这一轮模型看到了什么、省了什么。
+
+        为什么单独一个方法而不是改 `build_messages` 的返回值：返回值变化会波及所有
+        调用点（引擎、两个脚本、冒烟），而"要审计"是**新能力**，不该让不需要它的
+        调用方跟着改。
+        """
+        audit = ContextAudit(
+            budgets={
+                "lore": self.lore_budget,
+                "card": CARD_BUDGET,
+                "memory": MEMORY_BUDGET,
+                "player_fact": PLAYER_FACT_BUDGET,
+                "status": STATUS_BUDGET,
+            }
+        )
         recent = _recent_player_text(history)
+        status = self.status_text(state, node, extra_status, recent, audit=audit)
+        msgs: list[dict] = [self.system_message]
+        audit.add(
+            "system-prefix", len(self.system_message["content"]),
+            required=True, detail="引擎规则 + 世界观 + 角色目录（字节级冻结）",
+        )
+        msgs.extend(history)
+        audit.add("history", sum(len(str(m.get("content") or "")) for m in history),
+                  detail=f"{len(history)} 条消息")
         msgs.append(
             {
                 "role": "user",
                 "name": "engine",  # A-2：状态栏快照是引擎元消息，排除出检索上下文
                 "origin": "engine",  # 血缘标记：本条由引擎注入，非模型/玩家产出
-                "content": self.status_text(state, node, extra_status, recent),
+                "content": status,
             }
         )
-        return msgs
+        audit.total_chars = sum(len(str(m.get("content") or "")) for m in msgs)
+        return msgs, audit
 
     def status_text(
         self,
@@ -252,10 +372,12 @@ class ContextBuilder:
         node: NodeSpec | None = None,
         extra: list[str] | None = None,
         recent: str = "",
+        audit: ContextAudit | None = None,
     ) -> str:
         """状态栏 + 场景卡 + 在场角色卡（tone 按当前好感注入）。
 
         recent：最近玩家发言/行动提示（A1 检索相关性上下文）。
+        audit：N10-2 的账本；给出时记录**每个被裁掉的块与原因**。
         """
         lines: list[str] = []
 
@@ -264,7 +386,10 @@ class ContextBuilder:
             self.pack.npcs[i].name for i in state.present_npcs if i in self.pack.npcs
         ]
         present = "、".join(present_names) if present_names else "无"
-        lines.append(f"<scene>当前地点：{state.scene} · 时间：第 {state.day} 天 · 在场：{present}</scene>")
+        scene_line = f"<scene>当前地点：{state.scene} · 时间：第 {state.day} 天 · 在场：{present}</scene>"
+        lines.append(scene_line)
+        if audit is not None:
+            audit.add("scene", len(scene_line), required=True)
 
         # 身份与目标常驻（给玩家与模型稳定的"我是谁、为了什么"锚点，防剧情漂移）
         identity_parts = []
@@ -273,7 +398,10 @@ class ContextBuilder:
         if self.pack.world.player_goal:
             identity_parts.append(f"你的目标：{self.pack.world.player_goal}")
         if identity_parts:
-            lines.append("<identity>" + " · ".join(identity_parts) + "</identity>")
+            identity_line = "<identity>" + " · ".join(identity_parts) + "</identity>"
+            lines.append(identity_line)
+            if audit is not None:
+                audit.add("identity", len(identity_line), required=True)
 
         # A-5：状态栏是动态区**最后一个**区块（design.md §4.4「每轮末尾追加」）。
         # 它承载引擎真值的权威表述（主线目标/计划/约定/数值），按「离生成点越近、
@@ -327,12 +455,25 @@ class ContextBuilder:
         if state.player_facts:
             fact_lines: list[str] = []
             used = 0
-            for m in rank_facts(state.player_facts, context, state.turn_count):
+            ranked = rank_facts(state.player_facts, context, state.turn_count)
+            for m in ranked:
                 line = f"- {m.fact}"
                 if used + len(line) + 1 > PLAYER_FACT_BUDGET:
                     break
                 fact_lines.append(line)
                 used += len(line) + 1
+            # N10-2：两条不同的省略原因要分开记——"预算不够"与"相关度排不进来"
+            # 是不同的调参问题（前者调预算、后者调检索），混成一条就没法据此动手。
+            if audit is not None:
+                dropped_for_budget = len(ranked) - len(fact_lines)
+                if dropped_for_budget > 0:
+                    audit.drop(
+                        "player-fact", count=dropped_for_budget,
+                        reason=f"预算不足（{PLAYER_FACT_BUDGET} 字符）",
+                    )
+                never_ranked = len(state.player_facts) - len(ranked)
+                if never_ranked > 0:
+                    audit.drop("player-fact", count=never_ranked, reason="相关度排序未入选")
             if fact_lines:
                 status_lines.append("关键事实：\n" + "\n".join(fact_lines))
         # 约定（玩家实测缺陷修复）：**无条件常驻，不参与检索竞争**。
@@ -341,6 +482,9 @@ class ContextBuilder:
         appt_block = self.appointments_text(state)
         if appt_block:
             status_lines.append(appt_block)
+            if audit is not None:
+                audit.add("appointments", len(appt_block), required=True,
+                          detail="带期限的承诺，不参与检索竞争")
         for line in extra or []:
             status_lines.append(line)
         status_lines.append("</agent_status>")
@@ -356,18 +500,24 @@ class ContextBuilder:
             lines.append("<在场角色>")
             for idx, npc in enumerate(present_npcs):
                 card = self._npc_card(npc, state.affections.get(npc.id, 0.0))
-                card = self._clip_block(card, card_left)
+                card = self._clip_block(card, card_left, audit=audit, kind="npc-card",
+                                        detail=npc.name)
                 if card:
                     lines.append(card)
                     card_left = max(0, card_left - len(card))
+                    if audit is not None:
+                        audit.add("npc-card", len(card), detail=npc.name)
                 # 记忆：剩余预算按"尚未处理的在场人数"均分——在场越多每人越少，
                 # 且随 NPC 数增长总量恒定（单 NPC 不会吃掉全部额度）。
                 remaining_npcs = len(present_npcs) - idx
                 share = max(0, memory_left // max(1, remaining_npcs))
-                mem = self._npc_memories(npc.id, state, context, budget=share)
+                mem = self._npc_memories(npc.id, state, context, budget=share,
+                                         audit=audit, name=npc.name)
                 if mem:
                     lines.append(mem)
                     memory_left = max(0, memory_left - len(mem))
+                    if audit is not None:
+                        audit.add("npc-memories", len(mem), detail=npc.name)
             lines.append("</在场角色>")
 
         # B1（P3）：Lorebook 按需注入（命中关键词 + token 预算，A-1）
@@ -377,37 +527,72 @@ class ContextBuilder:
             lore_context,
             self.lore_budget,
             max_recursion=self.pack.world.max_recursion,
+            audit=audit,
         )
         if matched:
             lines.append("<lore>")
             for entry in matched:
                 lines.append(f"- 【{entry.id}】{entry.text}")
             lines.append("</lore>")
+            if audit is not None:
+                audit.add("lore", sum(len(f"- 【{e.id}】{e.text}") + 1 for e in matched),
+                          detail=f"{len(matched)} 条")
+        elif audit is not None and self.pack.world.lore:
+            # 一条都没命中 ≠ 被裁掉：世界书有内容但本轮无关键词命中，
+            # 这是"没被触发"而不是"丢了"。分开记，否则玩家会以为预算出了问题。
+            audit.drop(
+                "lore", count=len(self.pack.world.lore),
+                reason="本轮没有命中的关键词（不是预算问题）",
+            )
 
         # A-5：状态栏**最后**追加——动态区固定序列为
         # 场景/身份 → 在场角色卡与记忆 → lore → 状态栏（离生成点最近的是引擎真值）。
         lines.extend(status_lines)
+        if audit is not None:
+            audit.add("agent-status", len("\n".join(status_lines)), required=True,
+                      detail="属性/好感/计数/持有/主线进度/计划（核心真值，不裁剪）")
         return "\n".join(lines)
 
-    def _clip_block(self, text: str, budget: int) -> str:
+    def _clip_block(
+        self,
+        text: str,
+        budget: int,
+        *,
+        audit: ContextAudit | None = None,
+        kind: str = "block",
+        detail: str = "",
+    ) -> str:
         """按字符预算裁剪一个区块：超预算时逐行保留（不切断行内文本）。
 
         逐行而非硬切：区块由多行字段组成（身份/性格/语气…），切半行会产出
         语义残缺的片段喂给模型。保留的至少是完整字段。
+
+        N10-2：给出 `audit` 时，把**丢掉的行数**记进去（角色卡被裁 =
+        "这个人最关键的信息可能没给模型"，值得被看见）。
         """
         if budget <= 0:
+            if audit is not None and text:
+                audit.drop(kind, reason="预算已用尽（0 可用）", detail=detail)
             return ""
         if len(text) <= budget:
             return text
         kept: list[str] = []
         used = 0
-        for line in text.splitlines():
+        all_lines = text.splitlines()
+        cut_by_hard_slice = False
+        for line in all_lines:
             if kept and used + len(line) + 1 > budget:
                 break
             if not kept and len(line) > budget:
+                if audit is not None:
+                    audit.drop(kind, reason="单行即超预算，只能硬切", detail=detail)
                 return line[:budget]  # 单行就超预算：只能硬切（避免空区块）
             kept.append(line)
             used += len(line) + 1
+        dropped = len(all_lines) - len(kept)
+        if audit is not None and dropped > 0:
+            audit.drop(kind, count=dropped, reason=f"预算不足（{budget} 字符已用尽）",
+                       detail=detail)
         return "\n".join(kept)
 
     def appointments_text(self, state: GameState) -> str:
@@ -454,12 +639,21 @@ class ContextBuilder:
         return " ".join(p for p in parts if p)
 
     def _npc_memories(
-        self, npc_id: str, state: GameState, context: str = "", budget: int = 0
+        self,
+        npc_id: str,
+        state: GameState,
+        context: str = "",
+        budget: int = 0,
+        *,
+        audit: ContextAudit | None = None,
+        name: str = "",
     ) -> str:
         """该 NPC 对玩家的显式记忆（M2a 出场才注入 + A1 检索式注入）+ A3 关系洞察。
 
         `budget`（上下文批）：本 NPC 记忆区块的字符上限，0 = 不限。超限时按检索
         顺序截断——`rank_facts` 已把常驻（高重要性）排在前面，所以先保重要记忆。
+
+        N10-2：给出 `audit` 时记录丢掉的条数（`name` 用于说清是哪个角色）。
         """
         entries = state.npc_memories.get(npc_id, [])
         insights = state.npc_insights.get(npc_id, [])
@@ -467,12 +661,22 @@ class ContextBuilder:
             return ""
         lines = ["对该玩家的记忆："] if entries else []
         used = len(lines[0]) if lines else 0
-        for m in rank_facts(entries, context, state.turn_count):
+        ranked = rank_facts(entries, context, state.turn_count)
+        for m in ranked:
             line = f"- （第 {m.day} 天）{m.fact}"
             if budget and used + len(line) + 1 > budget:
                 break
             lines.append(line)
             used += len(line) + 1
+        if audit is not None:
+            dropped = len(ranked) - max(0, len(lines) - (1 if entries else 0))
+            if dropped > 0:
+                audit.drop("npc-memories", count=dropped,
+                           reason=f"预算不足（本角色 {budget} 字符）", detail=name)
+            never_ranked = len(entries) - len(ranked)
+            if never_ranked > 0:
+                audit.drop("npc-memories", count=never_ranked,
+                           reason="相关度排序未入选", detail=name)
         if insights:
             insight_lines: list[str] = []
             used_i = len("关系洞察：")

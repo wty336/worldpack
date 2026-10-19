@@ -72,6 +72,25 @@ const VIEW_DAILY = {
   recovered: ['overflow_recovered'],
   sub_turns: 2,
   turn: 2,
+  // N10-2：上下文账本。桩里刻意留了一条**被省略**的 lore（带原因）——
+  // 这个面板的全部价值就是"看见省略了什么、为什么"，桩只给 included 就测不到重点。
+  context_audit: {
+    included: [
+      { kind: 'system-prefix', chars: 4200, required: true, detail: '引擎规则 + 世界观 + 角色目录（字节级冻结）' },
+      { kind: 'history', chars: 900, required: false, detail: '6 条消息' },
+      { kind: 'scene', chars: 46, required: true },
+      { kind: 'agent-status', chars: 380, required: true },
+      { kind: 'npc-card', chars: 210, required: false, detail: '沈清秋' },
+      { kind: 'lore', chars: 120, required: false, detail: '2 条' },
+    ],
+    omitted: [
+      { kind: 'lore', reason: '预算不足（1500 token 已用尽）', count: 2, detail: 'lin_sword' },
+      { kind: 'npc-memories', reason: '相关度排序未入选', count: 3, detail: '沈清秋' },
+    ],
+    warnings: [],
+    total_chars: 5856,
+    budgets: { lore: 1500, card: 1200, memory: 1600, player_fact: 900, status: 6200 },
+  },
 }
 /** 流式增量：与 done.narration 同源（真实引擎就是这个形状）。 */
 const DELTAS = ['她侧身让开半步，', '随即记下了你的名字。', '天色渐晚。']
@@ -674,6 +693,29 @@ async function main() {
     check(
       '恢复痕迹对玩家可见（本例为溢出恢复）',
       await cdp.eval(`/已压缩历史后重试成功/.test(document.querySelector('#app .prose').textContent)`),
+    )
+
+    // ---- N10-2：上下文账本（"模型本轮看到了什么"） ----
+    check(
+      '右栏渲染出上下文账本（模型看到的 ≠ 玄学，可查）',
+      await cdp.eval(`!!document.querySelector('#app .audit')`),
+    )
+    await cdp.eval(`(() => { const d = document.querySelector('#app .audit'); d.open = true })()`)
+    const auditText = await cdp.eval(`document.querySelector('#app .audit').textContent`)
+    check(
+      '账本说清"省略了什么、为什么"（不是只报个总数）',
+      auditText.includes('预算不足') && auditText.includes('相关度排序未入选'),
+      auditText.slice(0, 80),
+    )
+    check(
+      '账本把被省略的世界书条目点名到 id（作者据此判断"我的设定到底进没进上下文"）',
+      auditText.includes('lin_sword'),
+      auditText.slice(0, 80),
+    )
+    check(
+      '账本展示预算与总量（调参先看这两个数）',
+      auditText.includes('5856') && auditText.includes('1500'),
+      auditText.slice(0, 80),
     )
 
     // ---- N7：时间线 / 回退 / 分支 ----

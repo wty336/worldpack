@@ -124,6 +124,10 @@ class TurnView:
     # 它必须随视图出去：连续压缩失败 = 历史只涨不缩 → 迟早被 provider 拒请求，
     # 而此前那四处静默 return 让根因完全不可见。
     compress_failures: list[str] = field(default_factory=list)
+    # N10-2：本轮上下文的**结构化账本**（`{included, omitted, warnings, total_chars,
+    # budgets}`）。它回答"生成这段正文时，模型到底看到了什么、省了什么、为什么"——
+    # 此前预算的裁掉是静默的，长局调参只能靠猜。
+    context_audit: dict | None = None
 
 
 class Game:
@@ -215,6 +219,9 @@ class Game:
         # 因为连续失败才是危险信号（历史只涨不缩 → 迟早被 provider 拒）。
         self.compress_failures: list[str] = []
         self.compress_fail_count = 0
+        # N10-2：最近一次上下文组装的结构化账本（`context.ContextAudit`）。
+        # 只在 `_llm_round` 里被替换——它描述的是"这个回合的正文是怎么被喂出来的"。
+        self.last_context_audit = None
         # N8（一主多子）：派生工作的调度钩子。**None = 内联执行**（行为与改动前完全
         # 一致，测试与 CLI 都走这条路）；非 None 时把"派生、可后补"的步骤交出去，
         # 于是前台只负责「正文 + 结算 + 存档 + 建点」并立刻返回。
@@ -277,6 +284,10 @@ class Game:
             "sub_turns": self._sub_turns,
             # N10：压缩失败必须随视图出去（否则它只活在日志里 = 不可见）
             "compress_failures": list(self.compress_failures),
+            # N10-2：本轮上下文账本（"模型看到的与玩家看到的同源"的另一半证据）。
+            # 它是**上一轮组装的快照**——本轮正文已经生成完了，这份账本说的正是
+            # "生成这段正文时模型看到了什么"。
+            "context_audit": self.last_context_audit.to_dict() if self.last_context_audit else None,
         }
 
     # ------------------------------------------------------------------
@@ -1121,9 +1132,12 @@ class Game:
         使 trace 与 usage 能在同一根时间轴上对齐。
         """
         self.llm.game_turn = self.state.turn_count
-        messages = self.builder.build_messages(
+        # N10-2：走 `plan()` 拿审计账本——"这一轮模型看到了什么、省了什么"
+        # 必须能被玩家与作者看见，否则长局调参只能靠猜。
+        messages, audit = self.builder.plan(
             self.state, self.history, self.story.active_node(self.state)
         )
+        self.last_context_audit = audit
         result = self.llm.run_turn(
             messages,
             registry=self.registry,  # 批次 C：声明式注册表派发（含世界包自定义工具）

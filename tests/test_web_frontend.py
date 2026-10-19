@@ -237,9 +237,12 @@ def test_prose_stream_keeps_player_feedback_behaviours():
     p = _src("components", "ProseStream.vue")
     assert "only-current" in p and "fullHistory" in p
     assert "剧情回顾" in p and "只看本轮" in p
-    assert "RECOVERY_LABELS" in p and "overflow_recovered" in p and "meltdown" in p
+    # 恢复痕迹的**文案**不在这里（N10 之后统一到 src/lib/recovery.js，否则两份分叉），
+    # 这里只要求它**用**那条共享通路，不要自己再定义一份映射。
+    assert "recoveryNote" in p and "lib/recovery" in p
+    assert "overflow_recovered" not in p, "文案副本又长回来了？请放回 src/lib/recovery.js"
     # 恢复痕迹写进故事分段（不能只写生成指示器——它会被清空）
-    assert "recovery" in p and "recoveryNote" in p
+    assert "recovery" in p
 
 
 def test_sse_contracts_are_pinned_in_source():
@@ -268,15 +271,18 @@ def test_generation_timer_present():
 
 
 def test_every_engine_recovery_kind_has_a_player_facing_label():
-    """引擎会发出的**每一种**恢复痕迹，前端都必须有中文说明（N10-1 顺带补的）。
+    """引擎会发出的**每一种**恢复痕迹，前端都必须有中文说明（N10 顺带补的）。
 
-    **为什么值得单列一条**：`ProseStream.vue` 的 `RECOVERY_LABELS` 是
-    `key → 中文` 的映射，找不到 key 时**退化成显示原始 key**（`narration_only` 这样
-    的英文标识符直接怼给玩家看）。它不是崩溃，所以任何"能跑就行"的验证都发现不了；
-    而它的信息量又恰恰在最需要说清的时刻（本轮发生了什么、数值有没有真的变）。
+    **为什么值得单列一条**：`RECOVERY_LABELS` 是 `key → 中文` 的映射，找不到 key 时
+    **退化成显示原始 key**（`narration_only` 这样的英文标识符直接怼给玩家看）。
+    它不是崩溃，所以任何"能跑就行"的验证都发现不了；而它的信息量又恰恰在最需要
+    说清的时刻（本轮发生了什么、数值有没有真的变）。
 
-    做法：引擎侧的 `_note_recovery("...")` 调用点是**唯一**的 key 生产者，
-    把它抓出来与前端映射表求差集。新增一种恢复手段却忘了写文案 → 这条红。
+    **这张表必须是唯一的**（2026-10 实测的真缺陷）：它原先在 `ProseStream.vue` 与
+    `PlayView.vue` 各存一份，于是新增一种恢复手段只改到一处，另一处照样把英文 key
+    露给玩家。所以这条同时钉三件事：
+    ① 全前端只有**一处**定义；② 这一处覆盖引擎发出的**全部** key；
+    ③ 两个消费点都**从这一处导入**（否则它们会各自再长出一份副本）。
     """
     import re as _re
 
@@ -285,13 +291,33 @@ def test_every_engine_recovery_kind_has_a_player_facing_label():
         engine_keys |= set(_re.findall(r'_note_recovery\("([a-z_]+)"\)', f.read_text("utf-8")))
     assert engine_keys, "没抓到任何 recovery key——正则或调用点变了，这条守卫会变成空气"
 
-    src = _src("components", "ProseStream.vue")
-    block = _re.search(r"const RECOVERY_LABELS = \{(.*?)\n\}", src, _re.S)
+    # ① 只有一处定义（`const RECOVERY_LABELS = {`），且必须在共享模块里
+    owners = []
+    for f in (WEBUI / "src").rglob("*"):
+        if f.suffix in (".vue", ".js") and "RECOVERY_LABELS" in f.read_text("utf-8"):
+            owners.append(f)
+    shared = WEBUI / "src" / "lib" / "recovery.js"
+    assert owners == [shared], (
+        f"恢复痕迹文案表应当只有一份（{shared.relative_to(WEBUI)}），实际出现在："
+        f"{[str(p.relative_to(WEBUI)) for p in owners]}——两份真值必然分叉"
+    )
+
+    # ② 覆盖引擎的全部 key
+    src = shared.read_text("utf-8")
+    block = _re.search(r"export const RECOVERY_LABELS = \{(.*?)\n\}", src, _re.S)
     assert block, "RECOVERY_LABELS 不见了（恢复痕迹就没法翻译给玩家看）"
     labels = set(_re.findall(r"^\s*([a-z_]+):", block.group(1), _re.M))
-
     missing = engine_keys - labels
     assert not missing, f"这些恢复痕迹没有玩家可见的说明：{sorted(missing)}（引擎会发、界面只会显示英文 key）"
+
+    # ③ 两个消费点都从共享模块导入，而不是自己再定义
+    import re as _re2
+
+    for name in ("components/ProseStream.vue", "views/PlayView.vue"):
+        text = _src(*name.split("/"))
+        assert _re2.search(r"import\s*\{[^}]*recoveryNote[^}]*\}\s*from\s*'\.\./lib/recovery'", text), (
+            f"{name} 没有从 ../lib/recovery 导入 recoveryNote——它会二次长出文案副本"
+        )
 
 
 def test_stage_a_assets_are_gone():

@@ -6678,6 +6678,20 @@ const _sfc_main$5 = {
     };
   }
 };
+const RECOVERY_LABELS = {
+  overflow_recovered: "本轮上下文超限，已压缩历史后重试成功",
+  critique: "本轮初稿未通过自检，已重写",
+  meltdown: "本轮多次未达协议，已跳过（效果未生效）",
+  // 模型只写了正文、没按协议调工具 → 叙事被接受，但没有效果落地。
+  // 点明"数值未变化"是关键：否则玩家会以为正文里那句"武力大涨"真的生效了。
+  narration_only: "本轮模型只写了正文、未调用工具，已按零效果叙事接受（数值与道具未变化）"
+};
+function recoveryNote(list, subTurns = 1) {
+  const parts = (list || []).map((r) => RECOVERY_LABELS[r] || r);
+  if (!parts.length) return "";
+  const sub = subTurns > 1 ? `，共生成 ${subTurns} 次` : "";
+  return `（${parts.join("；")}${sub}）`;
+}
 const _hoisted_1$4 = {
   key: 0,
   class: "recovery"
@@ -6707,20 +6721,6 @@ const _sfc_main$4 = {
     const props = __props;
     const fullHistory = ref(false);
     const box = ref(null);
-    const RECOVERY_LABELS = {
-      overflow_recovered: "本轮上下文超限，已压缩历史后重试成功",
-      critique: "本轮初稿未通过自检，已重写",
-      meltdown: "本轮多次未达协议，已跳过（效果未生效）",
-      // N10-1：模型只写了正文、没按协议调工具 → 叙事被接受，但没有效果落地。
-      // 文案必须点明"数值未变化"，否则玩家会以为正文里那些"大涨/得宝"真的生效了。
-      narration_only: "本轮模型只写了正文、未调用工具，已按零效果叙事接受（数值与道具未变化）"
-    };
-    function recoveryNote(list, subTurns) {
-      const parts = (list || []).map((r) => RECOVERY_LABELS[r] || r);
-      if (!parts.length) return "";
-      const sub = subTurns > 1 ? `，共生成 ${subTurns} 次` : "";
-      return `（${parts.join("；")}${sub}）`;
-    }
     const liveNote = computed(() => recoveryNote(props.recovered, props.subTurns));
     function scrollToBottom() {
       if (box.value && fullHistory.value) box.value.scrollTop = box.value.scrollHeight;
@@ -7016,6 +7016,27 @@ const _hoisted_17$1 = { class: "pera" };
 const _hoisted_18$1 = { class: "pmeta" };
 const _hoisted_19$1 = { class: "col col-mid" };
 const _hoisted_20$1 = { class: "col col-right" };
+const _hoisted_21$1 = {
+  key: 0,
+  class: "audit"
+};
+const _hoisted_22$1 = { class: "t" };
+const _hoisted_23$1 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_24$1 = {
+  key: 1,
+  class: "t"
+};
+const _hoisted_25$1 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_26$1 = {
+  key: 1,
+  class: "t"
+};
 const _sfc_main$2 = {
   __name: "PlayView",
   props: {
@@ -7040,20 +7061,26 @@ const _sfc_main$2 = {
     const cost = ref(null);
     let timer = null;
     const modeLabel = computed(() => props.session.mode === "free" ? "自由探索" : "跟着主线");
-    function recoveryText(list, sub) {
-      const LABELS = {
-        overflow_recovered: "本轮上下文超限，已压缩历史后重试成功",
-        critique: "本轮初稿未通过自检，已重写",
-        meltdown: "本轮多次未达协议，已跳过（效果未生效）"
-      };
-      const parts = (list || []).map((r) => LABELS[r] || r);
-      if (!parts.length) return "";
-      return `（${parts.join("；")}${sub > 1 ? `，共生成 ${sub} 次` : ""}）`;
-    }
+    const audit = computed(() => view.value.context_audit || null);
+    const omittedTotal = computed(
+      () => (audit.value && audit.value.omitted || []).reduce((sum, r) => sum + (r.count || 0), 0)
+    );
+    const KIND_LABELS = {
+      "system-prefix": "系统前缀",
+      history: "历史对话",
+      scene: "场景卡",
+      identity: "身份与目标",
+      "agent-status": "状态栏真值",
+      appointments: "约定",
+      "npc-card": "在场角色卡",
+      "npc-memories": "角色记忆",
+      lore: "世界书条目",
+      "player-fact": "玩家关键事实"
+    };
     function applyView(v) {
       view.value = v;
       const text = (v.briefing && v.choice_prompt ? "" : "") + (v.narration || "");
-      const note = recoveryText(v.recovered, v.sub_turns);
+      const note = recoveryNote(v.recovered, v.sub_turns);
       if (text || note) {
         entries.value = [...entries.value, { text, recovery: note }];
         if (entries.value.length > 60) entries.value = entries.value.slice(-60);
@@ -7245,7 +7272,42 @@ const _sfc_main$2 = {
             streaming: unref(streaming),
             onAct: _cache[6] || (_cache[6] = (id) => turn(unref(api).turnBody.act(id))),
             onEndDay: _cache[7] || (_cache[7] = () => turn(unref(api).turnBody.endDay()))
-          }, null, 8, ["status", "actions", "streaming"])
+          }, null, 8, ["status", "actions", "streaming"]),
+          audit.value ? (openBlock(), createElementBlock("details", _hoisted_21$1, [
+            _cache[12] || (_cache[12] = createBaseVNode("summary", null, "模型本轮看到了什么", -1)),
+            createBaseVNode("p", _hoisted_22$1, " 共 " + toDisplayString(audit.value.total_chars) + " 字符 · 注入 " + toDisplayString(audit.value.included.length) + " 块 · 省略 " + toDisplayString(omittedTotal.value) + " 项 ", 1),
+            createBaseVNode("ul", null, [
+              (openBlock(true), createElementBlock(Fragment, null, renderList(audit.value.included, (row, i) => {
+                return openBlock(), createElementBlock("li", {
+                  key: "in" + i
+                }, [
+                  createTextVNode(toDisplayString(KIND_LABELS[row.kind] || row.kind) + "：" + toDisplayString(row.chars) + " 字符 ", 1),
+                  row.required ? (openBlock(), createElementBlock("span", _hoisted_23$1, "（必有）")) : createCommentVNode("", true),
+                  row.detail ? (openBlock(), createElementBlock("span", _hoisted_24$1, "— " + toDisplayString(row.detail), 1)) : createCommentVNode("", true)
+                ]);
+              }), 128))
+            ]),
+            audit.value.omitted.length ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
+              _cache[11] || (_cache[11] = createBaseVNode("p", { class: "t" }, '被省略的（每一项都有原因，不是"悄悄少了"）：', -1)),
+              createBaseVNode("ul", null, [
+                (openBlock(true), createElementBlock(Fragment, null, renderList(audit.value.omitted, (row, i) => {
+                  return openBlock(), createElementBlock("li", {
+                    key: "om" + i
+                  }, [
+                    createTextVNode(toDisplayString(KIND_LABELS[row.kind] || row.kind) + " ×" + toDisplayString(row.count) + " —— " + toDisplayString(row.reason) + " ", 1),
+                    row.detail ? (openBlock(), createElementBlock("span", _hoisted_25$1, "（" + toDisplayString(row.detail) + "）", 1)) : createCommentVNode("", true)
+                  ]);
+                }), 128))
+              ])
+            ], 64)) : createCommentVNode("", true),
+            (openBlock(true), createElementBlock(Fragment, null, renderList(audit.value.warnings, (w, i) => {
+              return openBlock(), createElementBlock("p", {
+                key: "w" + i,
+                class: "warn"
+              }, "⚠️ " + toDisplayString(w), 1);
+            }), 128)),
+            audit.value.budgets ? (openBlock(), createElementBlock("p", _hoisted_26$1, " 预算：lore " + toDisplayString(audit.value.budgets.lore) + " token · 角色卡 " + toDisplayString(audit.value.budgets.card) + " 字符 · 记忆 " + toDisplayString(audit.value.budgets.memory) + " · 玩家事实 " + toDisplayString(audit.value.budgets.player_fact), 1)) : createCommentVNode("", true)
+          ])) : createCommentVNode("", true)
         ])
       ]);
     };

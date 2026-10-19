@@ -91,6 +91,20 @@ input[type="text"], select {
 }
 .col-body { overflow-y: auto; padding: 10px 12px; flex: 1 1 auto; }
 
+/* ---------- N10-2：本轮上下文账本（右栏底部，可折叠） ---------- */
+.audit {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line-soft);
+  padding: 8px 12px;
+  max-height: 40%;
+  overflow-y: auto;
+  font-size: 0.82em;
+}
+.audit summary { cursor: pointer; color: var(--ink-dim); }
+.audit ul { margin: 6px 0; padding-left: 18px; }
+.audit li { margin: 2px 0; }
+.audit .warn { color: #b26a00; }
+
 /* ---------- 卡片列表（左栏 / 选卡屏） ---------- */
 .pack-list { display: grid; gap: 10px; }
 .pack-list.grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }

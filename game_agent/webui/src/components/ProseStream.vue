@@ -8,6 +8,10 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 
+// 恢复痕迹的文案表**只有一处**（src/lib/recovery.js）——这里曾有一份副本，
+// 两份真值必然分叉：新增 `narration_only` 时只改了一处，另一处把英文 key 露给玩家。
+import { recoveryNote } from '../lib/recovery'
+
 const props = defineProps({
   /** 已提交的分段（终稿正文），每项 { text, recovery } */
   entries: { type: Array, required: true },
@@ -22,21 +26,6 @@ const props = defineProps({
 const fullHistory = ref(false)
 const box = ref(null)
 
-const RECOVERY_LABELS = {
-  overflow_recovered: '本轮上下文超限，已压缩历史后重试成功',
-  critique: '本轮初稿未通过自检，已重写',
-  meltdown: '本轮多次未达协议，已跳过（效果未生效）',
-  // N10-1：模型只写了正文、没按协议调工具 → 叙事被接受，但没有效果落地。
-  // 文案必须点明"数值未变化"，否则玩家会以为正文里那些"大涨/得宝"真的生效了。
-  narration_only: '本轮模型只写了正文、未调用工具，已按零效果叙事接受（数值与道具未变化）',
-}
-/** 恢复痕迹的中性文案：只描述机制，不叙述剧情（引擎层不含内容文案）。 */
-function recoveryNote(list, subTurns) {
-  const parts = (list || []).map((r) => RECOVERY_LABELS[r] || r)
-  if (!parts.length) return ''
-  const sub = subTurns > 1 ? `，共生成 ${subTurns} 次` : ''
-  return `（${parts.join('；')}${sub}）`
-}
 const liveNote = computed(() => recoveryNote(props.recovered, props.subTurns))
 
 function scrollToBottom() {
