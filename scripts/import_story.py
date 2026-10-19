@@ -40,10 +40,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from game_agent import worldgen
+from game_agent import st_convert, worldgen
 from game_agent.config import load_settings
 from game_agent.judge_corpus import load_corpus
 from game_agent.worldgen import GenerateOptions, WorldgenError
+from game_agent.worldpack import WorldPackError, load_worldpack
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +206,39 @@ def _printer(quiet_stages: set[str] | None = None):
     return on_progress
 
 
+def _load_sillytavern(sources: list[str], logic: str) -> tuple[dict, list[dict]]:
+    """读 ST 卡片/世界书：返回 `(归一后的卡片, lore 行)`（N9）。
+
+    **警告一律打印**：读宽不等于静默——被丢掉的条目、不支持的字段、猜不得的
+    `selectiveLogic` 都要让作者看见，否则"世界变薄了"没人会发现。
+    """
+    warnings = st_convert.StWarnings()
+    cards: list[dict] = []
+    rows: list[dict] = []
+    for src in sources:
+        card = st_convert.read_card_file(src, warnings)
+        cards.append(card)
+        rows.extend(st_convert.character_book_to_lore(
+            card.get("character_book"), logic=logic, warnings=warnings))
+    if len(cards) > 1:
+        # 多张卡：散文拼起来当素材，世界书合并。id 去重交给 `character_book_to_lore`
+        # 之外的一层——这里按调用顺序重编号，避免两张卡都有 `entry_1`。
+        merged = dict(cards[0])
+        merged["description"] = "\n\n".join(c.get("description", "") for c in cards)
+        seen: dict[str, int] = {}
+        for row in rows:
+            base = row["id"]
+            seen[base] = seen.get(base, 0) + 1
+            if seen[base] > 1:
+                row["id"] = f"{base}_{seen[base]}"
+        warnings.add(f"读了 {len(cards)} 张卡：散文已合并，世界书 {len(rows)} 条一并导入")
+        cards = [merged]
+    if warnings:
+        print("[i] 导入时的降级说明（读宽但不静默）：")
+        print(warnings.report())
+    return cards[0], rows
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="素材导入：小说/大纲/设定 → 世界包（工具 B）")
     parser.add_argument("sources", nargs="+", help="素材文件（txt/md）或目录")
@@ -215,6 +249,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true", help="生成后立即跑真机门禁（需 API Key）")
     parser.add_argument("--draft-only", action="store_true", help="只输出草稿 JSON，不物化")
     parser.add_argument("--offline", action="store_true", help="离线回归模式（内嵌假 LLM）")
+    # N9：SillyTavern 人物卡 / 世界书（只读 JSON，见 game_agent/st_convert.py 的模块说明）
+    parser.add_argument(
+        "--format", default="text", choices=("text", "sillytavern"),
+        help="素材格式：text=小说/大纲（默认）；sillytavern=酒馆人物卡/世界书 JSON",
+    )
+    parser.add_argument(
+        "--logic", default="AND_ANY",
+        choices=("AND_ANY", "AND_ALL", "NOT_ANY", "NOT_ALL"),
+        help="（--format sillytavern）世界书条目带次级关键词时用的逻辑"
+             "——ST 的 selectiveLogic 数字枚举**不做映射**（本环境无法核对它的数值顺序）",
+    )
     args = parser.parse_args(argv)
 
     if (bad := worldgen.validate_name(args.name)) is not None:
@@ -222,11 +267,26 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     pack_dir = Path(args.pack_dir) / args.name
 
-    try:
-        source_text = worldgen.read_sources(args.sources, on_progress=_printer())
-    except WorldgenError as e:
-        print(f"[✗] {e}")
-        return 1
+    # N9：ST 卡片走**两条**输入——散文部分给生成管线当素材，世界书部分**确定性**地
+    # 变成 lore（不让模型重新发明作者已经写好的设定）。
+    card_lore: list[dict] = []
+    if args.format == "sillytavern":
+        try:
+            card, card_lore = _load_sillytavern(args.sources, args.logic)
+        except st_convert.StConvertError as e:
+            print(f"[✗] {e}")
+            return 1
+        source_text = st_convert.card_to_source_text(card)
+        if not source_text.strip():
+            print("[✗] 这张卡没有任何可用的散文内容（description/personality/scenario 全空）")
+            return 1
+        print(f"[i] 人物卡：{card['name'] or '（无名）'} · 世界书可导入 {len(card_lore)} 条")
+    else:
+        try:
+            source_text = worldgen.read_sources(args.sources, on_progress=_printer())
+        except WorldgenError as e:
+            print(f"[✗] {e}")
+            return 1
 
     if not args.offline and not load_settings().has_api_key:
         print("[✗] 未配置 DEEPSEEK_API_KEY（离线回归请加 --offline）")
@@ -260,6 +320,18 @@ def main(argv: list[str] | None = None) -> int:
     print("\n[✓] 世界包已生成 → " + str(pack_dir))
     print("提取摘要（请作者确认故事理解无误）：")
     print(result.summary)
+
+    # N9：把卡片自带的世界书**确定性**地合并进去（顶替生成器自己编的 lore）。
+    # 必须在生成之后、验证之前——作者写好的设定不该被模型的想象覆盖。
+    if card_lore:
+        old = st_convert.lore_into_world_yaml(pack_dir / "world.yaml", card_lore)
+        print(f"\n[i] 世界书已合并 {len(card_lore)} 条（顶替生成器自拟的 {len(old)} 条）")
+        try:
+            load_worldpack(pack_dir)
+        except WorldPackError as e:
+            print(f"[✗] 合并世界书之后校验不过：{e}")
+            return 1
+        print("[✓] 合并后仍通过严格校验")
 
     if tracker is not None:
         print("\n" + tracker.cost_report())

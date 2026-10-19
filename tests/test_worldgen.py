@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -349,7 +350,13 @@ def test_cli_is_a_thin_shell():
         "def generate_sections",
     ):
         assert leaked not in src, f"CLI 里仍有管线代码：{leaked}"
-    assert "from game_agent import worldgen" in src  # 而是委托给它
+    # 委托事实，而不是某种 import 写法：N9 之后这一行变成
+    # `from game_agent import st_convert, worldgen`（同一件事，多带一个模块），
+    # 用字面量断理会把"重构 import 风格"误报成"CLI 又胖回去了"。
+    assert re.search(r"^from game_agent import .*\bworldgen\b", src, re.M), "CLI 没有委托给 worldgen"
+    assert re.search(r"^from game_agent import .*\bst_convert\b", src, re.M), (
+        "CLI 没有接上 ST 导入（N9 的 --format sillytavern 靠它）"
+    )
 
 
 def test_cli_offline_run_end_to_end(tmp_path):
