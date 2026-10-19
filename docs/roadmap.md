@@ -18,7 +18,7 @@
 
 ## 0. 当前状态（2026-10）
 
-**离线测试 1165 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **74/74** · CI 绿。
+**离线测试 1167 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **74/74** · CI 绿。
 
 ### 已完成
 
@@ -862,7 +862,7 @@ key `narration_only`** / 只剩自由输入入口 / 玩家仍能继续玩。删�
 | `game_agent/st_convert.py` | `parse_card()`（V1/V2/V3 + 裸世界书归一）、`character_book_to_lore()`、`lore_to_character_book()`（**两个方向**）、`card_to_source_text()`、`lore_into_world_yaml()` |
 | `scripts/import_story.py --format sillytavern` | 卡片散文 → 生成管线当素材；世界书 → **确定性**合并进生成包的 `world.yaml`（顶替生成器自拟的 lore，合并后再过严格校验） |
 | `scripts/st_card_probe.py` | 体检一份真实卡：**用到哪些映射字段 / 会丢什么**（只读，可对着别人的卡跑） |
-| `tests/test_st_convert.py` | 20 项 + 1 条**自动发现**（放卡即生效，无卡则 skip 说明原因）：读宽归一、不静默、往返、合并后仍过校验、CLI 真跑一遍 |
+| `tests/test_st_convert.py` | 22 项 + 1 条**自动发现**（放卡即生效，无卡则 skip 说明原因）：读宽归一、不静默、往返、合并后仍过校验、CLI 真跑一遍 |
 
 **为什么世界书不走 LLM**：它是作者已经写好的确定内容。让模型"重新发明"设定是这条链
 最容易失真的一步——所以世界书确定性搬运、散文才交给生成管线。
@@ -906,6 +906,10 @@ key `narration_only`** / 只剩自由输入入口 / 玩家仍能继续玩。删�
 一遍 CLI（退出码 0、降级说明打印、3 条世界书合并、关掉的条目不在、合并后仍过严格
 `load_worldpack`）。**变异验证两条**：不认 `enabled:false` → 2 项红（含 CLI 端到端）；
 导出不写 `use_regex` → 往返正则键守卫红。
+
+§E-3 的两条验收后来也各补了一条守卫：**三种异形载体归一后键集完全一致**、
+**解析层不许 import 校验层**（AST 判据——第一版用文本子串判断，被模块 docstring
+里那句说明判成违约，假红一次；变异验证：真塞一个 `from .worldpack import …` → 红并点名）。
 
 ---
 
@@ -1003,7 +1007,7 @@ MCP 是**外接宿主**的面，输入不可信。原来已有的：未知工具
 
 ## 4. 纪律（改代码时照着做）
 
-1. **改完必须跑离线全量**（1165 项）；前端改动还要跑 `node scripts/webui_smoke.mjs`。
+1. **改完必须跑离线全量**（1167 项）；前端改动还要跑 `node scripts/webui_smoke.mjs`。
 2. **改了 `game_agent/webui/src/**` 必须 `npm run build`**——`dist/` 入库，忘了重建测试会红
    （`tests/test_webui_build.py` 用内容哈希判定，不依赖 mtime）。
 3. **分发改动要跑 `python scripts/dist_probe.py`**（打 wheel + 装到临时目录 + 空 cwd 跑起来，
