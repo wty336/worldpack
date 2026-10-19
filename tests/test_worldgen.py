@@ -261,6 +261,83 @@ def test_diagnose_matches_failure_shape():
     assert "不是合法 JSON" in worldgen.diagnose("随便说点什么")
 
 
+def test_extract_json_feeds_the_diagnosis_back_on_retry():
+    """重试要把"上次错在哪"喂回模型——只换温度重发同一个 prompt 是无效重试。
+
+    **真机 bug 的墓碑**（拿真实世界书生成时暴露）：素材丰富时模型第一次就把 NPC 卡
+    写超输出上限，`extract_json` 换个温度再发**同一个 prompt**，照样写超——三次全截断，
+    整次生成失败。`diagnose()` 早写好了、docstring 也写着"喂回模型用"，却没有任何调用点。
+    """
+    seen_users: list[str] = []
+
+    class _Extractor(worldgen.SectionExtractor):
+        def __init__(self):  # 不调父类 __init__：只测重试逻辑
+            self.on_progress = None
+            self._cancelled = False
+
+        def _check_cancel(self):  # noqa: D401 - 桩
+            return
+
+        def raw_call(self, messages, max_tokens, temperature, purpose):
+            seen_users.append(messages[-1]["content"])
+            # 前两次返回"未闭合的 JSON"（截断），第三次给完整 JSON
+            return '{"data": {"a": 1' if len(seen_users) < 3 else '{"data": {"a": 1}}'
+
+    out = _Extractor().extract_json("sys", "原始 prompt", 16000, "import_npcs", "生成[npc1]")
+    assert out == {"data": {"a": 1}} or out.get("a") == 1 or isinstance(out, dict)
+    assert len(seen_users) == 3
+    # 第一次是原样 prompt；之后必须带上"被截断 → 请精简"的反馈
+    assert seen_users[0] == "原始 prompt"
+    assert "截断" in seen_users[1] and "精简" in seen_users[1], seen_users[1]
+    assert "截断" in seen_users[2], seen_users[2]
+
+
+def test_repair_round_actually_shows_the_model_the_error():
+    """修复轮必须把**校验错误与上一版**塞进 prompt——否则模型只能凭原文重写。
+
+    **真机 bug 的墓碑**（真实世界书生成时暴露，最贵的那个）：`user_for(section, …)`
+    用 `section` 判断"这一块该不该附错误"，而调用点传的是 `purpose`
+    （`import_world` 之类）。`"import_world" in {"world","world_extra"}` 永远为假
+    → 修复轮的 prompt 里既没有 `<校验错误>` 也没有 `<该块上一版>`，4 轮修的全是同一个错。
+    """
+    captured: list[str] = []
+
+    class _Extractor(worldgen.SectionExtractor):
+        def __init__(self):
+            self.on_progress = None
+            self.source_text = "素材"
+
+        def _check_cancel(self):
+            return
+
+        def extract_json(self, system, user, max_tokens, purpose, label):
+            captured.append(user)
+            return {}
+
+    prior = {"world": {"name": "旧世界", "era": "旧时代"}, "schedule": {"stats": {}}}
+    err = "以下禁用规则切不出任何可匹配词，这些防线会静默失效：'不要出现现代武器'"
+    _Extractor().generate_sections(prior=prior, err=err)
+
+    assert captured, "修复轮什么都没生成？"
+    joined = "\n".join(captured)
+    assert "<校验错误>" in joined, "修复轮的 prompt 里没有校验错误——模型只能瞎猜"
+    assert "禁用规则" in joined
+    assert "<该块上一版>" in joined, "修复轮没有把上一版给模型——它不知道要改什么"
+    assert "旧世界" in joined
+
+
+def test_repair_routing_sends_forbidden_table_errors_to_world():
+    """`world.forbidden` 的错误必须回 world，否则修复循环**永不收敛**。
+
+    **真机 bug 的墓碑**（真实世界书生成时暴露）：模型把禁用规则写成整句，校验报
+    "以下禁用规则切不出任何可匹配词"，而路由只重生成 schedule/actions/nodes/
+    events/endings——那几步根本改不到 `world.forbidden`，4 轮修完还是同一个错，
+    整次生成失败（真机上就是 ¥ 白花）。
+    """
+    err = "以下禁用规则切不出任何可匹配词，这些防线会静默失效：\n  - '不要出现现代武器'"
+    assert worldgen.repair_sections(err) == ["world", "world_extra"]
+
+
 def test_repair_sections_routes_by_error_keyword():
     """错误关键词 → 需要重生成的小块。路由错了会"修一个坏另一个"。"""
     assert worldgen.repair_sections("缺少文件: world.yaml") == ["world", "world_extra"]

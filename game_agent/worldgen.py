@@ -776,6 +776,12 @@ def repair_sections(err: str) -> list[str]:
         return ["endings", "schedule", "actions"]
     if "lore" in err or "world.yaml" in err:
         return ["world", "world_extra"]
+    # 禁用表（`world.forbidden`）也在 world.yaml 里。**不路由到 world 会永不收敛**：
+    # 真机上模型把禁用规则写成整句（切不出 2~6 字短词），校验报
+    # "以下禁用规则切不出任何可匹配词"，而路由只重生成 schedule/actions/nodes/
+    # events/endings —— 那几步根本改不到 world.forbidden，于是 4 轮修完还是同一个错。
+    if "禁用" in err or "可匹配词" in err:
+        return ["world", "world_extra"]
     if "角色卡" in err or "npcs" in err:
         # 裸词 `npcs` 就够：`_signal_only` 已经把路径换成契约信号段（` npcs `），
         # 不需要再靠 `/npcs` 这种带斜杠的写法去区分"路径里的"与"正文里的"。
@@ -890,11 +896,23 @@ class SectionExtractor:
         return msg.content or ""
 
     def extract_json(self, system: str, user: str, max_tokens: int, purpose: str, label: str) -> dict:
-        """带重试的 JSON 提取（3 次 + 温度循环；预算 8000 后空输出根因已除，重试只兜偶发）。"""
+        """带重试的 JSON 提取（3 次 + 温度循环 + **把上次失败的原因喂回去**）。
+
+        **为什么必须喂回去**（真机 bug）：原实现只是把**同一个** prompt 换个温度再发一遍。
+        素材丰富时（真实世界书 27 条设定）模型第一次就会把 NPC 卡写超输出上限，换个温度
+        照样写超——三次全截断，整次生成失败。`diagnose()` 早就写好、docstring 也写着
+        "喂回模型用"，但**从来没有调用点**（死代码）。
+        """
         self._check_cancel()
+        last_raw: str = ""
         for attempt, temperature in enumerate((0.7, 1.0, 1.3), start=1):
+            prompt = user
+            if attempt > 1 and last_raw:
+                prompt = (
+                    f"{user}\n\n<上一次输出的问题>\n{diagnose(last_raw)}\n</上一次输出的问题>"
+                )
             last_raw = self.raw_call(
-                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 max_tokens, temperature, purpose,
             )
             if isinstance(last_raw, dict):
@@ -943,22 +961,31 @@ class SectionExtractor:
         draft: dict = dict(prior) if prior else {}
         targets = set(repair_sections(err)) if err else set(ALL_SECTIONS)
 
-        def gen(system: str, extra: str, max_tokens: int, purpose: str, label: str) -> dict:
+        def gen(system: str, extra: str, max_tokens: int, purpose: str, label: str,
+                section: str) -> dict:
+            """`section` 是**草稿里的块名**（world/npcs/…），`purpose` 只用于记账与提示。
+
+            **两者不能混用**（真机 bug）：`user_for(section, …)` 用 `section` 判断
+            "这一块该不该附上校验错误与上一版"，而调用点原先传的是 `purpose`
+            （`import_world` 之类）。`"import_world" in {"world","world_extra"}` 永远为假
+            → 修复轮的 prompt 里**既没有校验错误、也没有上一版**，模型只能凭原文重写，
+            于是 4 轮修的都是同一个错（真机上就是"修不动、钱白花"）。
+            """
             _emit(self.on_progress, "extract", label, label=label, purpose=purpose)
             return self.extract_json(
-                system, self.user_for(purpose, extra, draft, prior, err, targets),
+                system, self.user_for(section, extra, draft, prior, err, targets),
                 max_tokens, purpose, label,
             )
 
         if "world" in targets:
             draft["world"] = gen(
                 EXTRACT_WORLD_SYSTEM, "请生成 world 核心字段的 JSON。",
-                EXTRACT_MAX_TOKENS, "import_world", "生成[world]",
+                EXTRACT_MAX_TOKENS, "import_world", "生成[world]", "world",
             )
         if "world_extra" in targets:
             extra = gen(
                 EXTRACT_WORLD_EXTRA_SYSTEM, "请生成 opening 与 lore 的 JSON。",
-                EXTRACT_MAX_TOKENS, "import_world_extra", "生成[world_extra]",
+                EXTRACT_MAX_TOKENS, "import_world_extra", "生成[world_extra]", "world_extra",
             )
             draft.setdefault("world", {}).update(extra)
         if "npcs" in targets:
@@ -969,7 +996,7 @@ class SectionExtractor:
                     EXTRACT_NPC_SYSTEM,
                     f"请生成素材中的第 {i} 个主要可玩角色的角色卡 JSON"
                     f"（{{\"角色id\": {{...}}}}；已生成 NPC：{seen}；素材中没有第 {i} 个角色则输出 {{}}）。",
-                    EXTRACT_MAX_TOKENS, "import_npcs", f"生成[npc{i}]",
+                    EXTRACT_MAX_TOKENS, "import_npcs", f"生成[npc{i}]", "npcs",
                 )
                 if not card:
                     break
@@ -981,29 +1008,29 @@ class SectionExtractor:
         if "schedule" in targets:
             draft["schedule"] = gen(
                 EXTRACT_SCHEDULE_SYSTEM, "请生成 schedule 数值与旗标的 JSON。",
-                EXTRACT_MAX_TOKENS, "import_schedule", "生成[schedule]",
+                EXTRACT_MAX_TOKENS, "import_schedule", "生成[schedule]", "schedule",
             )
         if "actions" in targets:
             draft.setdefault("schedule", {})["actions"] = gen(
                 EXTRACT_ACTION_SYSTEM, "请生成 2~4 个日程行动的 JSON。",
-                EXTRACT_MAX_TOKENS, "import_actions", "生成[actions]",
+                EXTRACT_MAX_TOKENS, "import_actions", "生成[actions]", "actions",
             ).get("actions", [])
         if "nodes" in targets:
             draft["mainline"] = {
                 "nodes": gen(
                     EXTRACT_NODE_SYSTEM, "请生成 3~5 个主线节点的 JSON。",
-                    EXTRACT_MAX_TOKENS, "import_nodes", "生成[nodes]",
+                    EXTRACT_MAX_TOKENS, "import_nodes", "生成[nodes]", "nodes",
                 ).get("nodes", [])
             }
         if "events" in targets:
             draft["events"] = gen(
                 EXTRACT_EVENTS_SYSTEM, "请生成 events 的 JSON。",
-                EXTRACT_MAX_TOKENS, "import_events", "生成[events]",
+                EXTRACT_MAX_TOKENS, "import_events", "生成[events]", "events",
             ).get("events", [])
         if "endings" in targets:
             draft["endings"] = gen(
                 EXTRACT_ENDINGS_SYSTEM, "请生成 endings 的 JSON。",
-                EXTRACT_MAX_TOKENS, "import_endings", "生成[endings]",
+                EXTRACT_MAX_TOKENS, "import_endings", "生成[endings]", "endings",
             ).get("endings", [])
         return draft
 

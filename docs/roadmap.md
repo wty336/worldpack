@@ -18,7 +18,7 @@
 
 ## 0. 当前状态（2026-10）
 
-**离线测试 1188 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **85/85** · CI 绿。
+**离线测试 1191 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **85/85** · CI 绿。
 
 ### 已完成
 
@@ -1128,6 +1128,32 @@ N13 之后剩下的两个明显口子，这条补掉。
 离线 **1188 项全绿**（+7 条守卫），`test_st_convert.py` 里"真实卡自动发现"仍 skip
 （`samples/st_cards/` 是空的——真实语料按上面说的不进仓库）。
 
+#### 真机真跑一次：又挖出三个 bug
+
+作者让"真机生成一张能玩的卡"，于是真的跑 `import_story.py --format sillytavern`
+（去掉 `--offline`）。**三次失败、第四次成功**，每次失败都是一个真 bug：
+
+1. **重试是无效重试**。模型把 NPC 卡写超输出上限，`extract_json` 换个温度再发
+   **同一个 prompt**，照样写超——三次全截断。而 `diagnose()` 早写好了、docstring
+   也写着"喂回模型用"，**从来没有调用点**（死代码）→ 现在把失败原因喂回去。
+2. **修复路由认不出 `world.forbidden`**。校验报"以下禁用规则切不出任何可匹配词"，
+   路由却把它派给 `schedule/actions/nodes/events/endings`——那几步根本改不到
+   `world.forbidden`，4 轮修完还是同一个错 → 现在路由到 `world/world_extra`。
+3. **修复轮的 prompt 里没有校验错误**（最贵的一个）。`user_for(section, …)` 用
+   `section` 判断"这一块该不该附错误与上一版"，而调用点传的是 `purpose`
+   （`import_world` 之类）——`"import_world" in {"world","world_extra"}` 永远为假，
+   于是修复轮**既没有 `<校验错误>` 也没有 `<该块上一版>`**，模型只能凭原文重写
+   → `gen()` 现在显式收 `section`。
+
+**第四次跑通**：世界观 + 3 个 NPC + 4 个主线节点 + 5 个关键抉择 + 4 个结局，
+外加 **25 条真实世界书条目**（顶替生成器自拟的 8 条），`check-worldpack` 过（修 3 轮）。
+真机成本 **¥0.103**（空闲价，含 5 次 npc 重试）；三次失败合计约 ¥0.27。
+
+产物 `world-packs/gundam_lore/` **不入库**（源语料 AGPL/未标许可）——它是本机可玩的
+第九张卡：`/api/catalog` 里 `playable=true`、`lore=25`。
+
+离线 **1191 项全绿**（+3 条守卫：重试要喂反馈 / 禁用表要路由到 world / 修复轮要带错误）。
+
 ---
 
 ## 3. 明确不做（三份文档合并去重）
@@ -1149,7 +1175,7 @@ N13 之后剩下的两个明显口子，这条补掉。
 
 ## 4. 纪律（改代码时照着做）
 
-1. **改完必须跑离线全量**（1188 项）；前端改动还要跑 `node scripts/webui_smoke.mjs`。
+1. **改完必须跑离线全量**（1191 项）；前端改动还要跑 `node scripts/webui_smoke.mjs`。
 2. **改了 `game_agent/webui/src/**` 必须 `npm run build`**——`dist/` 入库，忘了重建测试会红
    （`tests/test_webui_build.py` 用内容哈希判定，不依赖 mtime）。
 3. **分发改动要跑 `python scripts/dist_probe.py`**（打 wheel + 装到临时目录 + 空 cwd 跑起来，
