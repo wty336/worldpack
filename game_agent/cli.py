@@ -17,13 +17,23 @@ from .config import load_settings, resolve_context_window
 from .game import Game, GameError, TurnView
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import load_game, load_history, save_game, state_pack_mismatch
+from . import catalog
 from .scaffold import init_worldpack
 from .state import GameState
 from .storyline import FREE_INPUT_OPTION
 from .usage import UsageTracker
 from .worldpack import WorldPackError, load_worldpack
 
-DEFAULT_WORLDPACK = "world-packs/ancient_jianghu"
+def _default_worldpack() -> str:
+    """默认开哪张卡（N11：装成包之后 cwd 里没有 `world-packs/`，要回退到包内）。
+
+    **不能写死相对路径**：`game-agent play` 的 argv 默认值会在玩家自己的目录里被解析，
+    而那里没有 `world-packs/`——写死的话"装好了却一张卡都没有"。
+    这里走 `catalog.resolve_pack_root()` 的三级回退（cwd → 包内），再取目录里默认的那张。
+    """
+    root = catalog.resolve_pack_root()
+    pid = catalog.default_pack_id(root)
+    return str(root / pid) if pid else str(root / "ancient_jianghu")
 DEFAULT_SAVE = "saves/save.json"
 AUTOSAVE = "saves/autosave.json"  # W-C：节点完成自动存档
 
@@ -68,7 +78,7 @@ def _cmd_play(args: argparse.Namespace) -> int:
         print("[✗] 未配置 DEEPSEEK_API_KEY：请复制 .env.example 为 .env 并填入 key")
         return 1
     try:
-        pack = load_worldpack(args.path or DEFAULT_WORLDPACK)
+        pack = load_worldpack(args.path or _default_worldpack())
     except WorldPackError as e:
         print(f"[✗] 世界包加载失败: {e}")
         return 1
@@ -102,7 +112,7 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         print("[✗] 未配置 DEEPSEEK_API_KEY：请复制 .env.example 为 .env 并填入 key", file=sys.stderr)
         return 1
     try:
-        pack = load_worldpack(args.path or DEFAULT_WORLDPACK)
+        pack = load_worldpack(args.path or _default_worldpack())
     except WorldPackError as e:
         print(f"[✗] 世界包加载失败: {e}", file=sys.stderr)
         return 1
@@ -421,8 +431,11 @@ def _cmd_web(args: argparse.Namespace) -> int:
     import uvicorn
 
     # M3：世界包经环境变量传入 web 模块（uvicorn 以模块串启动，无法直接传参）
-    os.environ["GAME_WORLDPACK"] = str(Path(args.pack))
-    print(f"世界包: {args.pack}")
+    # N11：`--pack` 缺省是 None（= 用目录里默认的那张卡）；`GAME_WORLDPACK` 是**单卡路径**，
+    # 所以这里必须把它解析成具体那一张，不能把 None 传进去（web 侧会当成"没配置"）。
+    pack_path = str(Path(args.pack)) if args.pack else _default_worldpack()
+    os.environ["GAME_WORLDPACK"] = pack_path
+    print(f"世界包: {pack_path}")
     print(f"Web 前端启动中 → http://127.0.0.1:{args.port} （Ctrl+C 退出）")
     uvicorn.run("game_agent.web:app", host="127.0.0.1", port=args.port, log_level="warning")
     return 0
@@ -433,10 +446,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
 
     p_check = sub.add_parser("check-worldpack", help="校验并加载一个世界包")
-    p_check.add_argument("path", nargs="?", default=DEFAULT_WORLDPACK)
+    p_check.add_argument("path", nargs="?", default=_default_worldpack())
 
     p_play = sub.add_parser("play", help="开始游戏（需 API Key）")
-    p_play.add_argument("path", nargs="?", default=DEFAULT_WORLDPACK)
+    p_play.add_argument("path", nargs="?", default=_default_worldpack())
 
     p_init = sub.add_parser("init-worldpack", help="生成世界包脚手架（E3）")
     p_init.add_argument("name", help="世界包名（如 my_world）")
@@ -445,12 +458,12 @@ def main(argv: list[str] | None = None) -> int:
     p_web = sub.add_parser("web", help="启动 Web 前端（F5，需 API Key）")
     p_web.add_argument("--port", type=int, default=8000)
     p_web.add_argument(
-        "--pack", default=DEFAULT_WORLDPACK,
-        help=f"世界包路径（默认 {DEFAULT_WORLDPACK}）",
+        "--pack", default=None,
+        help="世界包路径（缺省取目录里默认的那张卡）",
     )
 
     p_mcp = sub.add_parser("mcp", help="MCP server（stdio，批次 C；需 API Key）")
-    p_mcp.add_argument("path", nargs="?", default=DEFAULT_WORLDPACK)
+    p_mcp.add_argument("path", nargs="?", default=_default_worldpack())
 
     args = parser.parse_args(argv)
     if args.command == "check-worldpack":

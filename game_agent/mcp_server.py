@@ -28,6 +28,14 @@ from .storyline import StorylineError
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "game-agent", "version": "1.0"}
 
+MAX_REQUEST_CHARS = 1_048_576
+"""单条 JSON-RPC 请求的字符上限（N11 加固）。
+
+**为什么要有**：stdio 的 `for line in inp` 不设上限——一条 1GB 的行会把进程撑爆，
+而 MCP 是**外接宿主**的出口（别人家的客户端连进来），输入不可信。
+1MiB 已经远超本 server 任何工具的合理参数（最长的是一段玩家发言）。
+"""
+
 # MCP 工具错误统一映射的异常（与 Web 前端 dispatch 的口径一致）
 TOOL_ERRORS = (GameError, StorylineError, ScheduleError, ValueError, LLMTurnError)
 
@@ -133,10 +141,21 @@ def _error(rid: Any, code: int, message: str) -> dict:
 
 
 def handle_request(registry: ToolRegistry, request: dict) -> dict | None:
-    """处理一条 JSON-RPC 请求。通知（无 id）返回 None（不回包）。"""
+    """处理一条 JSON-RPC 请求。通知（无 id）返回 None（不回包）。
+
+    N11 加固：**先判请求是不是对象**。此前 `request.get(...)` 直接假设它是 dict——
+    客户端发来 `[1,2]` / `"x"` / `null` 时抛 `AttributeError`，而 `serve` 的循环没有
+    兜底，**整个 MCP 会话就断了**。JSON-RPC 2.0 对此有明确错误码（-32600）。
+    """
+    if not isinstance(request, dict):
+        return _error(None, -32600, f"请求必须是对象（JSON-RPC 2.0），收到 {type(request).__name__}")
     method = str(request.get("method") or "")
     rid = request.get("id")
     params = request.get("params") or {}
+    if not isinstance(params, dict):
+        # `params` 按规范可以是数组，但本 server 的工具面全是具名参数——
+        # 明确拒绝比在后面某处 `params.get` 崩掉好。
+        return _error(rid, -32602, "params 必须是对象（本 server 的工具都用具名参数）")
 
     if method == "initialize":
         requested = str(params.get("protocolVersion") or PROTOCOL_VERSION)
@@ -195,7 +214,15 @@ def handle_request(registry: ToolRegistry, request: dict) -> dict | None:
 
 
 def serve(game: Game, stdin=None, stdout=None) -> None:
-    """stdio 主循环：逐行读 JSON-RPC 请求，回包（通知不回）。"""
+    """stdio 主循环：逐行读 JSON-RPC 请求，回包（通知不回）。
+
+    N11 加固（这一层是**外接宿主的出口**，坏一行不能断整场会话）：
+
+    - **单行上限**：`for line in inp` 不设上限，客户端一条 1GB 行就能把进程撑爆；
+    - **任何未预期异常**：`handle_request` 里已按类型分类处理了工具错误，
+      但**它自己**出错（我们自己的 bug）时此前会直接抛出、循环结束——
+      现在回 -32603 并写 stderr（不静默），会话继续。
+    """
     inp = stdin if stdin is not None else sys.stdin
     out = stdout if stdout is not None else sys.stdout
     # 批次审查修复：Windows 控制台管道默认 ANSI 代码页，中文会乱码——显式钉 UTF-8
@@ -207,15 +234,29 @@ def serve(game: Game, stdin=None, stdout=None) -> None:
                 pass  # 已重定向/不可重配的流保持原样
     registry = build_player_registry(game)
     for line in inp:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-        except json.JSONDecodeError as e:
-            response = _error(None, -32700, f"JSON 解析失败: {e}")
+        if len(line) > MAX_REQUEST_CHARS:
+            response = _error(
+                None, -32600,
+                f"请求过大（{len(line)} 字符 > 上限 {MAX_REQUEST_CHARS}）——"
+                f"本 server 的工具参数都很短，超长请求大概率是客户端写错了字段",
+            )
         else:
-            response = handle_request(registry, request)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+            except json.JSONDecodeError as e:
+                response = _error(None, -32700, f"JSON 解析失败: {e}")
+            else:
+                try:
+                    response = handle_request(registry, request)
+                except Exception as e:  # noqa: BLE001 — 兜底：自己的 bug 不许断会话
+                    print(f"[mcp] 内部错误: {type(e).__name__}: {e}", file=sys.stderr)
+                    response = _error(
+                        request.get("id") if isinstance(request, dict) else None,
+                        -32603, f"内部错误: {type(e).__name__}: {e}",
+                    )
         if response is not None:
             out.write(json.dumps(response, ensure_ascii=False) + "\n")
             out.flush()

@@ -40,6 +40,32 @@ class CatalogError(Exception):
 
 DEFAULT_PACK_ROOT = "world-packs"
 
+
+def resolve_pack_root(explicit: str | Path | None = None) -> Path:
+    """找到"卡在哪里"（N11：整包分发之后这一层才必要）。
+
+    `DEFAULT_PACK_ROOT` 是个**相对 cwd** 的字符串，在仓库里跑没问题（cwd 就是仓库根）；
+    但装成包之后（`uvx game-agent play …` / `pipx install`）cwd 是玩家自己的目录，
+    `world-packs/` 根本不存在——于是"装好了却一张卡都没有"。这里按三级回退：
+
+    1. 显式参数（CLI 的 `--pack-dir`、Web 的 `GAME_WORLDPACK`，由调用方自己解析）；
+    2. cwd 下的 `world-packs/`——**开发者与"从仓库跑"的情形优先**，保持既有行为；
+    3. 包内的 `world-packs/`（`pyproject.toml` 的 `force-include` 把它打进了 wheel）。
+
+    三级都不成立时返回**第一级**（相对路径），让上层的"没有可玩的卡"报错照常出现
+    ——不在这里抛，是因为 `catalog` 的读者遍布 CLI/Web/脚本，抛在构造函数里会让
+    "只读一个坏包"这种场景也炸掉。
+    """
+    if explicit is not None:
+        return Path(explicit)
+    cwd_root = Path(DEFAULT_PACK_ROOT)
+    if cwd_root.is_dir():
+        return cwd_root
+    packaged = Path(__file__).resolve().parent / DEFAULT_PACK_ROOT
+    if packaged.is_dir():
+        return packaged
+    return cwd_root
+
 # 目录名白名单：与 `_safe_save_path` 同一姿态（宁可严，不可漏）。
 # 允许中文与外文包名（作者会用 `武侠_旧梦` 这种），但**禁止任何路径成分**。
 _ID_PATTERN = re.compile(r"^[\w\u4e00-\u9fff\-]{1,64}$")

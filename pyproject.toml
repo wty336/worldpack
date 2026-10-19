@@ -19,12 +19,23 @@ dev = [
     "httpx>=0.27",
 ]
 
+[project.scripts]
+# N11：一条命令开玩（`uvx game-agent play <pack>` / `pipx install game-agent`）。
+# 此前只有 `python -m game_agent` 与 `scripts/*.py` 两种入口——前者要先克隆仓库并
+# `uv sync`，后者是给开发者的。分发的**最小可行形态**就是这一行。
+game-agent = "game_agent.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["game_agent"]
+
+# N11：**世界包与静态资源必须一起进包**，否则 `uvx game-agent play` 找不到任何卡。
+# 这是"整包分发"的第二半：入口有了但资源没打进去，装完就是一张空卡列表。
+[tool.hatch.build.targets.wheel.force-include]
+"world-packs" = "game_agent/world-packs"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -19,6 +19,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from . import assets
 from .conditions import ConditionError, validate_condition
 from .evalmeta import DIGEST_LEN, normalized_bytes
 from .lore import LORE_LOGIC_MODES, LoreKeyError, validate_key
@@ -473,7 +474,7 @@ def pack_meta(pack: WorldPack) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _read_yaml(path: Path) -> dict[str, Any]:
+def _read_yaml(path: Path, pack_root: Path | None = None) -> dict[str, Any]:
     if not path.exists():
         raise WorldPackError(f"缺少文件: {path}")
     try:
@@ -482,6 +483,14 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         raise WorldPackError(f"YAML 解析失败: {path}\n{e}") from e
     if not isinstance(data, dict):
         raise WorldPackError(f"文件根节点必须是映射（key: value），当前不是: {path}")
+    if pack_root is not None:
+        # N11（§E-2）：`asset://` 引用**只在加载期**解析一次，之后引擎各处看到的都是
+        # 解析好的文本。放在这里而不是各调用点：解析入口只有一个，
+        # "这里要不要解析"就不会变成需要在上下文/校验/生成里各判一次的问题。
+        try:
+            data = assets.expand(data, pack_root, where=path.name)
+        except assets.AssetError as e:
+            raise WorldPackError(f"{path.name} 的资源引用有问题：{e}") from e
     return data
 
 
@@ -1497,18 +1506,18 @@ def _numeric_conditions(node: Any, kind: str, out: dict[str, list[tuple[str, flo
 def load_worldpack(root: str | Path) -> WorldPack:
     """加载并校验一个世界包文件夹。失败抛 WorldPackError（带可读信息）。"""
     root = Path(root)
-    world = _validate(WorldSpec, _read_yaml(root / "world.yaml"), root / "world.yaml")
+    world = _validate(WorldSpec, _read_yaml(root / "world.yaml", root), root / "world.yaml")
     schedule = _validate(
-        ScheduleSpec, _read_yaml(root / "schedule.yaml"), root / "schedule.yaml"
+        ScheduleSpec, _read_yaml(root / "schedule.yaml", root), root / "schedule.yaml"
     )
     mainline = _validate(
-        MainlineSpec, _read_yaml(root / "mainline.yaml"), root / "mainline.yaml"
+        MainlineSpec, _read_yaml(root / "mainline.yaml", root), root / "mainline.yaml"
     )
     events = _validate(
-        EventsSpec, _read_yaml(root / "events.yaml"), root / "events.yaml"
+        EventsSpec, _read_yaml(root / "events.yaml", root), root / "events.yaml"
     )
     endings = _validate(
-        EndingsSpec, _read_yaml(root / "endings.yaml"), root / "endings.yaml"
+        EndingsSpec, _read_yaml(root / "endings.yaml", root), root / "endings.yaml"
     )
 
     npcs_dir = root / "npcs"
@@ -1516,7 +1525,7 @@ def load_worldpack(root: str | Path) -> WorldPack:
         raise WorldPackError(f"缺少 npcs/ 目录: {npcs_dir}")
     npcs: dict[str, NpcSpec] = {}
     for f in sorted(npcs_dir.glob("*.yaml")):
-        npc = _validate(NpcSpec, _read_yaml(f), f)
+        npc = _validate(NpcSpec, _read_yaml(f, root), f)
         if npc.id in npcs:
             raise WorldPackError(f"NPC id 重复: '{npc.id}'（文件 {f}）")
         npcs[npc.id] = npc
