@@ -286,3 +286,87 @@ def test_resume_attaches_the_derived_worker(live, monkeypatch):
     assert session.game.scheduler is not None, "game 的调度器没接上"
     if session.derived is not None:
         session.derived.stop()
+
+
+# ---------------------------------------------------------------------------
+# N14：结局落盘 + 按卡列全部局
+# ---------------------------------------------------------------------------
+
+
+def _finish_with_ending(live, sid: str):
+    """把这一局"打到结局"并记一版（走真实的 `_checkpoint_turn`）。
+
+    **注入必须发生在回合之后**：`_narrate` 结尾会 `self.ending = last.ending`，
+    所以回合前塞进去的 ending 会被这一回合覆盖掉（第一版夹具就是这么错的，
+    症状是"结局没进快照"——差一点被当成实现的 bug 去改实现）。
+    """
+    from game_agent.worldpack import EndingSpec
+
+    session = web.SESSIONS[sid]
+    _say(live, sid)
+    session.game.ending = EndingSpec(
+        id="end_left", title="归隐", kind="auto", text="你收拾行装，从此不问世事。"
+    )
+    note = web._checkpoint_turn(sid, session, web.TurnRequest(kind="say", text="（记一版）"))
+    assert note == "", note  # 空 = 真的写进去了（非空是"没能记入时间线"）
+    return session
+
+
+def test_ending_is_persisted_in_the_snapshot(live):
+    """`Game.ending` 只在内存里——不落盘的话续玩看不到"这一局已经结束"。"""
+    sid = _open(live)
+    _finish_with_ending(live, sid)
+    tl = web._timeline(sid)
+    payload = tl.payload(tl.head().rev)
+    assert payload.get("ending"), "结局没进快照"
+    assert payload["ending"]["title"] == "归隐"
+    assert payload["ending"]["text"] == "你收拾行装，从此不问世事。"
+
+
+def test_resume_restores_the_ending(live):
+    """续玩一个已结束的局：视图里要带回结局（否则玩家以为还在局中）。"""
+    sid = _open(live)
+    _finish_with_ending(live, sid)
+    _restart(live)
+
+    rows = {r["sid"]: r for r in live.client.get("/api/timelines").json()["timelines"]}
+    assert rows[sid]["ended"] is True, rows[sid]
+    assert rows[sid]["ending_title"] == "归隐"
+
+    d = live.client.post(f"/api/{sid}/resume").json()
+    assert d["view"]["ending"] is not None, d["view"]
+    assert d["view"]["ending"]["title"] == "归隐"
+    assert "不问世事" in d["view"]["ending"]["text"]
+    assert web.SESSIONS[sid].game.ending is not None
+
+
+def test_ending_survives_a_rewind_to_before_it(live):
+    """回退到**结局之前**的版本 → 结局不该还在（快照是逐版记的）。
+
+    这条防的是"把 ending 当全局状态"：它属于**那一版**，不是这一局。
+    """
+    sid = _open(live)
+    _say(live, sid)
+    tl = web._timeline(sid)
+    before_ending = tl.head().rev
+    _finish_with_ending(live, sid)
+    _restart(live)
+
+    d = live.client.post(f"/api/{sid}/resume", json={"rev": before_ending}).json()
+    assert d["view"]["ending"] is None, d["view"]["ending"]
+    assert web.SESSIONS[sid].game.ending is None
+
+
+def test_timelines_report_per_pack_counts(live):
+    """`pack_counts` 由服务端算（前端不重复一遍口径）。"""
+    a = _open(live)
+    _say(live, a)
+    b = _open(live)
+    _say(live, b)
+    _restart(live)
+
+    d = live.client.get("/api/timelines").json()
+    assert d["pack_counts"].get("probe") == 2, d["pack_counts"]
+    assert len(d["timelines"]) == 2
+    # 每行都要能定位到卡（前端按卡筛靠它）
+    assert all(r["pack_id"] == "probe" for r in d["timelines"])

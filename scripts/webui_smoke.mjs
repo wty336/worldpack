@@ -353,17 +353,28 @@ function startStub() {
       return json({
         ok: true,
         problems: [],
+        // N14：`pack_counts` 由服务端算（前端不重复一遍口径）
+        pack_counts: { demo_world: 3, gone_world: 1 },
         timelines: [
           {
             sid: 'saved_world_1', rev: 3, branch: 'b1', turn: 2, day: 1, mode: 'story',
             pack_id: 'demo_world', pack_name: '演示世界', legacy: false,
+            ended: false, ending_title: '',
             size_bytes: 4096, mtime: 1762000300, live: false, resumable: true, reason: '',
           },
           {
             sid: 'saved_world_2', rev: 7, branch: 'b2', turn: 5, day: 2, mode: 'free',
             pack_id: 'gone_world', pack_name: '已经改过的卡', legacy: false,
+            ended: false, ending_title: '',
             size_bytes: 8192, mtime: 1762000200, live: false, resumable: false,
             reason: '这一局的卡和现在库里那份不是同一份内容（这一局 aaaa / 现在 bbbb）。',
+          },
+          // 第三条：另一个属于 demo_world 的局，**已经打完**——用来验证"已结束"的显示
+          {
+            sid: 'saved_world_3', rev: 9, branch: 'b1', turn: 12, day: 6, mode: 'story',
+            pack_id: 'demo_world', pack_name: '演示世界', legacy: false,
+            ended: true, ending_title: '归隐',
+            size_bytes: 12288, mtime: 1762000100, live: false, resumable: true, reason: '',
           },
         ],
       })
@@ -701,6 +712,34 @@ async function main() {
            .some(b => b.disabled && /不是同一份内容/.test(b.textContent))`)),
       recentText.slice(0, 160),
     )
+    // ---- N14：按卡计数 + 按卡筛 + 已结束标记 ----
+    check(
+      '卡片上显示"玩过 N 局"（数字来自服务端的 pack_counts）',
+      await cdp.eval(
+        `[...document.querySelectorAll('#app .pack')]
+           .some(p => /玩过 3 局/.test(p.textContent))`,
+      ),
+    )
+    check(
+      '已打完的局标出结局（不是让玩家以为还在局中）',
+      recentText.includes('已结束') && recentText.includes('归隐'),
+      recentText.slice(0, 200),
+    )
+    // 点一张卡 → 只列这张卡的局（"按卡列全部局"）
+    await cdp.eval(`document.querySelector('#app .pack:not(.broken)').click()`)
+    const perPack = await cdp.eval(
+      `document.querySelector('#app .recent-games')?.textContent || ''`,
+    )
+    check(
+      '点了某张卡之后只列这张卡的局（标题也换成"这张卡玩过的局"）',
+      perPack.includes('这张卡玩过的局（2）') && !perPack.includes('已经改过的卡'),
+      perPack.slice(0, 120),
+    )
+    // 取消选中（再点一次同一张卡会保持选中，这里直接刷新页面回到未选状态）
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/` })
+    await cdp.waitFor(`document.querySelectorAll('#app .pack').length >= 2`, {
+      label: '选卡屏重新加载（续玩前）',
+    })
     const resumed = await cdp.eval(`(() => {
       const b = [...document.querySelectorAll('#app .recent-games button')]
         .find(x => !x.disabled)

@@ -105,7 +105,7 @@ input[type="text"], select {
 .audit li { margin: 2px 0; }
 .audit .warn { color: #b26a00; }
 
-/* N13：选卡屏底部"接着上次玩" */`n.recent-games { margin-top: 18px; border-top: 1px solid var(--line-soft); padding-top: 10px; }`n.recent-row { margin: 6px 0; }`n.recent-item {`n  width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px;`n  padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 6px;`n  background: var(--card); cursor: pointer;`n}`n.recent-item[disabled] { opacity: 0.55; cursor: not-allowed; }`n`n/* N10-3：已回收的时间线版本——**看得见但点不动**（不是消失，也不是点了才失败） */
+/* N13：选卡屏底部"接着上次玩" */`n.recent-games { margin-top: 18px; border-top: 1px solid var(--line-soft); padding-top: 10px; }`n.recent-row { margin: 6px 0; }`n.recent-item {`n  width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px;`n  padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 6px;`n  background: var(--card); cursor: pointer;`n}`n.recent-item[disabled] { opacity: 0.55; cursor: not-allowed; }`n.recent-item.ended { border-color: #b26a00; }`n.more-games { margin-top: 6px; background: none; border: none; text-decoration: underline; cursor: pointer; }`n`n/* N10-3：已回收的时间线版本——**看得见但点不动**（不是消失，也不是点了才失败） */
 .pack.pruned { opacity: 0.55; cursor: not-allowed; }
 
 /* ---------- 卡片列表（左栏 / 选卡屏） ---------- */

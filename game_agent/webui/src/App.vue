@@ -22,6 +22,7 @@ const config = ref({ free_input: '', default_mode: 'story' })
 const packs = ref([])
 const saves = ref([])
 const timelines = ref([]) // N13：盘上可以继续的局
+const packCounts = ref({}) // N14：按卡统计（服务端算，前端不重复一遍口径）
 const session = ref(null) // 非空 = 在游戏中
 const view = ref('library') // library | play | studio；session 非空时以 play 为准
 const busy = ref(false)
@@ -41,6 +42,7 @@ async function refreshLists() {
     packs.value = cat.packs || []
     saves.value = sv.saves || []
     timelines.value = tls.timelines || []
+    packCounts.value = tls.pack_counts || {}
   } catch (e) {
     say(e.message, true)
   }
@@ -191,6 +193,7 @@ onMounted(boot)
       :packs="packs"
       :saves="saves"
       :timelines="timelines"
+      :pack-counts="packCounts"
       :default-mode="config.default_mode || 'story'"
       :busy="busy"
       @start="start"

@@ -2,7 +2,7 @@
   "files": {
     "index.html": "8ec801c0619a85de",
     "package.json": "f4b51107785fefe2",
-    "src/App.vue": "279e91193d59c7b2",
+    "src/App.vue": "c24777dacbf6b011",
     "src/api/client.js": "ea256e4e52d8ce6e",
     "src/components/ChoiceList.vue": "8bceb199a1598da0",
     "src/components/InputDock.vue": "313f598f3fe20e69",
@@ -14,13 +14,13 @@
     "src/composables/useTurnStream.js": "042652fdc5cefb70",
     "src/lib/recovery.js": "9dc8c37ef28a4bd9",
     "src/main.js": "e10645cfb1e3ccb9",
-    "src/styles.css": "6fbad7fdd76151cd",
-    "src/views/LibraryView.vue": "47d527c8f4c77036",
+    "src/styles.css": "9136a869740e44ff",
+    "src/views/LibraryView.vue": "b41f030aae29aa16",
     "src/views/PlayView.vue": "7cac6d531baf5971",
     "src/views/StudioView.vue": "af17416c30da7e22",
     "vite.config.js": "12b50d34691fc71f"
   },
-  "sourceDigest": "eccc0c04c7c9b1ef",
+  "sourceDigest": "1ff3cfac68ec1ded",
   "count": 19,
   "generatedBy": "vite.config.js"
 }

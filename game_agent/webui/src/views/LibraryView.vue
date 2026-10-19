@@ -14,6 +14,8 @@ const props = defineProps({
   saves: { type: Array, default: () => [] },
   // N13：盘上可以继续的局（服务重启之后仍然在——会话活内存、时间线活磁盘）
   timelines: { type: Array, default: () => [] },
+  // N14：按卡统计（服务端算好给前端，避免"两处口径"）
+  packCounts: { type: Object, default: () => ({}) },
   defaultMode: { type: String, default: 'story' },
   busy: { type: Boolean, default: false },
 })
@@ -21,18 +23,36 @@ const emit = defineEmits(['start', 'load', 'refresh', 'studio', 'resume'])
 
 const picked = ref(null)
 const mode = ref(props.defaultMode)
+const showAllGames = ref(false)   // N14：默认只列最近 5 局
 
 const playable = computed(() => props.packs.filter((p) => p.playable))
 const usableSaves = computed(() => props.saves.filter((s) => !s.error))
-const recentGames = computed(() => props.timelines.slice(0, 5))  // 最近 5 局
+/** N14：**按卡筛**——点了某张卡就只看这张卡的局（"按卡列全部局"）。 */
+const gamesForPicked = computed(() => {
+  if (!picked.value) return []
+  const id = picked.value.id
+  return props.timelines.filter(
+    (t) => t.pack_id === id || (!t.pack_id && t.pack_name === (picked.value.name || picked.value.id)),
+  )
+})
+const visibleGames = computed(() => {
+  const list = picked.value ? gamesForPicked.value : props.timelines
+  return showAllGames.value ? list : list.slice(0, 5)
+})
 const savePath = ref('')
 
-/** 续玩一行：世界名 + 跑到第几回合 + 什么时候 + 模式。 */
+/** 这张卡玩过的局数（用服务端口径；没有就不显示徽标）。 */
+function gamesOf(p) {
+  return props.packCounts[p.id] || 0
+}
+
+/** 续玩一行：世界名 + 跑到第几回合 + 什么时候 + 模式（+ 已结束就标出来）。 */
 function recentLabel(t) {
   const when = t.mtime ? new Date(t.mtime * 1000).toLocaleString() : ''
   const modeText = t.mode === 'free' ? '自由探索' : '跟着主线'
   const who = t.pack_name || t.pack_id || '（未知的卡）'
-  return `《${who}》 · ${modeText} · 第 ${t.turn} 回合（第 ${t.day} 天） · ${when}`
+  const end = t.ended ? ` · 已结束（${t.ending_title || '结局'}）` : ''
+  return `《${who}》 · ${modeText} · 第 ${t.turn} 回合（第 ${t.day} 天）${end} · ${when}`
 }
 
 function label(p) {
@@ -89,7 +109,10 @@ function load() {
       >
         <span class="pname">{{ p.name || p.id }}</span>
         <span class="pera">{{ p.playable ? (p.era || '') : `无法加载：${p.error}` }}</span>
-        <span class="pmeta">{{ p.playable ? label(p) : p.id }}</span>
+        <span class="pmeta">
+          {{ p.playable ? label(p) : p.id }}
+          <template v-if="gamesOf(p)"> · 玩过 {{ gamesOf(p) }} 局</template>
+        </span>
       </button>
     </div>
 
@@ -113,24 +136,41 @@ function load() {
     <p v-if="saves.length && !usableSaves.length" class="t">存档目录里没有可读的档。</p>
 
     <!-- N13：**接着上次玩**。会话活在内存里（关掉服务就没了），但每一版都记在磁盘上，
-         所以"关掉终端、第二天回来"不该等于"那一局消失了"。 -->
-    <div v-if="recentGames.length" class="recent-games">
-      <h3 class="sec">接着上次玩</h3>
+         所以"关掉终端、第二天回来"不该等于"那一局消失了"。
+         N14：点了某张卡就只看**这张卡**的局；默认只列最近 5 局，可展开全部。 -->
+    <div v-if="timelines.length" class="recent-games">
+      <h3 class="sec">
+        {{ picked ? `这张卡玩过的局（${gamesForPicked.length}）` : '接着上次玩' }}
+      </h3>
       <p class="t">
-        这几局记录在本地磁盘上——即使服务重启过，也能从**最后一版**继续（不是回到存档点）。
+        这些局记在本地磁盘上——即使服务重启过，也能从**最后一版**继续（不是回到存档点）。
+        <template v-if="picked && !gamesForPicked.length">
+          这张卡还没有玩过的局。
+        </template>
       </p>
-      <div v-for="t in recentGames" :key="t.sid" class="recent-row">
+      <div v-for="t in visibleGames" :key="t.sid" class="recent-row">
         <button
           class="recent-item"
+          :class="{ ended: t.ended }"
           :disabled="busy || !t.resumable"
           @click="emit('resume', { sid: t.sid })"
         >
           <span class="pname">{{ recentLabel(t) }}</span>
           <span v-if="!t.resumable" class="pera">不能继续：{{ t.reason }}</span>
           <span v-else-if="t.legacy" class="pera">{{ t.reason }}</span>
-          <span v-else class="pera">rev {{ t.rev }} · 分支 {{ t.branch }}</span>
+          <span v-else class="pera">
+            rev {{ t.rev }} · 分支 {{ t.branch }}
+            <template v-if="t.ended"> · 已打完</template>
+          </span>
         </button>
       </div>
+      <button
+        v-if="(picked ? gamesForPicked.length : timelines.length) > 5"
+        class="t more-games"
+        @click="showAllGames = !showAllGames"
+      >
+        {{ showAllGames ? '只看最近 5 局' : `显示全部 ${picked ? gamesForPicked.length : timelines.length} 局` }}
+      </button>
     </div>
   </div>
 </template>

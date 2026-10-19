@@ -317,6 +317,8 @@ class Timeline:
             "pack_name": str(st.get("pack_name") or ""),
             "turn": int(st.get("turn_count", 0)),
             "day": int(st.get("day", 0)),
+            # N14：这一版是否已打出结局（旧快照没有 → None = 未知/未结束）
+            "ending": payload.get("ending") if (self.root / head.checkpoint).is_file() else None,
             "size_bytes": self.size_bytes(),
             "mtime": (self.root / head.checkpoint).stat().st_mtime
             if (self.root / head.checkpoint).is_file() else 0.0,
@@ -340,7 +342,7 @@ class Timeline:
 
     def append(self, *, state, history: list[dict], rng, label: str,
                note: str = "", pack: dict | None = None,
-               mainline: bool = True) -> Entry:
+               mainline: bool = True, ending: dict | None = None) -> Entry:
         """记录一个 revision（回合**已提交**之后调用）。
 
         `rng` 传 `game.rng`；`label` 是给玩家看的一句话（谁做了什么），
@@ -349,12 +351,16 @@ class Timeline:
         **跨重启续玩**（N13）：`pack` / `mainline` 记进快照——服务重启之后，
         `saves/timeline-<sid>/` 是磁盘上唯一能回答"这一局属于哪张卡、什么模式"的东西。
         旧快照没有这两个字段，读取端走 `pack_name` 兜底并说明（见 `web._resume_pack`）。
+
+        `ending`（N14）：这一版是否已经**打出结局**。`Game.ending` 只活在内存里
+        （`state` 里没有它）——不落盘的话，"续玩一个已经结束的局"会看不到那个结局，
+        玩家会以为自己还在局中。
         """
         rev = self._next_rev()
         branch = self.current_branch() or "b1"
         return self._write(rev=rev, branch=branch, parent=None, state=state,
                            history=history, rng=rng, label=label, note=note,
-                           pack=pack, mainline=mainline)
+                           pack=pack, mainline=mainline, ending=ending)
 
     def rewind_to(self, rev: int, *, label: str = "") -> Entry:
         """回退到 rev：**产生一个新 revision + 新分支**，并返回它。
@@ -383,7 +389,8 @@ class Timeline:
 
     def _write(self, *, rev: int, branch: str, parent: int | None, state, history,
                rng, label: str, note: str = "", reuse: str = "",
-               pack: dict | None = None, mainline: bool = True) -> Entry:
+               pack: dict | None = None, mainline: bool = True,
+               ending: dict | None = None) -> Entry:
         self.root.mkdir(parents=True, exist_ok=True)
         if reuse:
             src = self.root / reuse
@@ -403,6 +410,9 @@ class Timeline:
             if pack is not None:
                 payload["pack"] = dict(pack)
             payload["mainline"] = bool(mainline)
+            # N14：结局也只在内存里（`Game.ending`），不落盘则续玩看不到
+            if ending is not None:
+                payload["ending"] = dict(ending)
             cp_name = _rev_name(rev)
             (self.root / cp_name).write_text(
                 json.dumps(payload, ensure_ascii=False), encoding="utf-8"

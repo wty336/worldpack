@@ -1483,6 +1483,9 @@ def _checkpoint_turn(sid: str, session: Session, req: TurnRequest) -> str:
             # "这局是哪张卡、什么模式"的东西（会话活在内存里，进程一停就没了）。
             pack=session.game.pack_meta,
             mainline=session.game.mainline_enabled,
+            # N14：结局也要落盘——`Game.ending` 只活在内存里，不记的话
+            # "续玩一个已经结束的局"看不到那个结局
+            ending=_ending_row(session.game.ending),
         )
     except Exception as e:  # noqa: BLE001 — 存档点失败不该毁掉已经提交的回合
         return f"（这一回合没能记入时间线：{type(e).__name__}: {e}——回退可能少一版）"
@@ -1634,6 +1637,41 @@ def _last_choices(history: list[dict]) -> list[str]:
     return []
 
 
+def _ending_row(ending) -> dict | None:
+    """`EndingSpec` → 快照里存的那几行（N14）。
+
+    只存**展示所需**的四个字段：重建时先用 `id` 在包里查回权威规范，查不到才用这份
+    快照（卡改过、那个结局被删了也要能显示"你当时打到了哪个结局"）。
+    """
+    if ending is None:
+        return None
+    return {
+        "id": str(getattr(ending, "id", "") or ""),
+        "title": str(getattr(ending, "title", "") or ""),
+        "kind": str(getattr(ending, "kind", "auto") or "auto"),
+        "text": str(getattr(ending, "text", "") or ""),
+    }
+
+
+def _ending_from_row(pack, row: dict | None):
+    """快照里的 ending 行 → 可用的 `EndingSpec`（优先取包里的权威版本）。"""
+    if not row:
+        return None
+    eid = str(row.get("id") or "")
+    for spec in getattr(pack.endings, "endings", []) or []:
+        if spec.id == eid:
+            return spec
+    # 包里已经没这个结局了（卡改过）：用快照里的文字兜底，并保留 id/title 供展示
+    from .worldpack import EndingSpec
+
+    return EndingSpec(
+        id=eid or "unknown",
+        title=str(row.get("title") or "（结局）"),
+        kind=str(row.get("kind") or "auto"),
+        text=str(row.get("text") or ""),
+    )
+
+
 class ResumeRequest(BaseModel):
     """N13：从哪一版继续。缺省 = head（接着刚才那一回合）。"""
 
@@ -1682,6 +1720,9 @@ def api_timelines() -> dict:
             "pack_id": (meta.get("pack") or {}).get("id", ""),
             "pack_name": meta["pack_name"],
             "legacy": meta["legacy"],
+            # N14：这一局是否已经打出结局（前端据此标"已结束"，而不是让玩家以为还在局中）
+            "ended": bool(meta.get("ending")),
+            "ending_title": str((meta.get("ending") or {}).get("title") or ""),
             "size_bytes": meta["size_bytes"],
             "mtime": int(meta["mtime"]),
             "live": meta["sid"] in SESSIONS,  # 已经在内存里跑着
@@ -1697,7 +1738,14 @@ def api_timelines() -> dict:
             row["reason"] = str(e.detail)
         rows.append(row)
     rows.sort(key=lambda r: r["mtime"], reverse=True)
-    return {"ok": True, "timelines": rows, "problems": problems}
+    # N14：**按卡计数**（前端在卡片上显示"玩过 N 局"，并按卡筛自己的局）。
+    # 服务端算而不是让前端数：这张表要能被别的客户端复用，计数口径就该只有一处。
+    pack_counts: dict[str, int] = {}
+    for r in rows:
+        key = r["pack_id"] or r["pack_name"] or ""
+        if key:
+            pack_counts[key] = pack_counts.get(key, 0) + 1
+    return {"ok": True, "timelines": rows, "pack_counts": pack_counts, "problems": problems}
 
 
 @app.post("/api/{sid}/resume")
@@ -1761,6 +1809,8 @@ def api_resume(sid: str, req: ResumeRequest | None = None) -> dict:
         rng=_rng_from_payload(payload),
     )
     game.history = list(payload.get("history") or [])
+    # N14：把"这一局已经打到结局"也还原出来（否则续玩一个结束的局看不出结束）
+    game.ending = _ending_from_row(pack, payload.get("ending"))
     session = Session(game=game, lock=threading.Lock(), usage=tracker)
     with session.lock:
         _open_session(sid, session)
@@ -1776,7 +1826,7 @@ def api_resume(sid: str, req: ResumeRequest | None = None) -> dict:
         "branch": entry.branch,
         "turn": game.state.turn_count,
         "day": game.state.day,
-        # 候选/关键抉择都要还原：否则续玩第一屏是"只能自由输入"，像是丢了东西
+        # 候选/关键抉择/结局都要还原：否则续玩第一屏是"只能自由输入"或"看不出已结束"
         "view": _view(game, _resume_view(game, choices)),
         "history": _history_entries(game),
         "note": note,
@@ -1788,13 +1838,15 @@ def _resume_view(game: Game, choices: list[str]) -> "TurnView":
 
     **正文刻意留空**：续玩的正文由 `history` 重建（前端把它铺进正文栏），
     这里再给一遍最后一段，玩家就会看到同一段正文出现两次（真机冒烟抓到的）。
-    视图只负责 `choices` 与 `choice_prompt`——「上一回合的候选项」和「仍待决的
-    关键抉择」这两样在 history 里没有，必须由视图带回。
+
+    视图负责的是 history 里**没有**的那几样：上一回合的**候选项**、仍待决的
+    **关键抉择**、以及**结局**（N14——`Game.ending` 同样不在 history 里）。
     """
     return TurnView(
         narration=None,
         choices=filter_choices(game.pack, choices),
         choice_prompt=game.story.pending_choice(game.state),
+        ending=game.ending,
     )
 
 
