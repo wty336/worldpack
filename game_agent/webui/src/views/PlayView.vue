@@ -33,6 +33,7 @@ const view = ref({})
 const dock = ref(null)
 const timeline = ref([])         // N7：本局时间线（新的在前）
 const currentRev = ref(null)
+const maxSnapshots = ref(null)   // N10-3：后端给的上限（更早的版本已回收）
 const cost = ref(null)           // N5/C3：本局成本汇总
 let timer = null
 
@@ -141,6 +142,8 @@ async function loadTimeline() {
     const d = await api.timeline(sid)
     timeline.value = d.entries || []
     currentRev.value = d.current
+    // N10-3：上限由后端给（前端不写死 40——那就是第二份真值）
+    maxSnapshots.value = d.max_snapshots || null
   } catch (e) {
     emit('notice', { message: e.message, isError: true })
   }
@@ -231,17 +234,22 @@ defineExpose({ refresh })
           不会被覆盖。
         </p>
         <p v-if="!timeline.length" class="t">（还没有版本）</p>
+        <p v-if="maxSnapshots" class="t">
+          只保留最近 {{ maxSnapshots }} 版快照。更早的版本仍列在这里（可查发生过什么），
+          但已经**回不去了**——这是有意的：快照不能无界增长。
+        </p>
         <button
           v-for="e in timeline"
           :key="e.rev"
           class="pack"
-          :class="{ current: e.rev === currentRev }"
-          :disabled="streaming || e.rev === currentRev"
+          :class="{ current: e.rev === currentRev, pruned: e.pruned }"
+          :disabled="streaming || e.rev === currentRev || e.pruned"
           @click="rewindTo(e.rev)"
         >
           <span class="pname">
             rev {{ e.rev }} · 第 {{ e.turn }} 回合
             <span v-if="e.rev === currentRev" class="t">（当前）</span>
+            <span v-if="e.pruned" class="t">（已回收，回不去了）</span>
           </span>
           <span class="pera">{{ e.label }}</span>
           <span class="pmeta">

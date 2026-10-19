@@ -105,6 +105,9 @@ input[type="text"], select {
 .audit li { margin: 2px 0; }
 .audit .warn { color: #b26a00; }
 
+/* N10-3：已回收的时间线版本——**看得见但点不动**（不是消失，也不是点了才失败） */
+.pack.pruned { opacity: 0.55; cursor: not-allowed; }
+
 /* ---------- 卡片列表（左栏 / 选卡屏） ---------- */
 .pack-list { display: grid; gap: 10px; }
 .pack-list.grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }

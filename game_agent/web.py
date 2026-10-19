@@ -1520,6 +1520,9 @@ def api_timeline(sid: str) -> dict:
         "current": head.rev if head else None,
         "current_branch": tl.current_branch(),
         "size_bytes": tl.size_bytes(),
+        # N10-3：只保留这么多版快照（前端据此解释"为什么更早的点不动"，
+        # 而不是把 40 这个数字在前端再写一遍——那就是两份真值）
+        "max_snapshots": timeline.MAX_SNAPSHOTS,
     }
 
 

@@ -7006,34 +7006,42 @@ const _hoisted_13$1 = {
   key: 3,
   class: "t"
 };
-const _hoisted_14$1 = ["disabled", "onClick"];
-const _hoisted_15$1 = { class: "pname" };
-const _hoisted_16$1 = {
+const _hoisted_14$1 = {
+  key: 4,
+  class: "t"
+};
+const _hoisted_15$1 = ["disabled", "onClick"];
+const _hoisted_16$1 = { class: "pname" };
+const _hoisted_17$1 = {
   key: 0,
   class: "t"
 };
-const _hoisted_17$1 = { class: "pera" };
-const _hoisted_18$1 = { class: "pmeta" };
-const _hoisted_19$1 = { class: "col col-mid" };
-const _hoisted_20$1 = { class: "col col-right" };
-const _hoisted_21$1 = {
-  key: 0,
-  class: "audit"
-};
-const _hoisted_22$1 = { class: "t" };
-const _hoisted_23$1 = {
-  key: 0,
-  class: "t"
-};
-const _hoisted_24$1 = {
+const _hoisted_18$1 = {
   key: 1,
   class: "t"
 };
+const _hoisted_19$1 = { class: "pera" };
+const _hoisted_20$1 = { class: "pmeta" };
+const _hoisted_21$1 = { class: "col col-mid" };
+const _hoisted_22$1 = { class: "col col-right" };
+const _hoisted_23$1 = {
+  key: 0,
+  class: "audit"
+};
+const _hoisted_24$1 = { class: "t" };
 const _hoisted_25$1 = {
   key: 0,
   class: "t"
 };
 const _hoisted_26$1 = {
+  key: 1,
+  class: "t"
+};
+const _hoisted_27$1 = {
+  key: 0,
+  class: "t"
+};
+const _hoisted_28$1 = {
   key: 1,
   class: "t"
 };
@@ -7058,6 +7066,7 @@ const _sfc_main$2 = {
     const dock = ref(null);
     const timeline = ref([]);
     const currentRev = ref(null);
+    const maxSnapshots = ref(null);
     const cost = ref(null);
     let timer = null;
     const modeLabel = computed(() => props.session.mode === "free" ? "自由探索" : "跟着主线");
@@ -7142,6 +7151,7 @@ const _sfc_main$2 = {
         const d = await api.timeline(sid);
         timeline.value = d.entries || [];
         currentRev.value = d.current;
+        maxSnapshots.value = d.max_snapshots || null;
       } catch (e) {
         emit2("notice", { message: e.message, isError: true });
       }
@@ -7217,29 +7227,31 @@ const _sfc_main$2 = {
             _cache[8] || (_cache[8] = createBaseVNode("h3", { class: "sec" }, "时间线", -1)),
             _cache[9] || (_cache[9] = createBaseVNode("p", { class: "t" }, " 每一回合都会自动记一版。回到某一版会**新开一条分支**——原来的线留着， 不会被覆盖。 ", -1)),
             !timeline.value.length ? (openBlock(), createElementBlock("p", _hoisted_13$1, "（还没有版本）")) : createCommentVNode("", true),
+            maxSnapshots.value ? (openBlock(), createElementBlock("p", _hoisted_14$1, " 只保留最近 " + toDisplayString(maxSnapshots.value) + " 版快照。更早的版本仍列在这里（可查发生过什么）， 但已经**回不去了**——这是有意的：快照不能无界增长。 ", 1)) : createCommentVNode("", true),
             (openBlock(true), createElementBlock(Fragment, null, renderList(timeline.value, (e) => {
               return openBlock(), createElementBlock("button", {
                 key: e.rev,
-                class: normalizeClass(["pack", { current: e.rev === currentRev.value }]),
-                disabled: unref(streaming) || e.rev === currentRev.value,
+                class: normalizeClass(["pack", { current: e.rev === currentRev.value, pruned: e.pruned }]),
+                disabled: unref(streaming) || e.rev === currentRev.value || e.pruned,
                 onClick: ($event) => rewindTo(e.rev)
               }, [
-                createBaseVNode("span", _hoisted_15$1, [
+                createBaseVNode("span", _hoisted_16$1, [
                   createTextVNode(" rev " + toDisplayString(e.rev) + " · 第 " + toDisplayString(e.turn) + " 回合 ", 1),
-                  e.rev === currentRev.value ? (openBlock(), createElementBlock("span", _hoisted_16$1, "（当前）")) : createCommentVNode("", true)
+                  e.rev === currentRev.value ? (openBlock(), createElementBlock("span", _hoisted_17$1, "（当前）")) : createCommentVNode("", true),
+                  e.pruned ? (openBlock(), createElementBlock("span", _hoisted_18$1, "（已回收，回不去了）")) : createCommentVNode("", true)
                 ]),
-                createBaseVNode("span", _hoisted_17$1, toDisplayString(e.label), 1),
-                createBaseVNode("span", _hoisted_18$1, [
+                createBaseVNode("span", _hoisted_19$1, toDisplayString(e.label), 1),
+                createBaseVNode("span", _hoisted_20$1, [
                   createTextVNode(toDisplayString(e.branch) + " · 第 " + toDisplayString(e.day) + " 天 · " + toDisplayString(shortTime(e.ts)) + " ", 1),
                   e.is_rewind ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
                     createTextVNode(" · 回退派生")
                   ], 64)) : createCommentVNode("", true)
                 ])
-              ], 10, _hoisted_14$1);
+              ], 10, _hoisted_15$1);
             }), 128))
           ])
         ]),
-        createBaseVNode("section", _hoisted_19$1, [
+        createBaseVNode("section", _hoisted_21$1, [
           createVNode(_sfc_main$4, {
             entries: entries.value,
             draft: unref(draft),
@@ -7265,7 +7277,7 @@ const _sfc_main$2 = {
             onLeave: _cache[5] || (_cache[5] = ($event) => emit2("leave"))
           }, null, 8, ["streaming"])
         ]),
-        createBaseVNode("aside", _hoisted_20$1, [
+        createBaseVNode("aside", _hoisted_22$1, [
           createVNode(_sfc_main$3, {
             status: status.value,
             actions: actions.value,
@@ -7273,17 +7285,17 @@ const _sfc_main$2 = {
             onAct: _cache[6] || (_cache[6] = (id) => turn(unref(api).turnBody.act(id))),
             onEndDay: _cache[7] || (_cache[7] = () => turn(unref(api).turnBody.endDay()))
           }, null, 8, ["status", "actions", "streaming"]),
-          audit.value ? (openBlock(), createElementBlock("details", _hoisted_21$1, [
+          audit.value ? (openBlock(), createElementBlock("details", _hoisted_23$1, [
             _cache[12] || (_cache[12] = createBaseVNode("summary", null, "模型本轮看到了什么", -1)),
-            createBaseVNode("p", _hoisted_22$1, " 共 " + toDisplayString(audit.value.total_chars) + " 字符 · 注入 " + toDisplayString(audit.value.included.length) + " 块 · 省略 " + toDisplayString(omittedTotal.value) + " 项 ", 1),
+            createBaseVNode("p", _hoisted_24$1, " 共 " + toDisplayString(audit.value.total_chars) + " 字符 · 注入 " + toDisplayString(audit.value.included.length) + " 块 · 省略 " + toDisplayString(omittedTotal.value) + " 项 ", 1),
             createBaseVNode("ul", null, [
               (openBlock(true), createElementBlock(Fragment, null, renderList(audit.value.included, (row, i) => {
                 return openBlock(), createElementBlock("li", {
                   key: "in" + i
                 }, [
                   createTextVNode(toDisplayString(KIND_LABELS[row.kind] || row.kind) + "：" + toDisplayString(row.chars) + " 字符 ", 1),
-                  row.required ? (openBlock(), createElementBlock("span", _hoisted_23$1, "（必有）")) : createCommentVNode("", true),
-                  row.detail ? (openBlock(), createElementBlock("span", _hoisted_24$1, "— " + toDisplayString(row.detail), 1)) : createCommentVNode("", true)
+                  row.required ? (openBlock(), createElementBlock("span", _hoisted_25$1, "（必有）")) : createCommentVNode("", true),
+                  row.detail ? (openBlock(), createElementBlock("span", _hoisted_26$1, "— " + toDisplayString(row.detail), 1)) : createCommentVNode("", true)
                 ]);
               }), 128))
             ]),
@@ -7295,7 +7307,7 @@ const _sfc_main$2 = {
                     key: "om" + i
                   }, [
                     createTextVNode(toDisplayString(KIND_LABELS[row.kind] || row.kind) + " ×" + toDisplayString(row.count) + " —— " + toDisplayString(row.reason) + " ", 1),
-                    row.detail ? (openBlock(), createElementBlock("span", _hoisted_25$1, "（" + toDisplayString(row.detail) + "）", 1)) : createCommentVNode("", true)
+                    row.detail ? (openBlock(), createElementBlock("span", _hoisted_27$1, "（" + toDisplayString(row.detail) + "）", 1)) : createCommentVNode("", true)
                   ]);
                 }), 128))
               ])
@@ -7306,7 +7318,7 @@ const _sfc_main$2 = {
                 class: "warn"
               }, "⚠️ " + toDisplayString(w), 1);
             }), 128)),
-            audit.value.budgets ? (openBlock(), createElementBlock("p", _hoisted_26$1, " 预算：lore " + toDisplayString(audit.value.budgets.lore) + " token · 角色卡 " + toDisplayString(audit.value.budgets.card) + " 字符 · 记忆 " + toDisplayString(audit.value.budgets.memory) + " · 玩家事实 " + toDisplayString(audit.value.budgets.player_fact), 1)) : createCommentVNode("", true)
+            audit.value.budgets ? (openBlock(), createElementBlock("p", _hoisted_28$1, " 预算：lore " + toDisplayString(audit.value.budgets.lore) + " token · 角色卡 " + toDisplayString(audit.value.budgets.card) + " 字符 · 记忆 " + toDisplayString(audit.value.budgets.memory) + " · 玩家事实 " + toDisplayString(audit.value.budgets.player_fact), 1)) : createCommentVNode("", true)
           ])) : createCommentVNode("", true)
         ])
       ]);

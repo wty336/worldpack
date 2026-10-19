@@ -147,9 +147,11 @@ const PUBLISH_REJECTED =
 
 // ---- N7：时间线 / 回退 ----
 const TIMELINE = [
-  { rev: 1, branch: 'b1', parent: null, turn: 0, day: 1, ts: '2026-09-30T10:00:00', label: '开局', note: '', is_rewind: false },
-  { rev: 2, branch: 'b1', parent: null, turn: 1, day: 1, ts: '2026-09-30T10:01:00', label: '你说：我上前一步。', note: '', is_rewind: false },
-  { rev: 3, branch: 'b1', parent: null, turn: 2, day: 1, ts: '2026-09-30T10:02:00', label: '行动：去后山修炼', note: '', is_rewind: false },
+  // N10-3：最早的这一版**快照已回收**（`pruned`）——条目仍然列出来（可审计）但点不动。
+  // 桩里留一条这样的，才能验证"看得见 + 点不动 + 说清为什么"这三件事一起成立。
+  { rev: 1, branch: 'b1', parent: null, turn: 0, day: 1, ts: '2026-09-30T10:00:00', label: '开局', note: '', is_rewind: false, pruned: true },
+  { rev: 2, branch: 'b1', parent: null, turn: 1, day: 1, ts: '2026-09-30T10:01:00', label: '你说：我上前一步。', note: '', is_rewind: false, pruned: false },
+  { rev: 3, branch: 'b1', parent: null, turn: 2, day: 1, ts: '2026-09-30T10:02:00', label: '行动：去后山修炼', note: '', is_rewind: false, pruned: false },
 ]
 const HISTORY = [
   { role: 'assistant', text: '你挡在了她身前。她敛衽一礼：多谢公子。' },
@@ -369,6 +371,7 @@ function startStub() {
         current: state.timelineHead,
         current_branch: 'b1',
         size_bytes: 4096,
+        max_snapshots: 40,  // N10-3：上限由后端给，前端不写死
       })
     }
     if (/^\/api\/[^/]+\/history$/.test(path)) return json({ ok: true, entries: HISTORY })
@@ -727,6 +730,25 @@ async function main() {
       '当前版本被标出来（玩家要知道"我现在在哪一版"）',
       await cdp.eval(`/当前/.test(document.querySelector('#app .col-left .pack.current')?.textContent || '')`),
     )
+    // N10-3：已回收的版本——**看得见、点不动、说清为什么**
+    check(
+      '已回收的版本被标出来（不是消失，也不是点了才失败）',
+      await cdp.eval(
+        `/已回收/.test([...document.querySelectorAll('#app .col-left .pack')]
+           .map(b => b.textContent).join('|'))`,
+      ),
+    )
+    check(
+      '已回收的版本按钮是禁用的（玩家不会白点一次）',
+      await cdp.eval(
+        `[...document.querySelectorAll('#app .col-left .pack')]
+           .filter(b => /已回收/.test(b.textContent)).every(b => b.disabled)`,
+      ),
+    )
+    check(
+      '左栏说明只保留最近 N 版（上限数字来自后端，不是前端写死）',
+      await cdp.eval(`/只保留最近 40 版/.test(document.querySelector('#app .col-left').textContent)`),
+    )
     check(
       '时间线条目带分支与标签（"这一版是什么时候"可读）',
       await cdp.eval(`(() => {
@@ -741,10 +763,12 @@ async function main() {
     )
 
     // 回到最早那一版
+    // 回到**最旧的可点**那一版（N10-3 之后最早的那版快照可能已回收 → 按钮禁用，
+    // 所以不能无脑选列表末尾那条：那是"已回收"的，点了什么都不会发生）
     const rewound = await cdp.eval(`(() => {
       const packs = [...document.querySelectorAll('#app .col-left .pack')];
-      const target = packs[packs.length - 1];            // 列表新的在前 → 最后一条最旧
-      if (!target || target.disabled) return false;
+      const target = packs.filter(b => !b.disabled && !b.classList.contains('current')).pop();
+      if (!target) return false;
       target.click();
       return true;
     })()`)
