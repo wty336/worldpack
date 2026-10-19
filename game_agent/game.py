@@ -145,6 +145,7 @@ class Game:
         factcheck_every: int = 0,  # 设计加固 B1：>0 时每 N 回合独立跑缺席证据检查（0=关闭）
         context_window: int = 0,  # J 系列：模型上下文窗（token，0=未声明→溢出预检关闭）
         mainline_enabled: bool = True,  # E-4：False = 自由游玩（不进入主线节点）
+        scheduler: Callable[[Callable[[], None]], None] | None = None,  # N8：派生工作调度
     ):
         self.pack = pack
         # G2：剧本身份戳在构造时算一次（包不可变）——存档与读档校验共用同一份，
@@ -214,6 +215,30 @@ class Game:
         # 因为连续失败才是危险信号（历史只涨不缩 → 迟早被 provider 拒）。
         self.compress_failures: list[str] = []
         self.compress_fail_count = 0
+        # N8（一主多子）：派生工作的调度钩子。**None = 内联执行**（行为与改动前完全
+        # 一致，测试与 CLI 都走这条路）；非 None 时把"派生、可后补"的步骤交出去，
+        # 于是前台只负责「正文 + 结算 + 存档 + 建点」并立刻返回。
+        #
+        # 哪些能后移（见 `_defer` 的调用点）：计划重算、确定性事实抽取、缺席证据检查、
+        # Judge、关系反思。哪些**必须留在前台**：判劣重写（`_critique_and_regenerate`
+        # ——它要在正文提交**之前**决定是否重生成）与 `_recheck_feedback`
+        # （它决定上一轮的校验反馈是否已修正，结果是下一轮的输入）。
+        self.scheduler = scheduler
+
+    def _defer(self, job: Callable[[], None]) -> None:
+        """把一个**派生**步骤交给后台调度器（N8）；没有调度器就内联执行。
+
+        **这是 N8 的全部开关**：`scheduler is None` 时行为与改动前逐字节一致
+        （CLI / 单测 / 任何没接后台的入口都走这条路），所以这次改动**默认不改变
+        任何既有语义**——它是"可以打开的能力"，不是"默认改变的行为"。
+
+        调用方负责在 `lambda` 里**绑死参数**（`lambda n=result.narration: ...`），
+        否则后台执行时读到的会是循环/后文的变量（迟绑定）。
+        """
+        if self.scheduler is None:
+            job()
+        else:
+            self.scheduler(job)
 
     def _note_recovery(self, kind: str) -> None:
         """登记一次"本轮内部发生过恢复"（去重、保序）。
@@ -631,18 +656,23 @@ class Game:
             return TurnView(narration=None, choices=result.choices, **self._turn_fields())
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
-        self._maybe_replan(outcome.messages)  # 设计加固 A4：卡壳推进提示触发重规划
+        self._defer(lambda m=list(outcome.messages): self._maybe_replan(m))
+        # 设计加固 A4：卡壳推进提示触发重规划（N8：可后补——计划块晚一轮到达反而更合用）
         # 节点完成 → 自动存档（W-C：长局防丢进度，引擎侧钩子；含对话历史）
         if outcome.node_completed is not None and self.autosave_path is not None:
             save_game(self.state, self.autosave_path, self.history, pack_meta=self.pack_meta)
-        # 设计加固 B2：先复查上一轮校验反馈是否已修正，再做本轮检查
+        # 设计加固 B2：先复查上一轮校验反馈是否已修正，再做本轮检查。
+        # **必须留在前台**：它决定下一轮的输入（`_pending_verdict`），后移会让"修正复查"
+        # 落后于玩家已经看到的两轮剧情。
         if self._pending_verdict and result.narration:
             self._recheck_feedback(result.narration)
         # M2a 迭代4：确定性提取兜底（弥补 remember 主动性的覆盖缺口）
+        # N8：可后补——它读的是"最近的历史"，晚一轮执行只是把同一批事实晚一轮记住。
         if self.extract_every > 0 and self.state.turn_count % self.extract_every == 0:
-            self._extract_facts()
+            self._defer(self._extract_facts)
         # 设计加固 B1：缺席证据检查（确定性层）常开，LLM judge 降频采样——
         # judge 采样轮跳过独立检查（judge.check 内含同一检查，避免同轮两次抽取）
+        # N8：两者都以本轮叙事为**显式入参**（下面绑死），所以后移不会读错内容。
         judge_runs = self.judge_every > 0 and self.state.turn_count % self.judge_every == 0
         if (
             self.factcheck_every > 0
@@ -650,13 +680,14 @@ class Game:
             and self.state.turn_count % self.factcheck_every == 0
             and result.narration
         ):
-            self._factcheck_turn(result.narration)
+            self._defer(lambda n=result.narration: self._factcheck_turn(n))
         # M2b 语义校验：每 N 回合检查最新叙事，失败注入下轮修正提示
         if judge_runs:
-            self._judge_turn(result.narration)
+            self._defer(lambda n=result.narration: self._judge_turn(n))
         # A3 反思：每 N 回合对记忆增长达标的 NPC 合成关系洞察（侧信道，失败静默）
+        # N8：可后补——它是"慢周期"的洞察合成，晚一轮执行几乎没有差别。
         if self.reflect_every > 0 and self.state.turn_count % self.reflect_every == 0:
-            self._reflect()
+            self._defer(self._reflect)
         return TurnView(
             narration=result.narration,
             choices=filter_choices(self.pack, result.choices),

@@ -9,6 +9,22 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _derived_work_is_inline(tmp_path, monkeypatch):
+    """默认把 N8 的后台派生工作**关掉**，让既有守卫保持确定性。
+
+    理由写在 `web.DERIVED_ASYNC` 的 docstring 里：异步执行意味着"回合返回之后
+    状态还会变"，那会让"回合 N 之后立刻断言 state"的既有守卫变成偶发失败源。
+    一千多条守卫不该因为一个性能特性开始闪。
+
+    **异步路径由 `tests/test_derived_worker.py` 显式打开并单独覆盖**——
+    不是让它顺带被测到，而是它有它自己的守卫。
+    """
+    from game_agent import web
+
+    monkeypatch.setattr(web, "DERIVED_ASYNC", False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_session_artifacts(tmp_path, monkeypatch):
     """把 `web.SAVE_ROOT` 指到本测试的临时目录。
 

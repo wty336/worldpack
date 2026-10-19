@@ -180,6 +180,10 @@ class Session:
     game: Game
     lock: threading.Lock
     usage: UsageTracker  # G1：本会话专属账本（此前是进程级共享单例）
+    #: N8：后台派生工作（一主多子）。`None` = 该会话未启用后台派生（行为与改动前一致）。
+    #: 它是**基础设施**而不是第四份真值：它不复制任何状态，只是把派生步骤的
+    #: 执行时机挪到回合之间（且持同一把锁）。
+    derived: "_DerivedWorker | None" = None
 
 
 def session_pack_id(session: Session) -> str:
@@ -233,6 +237,156 @@ def _game_options() -> dict:
         factcheck_every=1,  # 设计加固 B1：缺席证据检查每轮常开（确定性层）
         context_window=resolve_context_window(settings),  # J 系列：显式配置 > 端点自报
     )
+
+
+DERIVED_ASYNC = True
+"""N8：是否把派生工作（计划/抽取/核查/Judge/反思）放到后台。
+
+**为什么要这个开关**（而不是永远开）：
+- 生产上应当开（这是"一主多子"的全部收益：`done` 不再等派生 LLM 调用）；
+- 但**测试需要确定性**：异步执行意味着"回合返回之后状态还会变"，那会让
+  "回合 N 之后立刻断言 state" 的既有守卫变成偶发失败源。上千条守卫不该因为
+  一个性能特性的引入而开始闪。所以 `tests/conftest.py` 里默认关掉，专门的 N8
+  守卫显式打开——**异步路径有它自己的守卫，不靠既有守卫顺带覆盖**。
+"""
+
+
+class _DerivedWorker:
+    """一局的**后台派生工作**（N8「一主多子」+ revision 绑定）。
+
+    **要解决的问题**：一个叙事回合内部串行跑完「正文 → 判劣重写 → 结算 → 计划 →
+    事实抽取 → 缺席证据检查 → Judge → 反思」。后五步都是**派生、可后补**的 LLM 调用，
+    却全卡在 `done` 之前——玩家得等它们跑完才看到正文与选项。把它们挪到后台，
+    `done` 就能在"正文已提交"时立刻返回。
+
+    **为什么必须持有会话锁执行**（这是整个设计能安全成立的全部原因）：派生工作会改
+    `state` / `history`（记忆、计划块、校验提示）。与进行中的回合**同时**改就是赛跑。
+    持锁之后它们自然排在回合之间。代价要说清：**快速连发的客户端仍会串行**，
+    只有"人在读文本"的间隔才真正并行——这不是"完全异步"，是"不再挡住玩家看正文"。
+
+    **revision 绑定**：每个任务记下入队时的分支；执行前比对当前 head 的分支，
+    不一致就丢弃。挡的是"回退之后，旧分支的迟到结算污染新剧情"——
+    这是 N7 的 revision 契约存在的第二个理由（第一个是回退本身）。
+
+    **失败可见**：`failed` / `last_error` / `discarded` 三个计数通过
+    `GET /api/{sid}/derived` 暴露。后台失败静默 = 最难查的故障
+    （正是刚修的"压缩失败可见"那条的同一个形状）。
+    """
+
+    def __init__(self, sid: str, session: "Session"):
+        self.sid = sid
+        self.session = session
+        self._q: "queue.Queue[tuple[str, Callable[[], None]] | None]" = queue.Queue()
+        self.queued = 0
+        self.done = 0
+        self.failed = 0
+        self.discarded = 0
+        self._inflight = 0  # 正在执行的任务数（`idle()` 用它判定"真的空了"）
+        self.last_error = ""
+        self._thread = threading.Thread(target=self._loop, daemon=True,
+                                       name=f"derived-{sid}")
+        self._thread.start()
+
+    def submit(self, job: Callable[[], None]) -> None:
+        """给 `game.scheduler` 用的入口：记下**入队时**的分支，然后排队。"""
+        self.queued += 1
+        self._q.put((_current_branch(self.sid), job))
+
+    def _stale(self, captured_branch: str) -> bool:
+        """入队之后是否发生过回退（= 该任务该丢弃）。
+
+        **一个不显然但真实的细节**：派生步骤是在 `_narrate` 里入队的，而
+        **这一回合的 checkpoint 是之后才写的**（`web._checkpoint_turn`）。所以
+        **第一回合**入队时时间线还是空的（分支 = `""`），执行时才变成 `b1`
+        ——直接比对分支名会把它判成"回退过"而**丢掉第一回合的全部派生工作**
+        （实测就是这样：`discarded: 4, done: 0`，一点作业都没干）。
+
+        正确的判定：`""` 表示"入队时还没有历史"，而**没有历史就不可能回退**——
+        除非时间线已经有多个分支（那才说明确实回退过）。
+        """
+        current = _current_branch(self.sid)
+        if captured_branch == current:
+            return False
+        if captured_branch == "":
+            try:
+                return len(_timeline(self.sid).branches()) > 1
+            except Exception:  # noqa: BLE001 — 时间线坏了不该让派生工作崩掉
+                return False
+        return True
+
+    def _loop(self) -> None:
+        while True:
+            item = self._q.get()
+            if item is None:  # 停 worker（测试/关会话用）
+                return
+            self._inflight += 1
+            branch, job = item
+            with self.session.lock:
+                try:
+                    if self._stale(branch):
+                        self.discarded += 1
+                        self.last_error = (
+                            f"丢弃一个派生任务：入队分支 {branch or '（无）'}、"
+                            f"当前分支 {_current_branch(self.sid) or '（无）'}"
+                            f"——期间发生了回退"
+                        )
+                        continue
+                    job()
+                    self.done += 1
+                except Exception as e:  # noqa: BLE001 — 后台失败必须记账，不能静默
+                    self.failed += 1
+                    self.last_error = f"{type(e).__name__}: {e}"
+                finally:
+                    self._inflight -= 1
+
+    def idle(self) -> bool:
+        """是否已把当前排队的活都干完（测试与诊断用）。"""
+        settled = self.done + self.failed + self.discarded
+        return self._q.qsize() == 0 and self._inflight == 0 and settled >= self.queued
+
+    def stats(self) -> dict:
+        return {
+            "queued": self.queued, "done": self.done, "failed": self.failed,
+            "discarded": self.discarded, "pending": self._q.qsize(),
+            "last_error": self.last_error,
+        }
+
+    def stop(self) -> None:
+        self._q.put(None)
+
+
+def _current_branch(sid: str) -> str:
+    """本会话时间线当前的**分支名**（空串 = 还没有任何 checkpoint）。
+
+    读盘而不是读缓存：时间线是"跨进程可查"的东西（`saves/timeline-<sid>/`），
+    缓存一份就等于引入第二份真值。
+    """
+    try:
+        return _timeline(sid).current_branch()
+    except Exception:  # noqa: BLE001 — 时间线坏了不该让派生工作崩掉
+        return ""
+
+
+def _attach_scheduler(sid: str, session: "Session") -> None:
+    """给这一局的 `Game` 挂上后台调度器（幂等：重复调用只换绑定）。
+
+    `session.game` 会被**替换**（回退重建、读档），每次替换后都要重新挂——
+    所以做成函数而不是在建局处内联一行。
+    """
+    session.game.scheduler = session.derived.submit if session.derived else None
+
+
+@app.get("/api/{sid}/derived")
+def api_derived(sid: str) -> dict:
+    """后台派生工作的状态（N8）：排队/完成/失败/丢弃 + 最近一次错误。
+
+    为什么值得一个端点：这些工作默认看不见（它们不产生叙事），所以"一直在失败"
+    只表现为"记忆好像没记住""判官好像没说话"——没有计数与最近错误就没法归因。
+    """
+    session = _ensure_session(sid)
+    if session.derived is None:
+        return {"ok": True, "enabled": False, "stats": {}}
+    return {"ok": True, "enabled": True, "stats": session.derived.stats()}
 
 
 def _make_game(
@@ -822,6 +976,12 @@ def api_new(req: NewRequest | None = None) -> dict:
         sid, req.pack_id, draft=req.draft, mainline_enabled=(mode == MODE_STORY)
     )
     session = Session(game=game, lock=threading.Lock(), usage=tracker)
+    # N8：先挂后台调度器**再**开局——`start()` 本身也是一次回合，会把派生步骤交出去。
+    # 顺序反过来会让开局那一轮的派生步骤被内联执行（那只是慢一点，不是错，
+    # 但那就等于"第一轮不享受这个优化"，白丢一次收益）。
+    if DERIVED_ASYNC:
+        session.derived = _DerivedWorker(sid, session)
+    _attach_scheduler(sid, session)
     with session.lock:
         view = game.start()
         SESSIONS[sid] = session
@@ -1259,6 +1419,9 @@ def api_rewind(sid: str, req: RewindRequest) -> dict:
         except timeline.TimelineError as e:
             raise HTTPException(400, str(e))
         session.game = _rebuild_from_checkpoint(sid, session, payload)
+        # N8：**Game 被替换了，调度器必须重新挂**（否则回退之后这一局的派生工作
+        # 全部退回内联执行——功能不坏，但"回退一次就悄悄失去一个能力"正是最难发现的退化）
+        _attach_scheduler(sid, session)
         game = session.game
     return {
         "ok": True,
