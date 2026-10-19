@@ -320,6 +320,9 @@ def _view(game: Game, view) -> dict:
             {"prompt": view.choice_prompt.prompt} if view.choice_prompt else None
         ),
         "recovered": list(view.recovered),  # 本回合用过的恢复手段（正常回合为空）
+        # N10：**压缩连续失败**的原因（与 `recovered` 相反：那个是"恢复成功"，
+        # 这个是"恢复一直在失败"）。必须出去——否则根因只活在日志里。
+        "compress_failures": list(getattr(view, "compress_failures", []) or []),
         "sub_turns": view.sub_turns,  # 本回合实际跑了几次生成（含级联）
         "turn": game.state.turn_count,  # 统一回合轴（与 trace 的 game_turn 同源）
     }

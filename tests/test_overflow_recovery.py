@@ -308,6 +308,63 @@ def test_settings_context_window_defaults_to_zero(tmp_path, monkeypatch):
     assert load_settings().context_window == 0
 
 
+def test_compress_failures_are_visible_not_silent(monkeypatch):
+    """**N10 第 4 条（N8 的前置）**：压缩失败必须可见——它此前是四处静默 return。
+
+    为什么这条是"前置"而不是"优化"：`_compress_history` 的四个失败出口
+    （模型调用失败 / 空摘要 / 摘要被截断 / 重建后配对不变量不成立）全都是
+    "保留原历史、下回合重试"，听起来很稳；但**连续失败**意味着历史只涨不缩，
+    直到 provider 以"输入过长"拒绝请求——那时唯一的症状是"某天开始每轮都慢"，
+    而根因完全不可见。异步化（N8）会进一步放大这个窗口。
+
+    断言四件事：① 失败被记进 `TurnView.compress_failures`（**随视图出去**，
+    不是只写日志）；② 原因是**可读的**；③ 不同失败原因能区分；④ 成功之后
+    "连续失败"清空，而累计次数保留。
+    """
+    from game_agent.llm import CompletionResult
+
+    # `keep_turns=1` + 4 轮：保证 `find_turn_cut` 真能切出一段（默认 6 轮保留时
+    # 这几轮会被判成"无可压缩"，直接 early return —— 那不是失败，是没触发）
+    game = _game([], keep_turns=1)
+    _push_turns(game, 4, pad=50)
+
+    def _boom(*a, **k):
+        raise RuntimeError("模型挂了")
+
+    # ① 模型调用失败 → 记下原因，且**不丢历史**
+    monkeypatch.setattr(game.llm, "complete_with_meta", _boom)
+    monkeypatch.setattr(game.llm, "complete", _boom)
+    before = list(game.history)
+    game._compress_history()
+    assert game.compress_failures, "压缩失败被静默吞了——必须留下原因"
+    assert "模型挂了" in game.compress_failures[-1], game.compress_failures
+    assert game.compress_fail_count == 1
+    assert game.history == before, "失败时保留原历史（不丢内容）"
+    # ② 随视图出去（`_turn_fields` 是所有 TurnView 出口的共用口径）
+    assert game._turn_fields()["compress_failures"] == game.compress_failures
+
+    # ③ 另一种失败原因也要能区分（否则"连续失败"看不出是不是同一个毛病）
+    monkeypatch.setattr(
+        game.llm, "complete_with_meta",
+        lambda *a, **k: CompletionResult(text="   ", finish_reason="stop"),
+    )
+    game._compress_history()
+    assert game.compress_fail_count == 2
+    assert "空摘要" in game.compress_failures[-1], game.compress_failures
+
+    # ④ 成功一次 → "连续失败"清空，累计次数保留
+    monkeypatch.setattr(
+        game.llm, "complete_with_meta",
+        lambda *a, **k: CompletionResult(
+            text="【摘要】这是一段足够长的合并摘要，用来替换被切掉的历史前缀。" * 2,
+            finish_reason="stop",
+        ),
+    )
+    game._compress_history()
+    assert game.compress_failures == [], f"成功之后连续失败该清空：{game.compress_failures}"
+    assert game.compress_fail_count == 2, "累计次数不重置（它回答「这一局坏过几次」）"
+
+
 def test_cli_and_web_wire_context_window_from_settings():
     """接线守卫：CLI / Web 的 Game 构造必须把**解析后**的窗口传下去。
 

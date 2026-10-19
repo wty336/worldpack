@@ -7095,6 +7095,12 @@ const _sfc_main$2 = {
       }
       if (error.value) emit2("notice", { message: `[错误] ${error.value}`, isError: true });
       else if (done) applyView(done);
+      if (done && done.compress_failures && done.compress_failures.length) {
+        emit2("notice", {
+          message: `⚠️ 历史压缩连续失败 ${done.compress_failures.length} 次：${done.compress_failures[done.compress_failures.length - 1]}——上下文会一直增长，最终可能被模型以"输入过长"拒绝。`,
+          isError: true
+        });
+      }
       if (notice.value) emit2("notice", { message: notice.value, isError: false });
       await refresh();
       await loadTimeline();

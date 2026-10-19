@@ -119,6 +119,11 @@ class TurnView:
     briefing: str | None = None  # 关键抉择前的剧情背景（首次展示给玩家）
     recovered: list[str] = field(default_factory=list)  # 本回合用过的恢复手段
     sub_turns: int = 0  # 本回合实际执行了几次生成（含级联/重写/重试）
+    # N10：**当前连续失败**的压缩原因（跨回合，成功即清空）。与 `recovered` 相反——
+    # `recovered` 说的是"用过的恢复手段"，这里说的是"**恢复一直在失败**"。
+    # 它必须随视图出去：连续压缩失败 = 历史只涨不缩 → 迟早被 provider 拒请求，
+    # 而此前那四处静默 return 让根因完全不可见。
+    compress_failures: list[str] = field(default_factory=list)
 
 
 class Game:
@@ -204,6 +209,11 @@ class Game:
         # 随 TurnView 返回给 SSE / 报告）。顺序即发生顺序，重复时只记第一次。
         self._recovered: list[str] = []
         self._sub_turns = 0
+        # N10：压缩失败的可见面。**刻意不是"每回合重置"**——它回答的是
+        # "现在是不是处于压缩失败状态"（跨回合，成功才清空），
+        # 因为连续失败才是危险信号（历史只涨不缩 → 迟早被 provider 拒）。
+        self.compress_failures: list[str] = []
+        self.compress_fail_count = 0
 
     def _note_recovery(self, kind: str) -> None:
         """登记一次"本轮内部发生过恢复"（去重、保序）。
@@ -216,9 +226,33 @@ class Game:
             self._recovered.append(kind)
         self.llm.recovered = list(self._recovered)
 
+    def _note_compress_failure(self, reason: str) -> None:
+        """登记一次**压缩失败**（N10 第 4 条，N8 的前置）。
+
+        为什么必须可见：`_compress_history` 此前有**四处静默 return**（模型调用失败 /
+        空摘要 / 摘要被截断 / 重建后配对不变量不成立）——每一次都"保留原历史、下回合
+        重试"，听起来很稳。但**连续失败**意味着历史只涨不缩，直到 provider 以
+        "输入过长"拒绝请求；那时唯一的症状是"某天开始每轮都慢/偶尔被拒"，
+        而**没人知道根因是压缩一直在失败**。
+
+        异步化（N8）会把"安静地坏掉"的窗口进一步放宽——所以这条是前置，不是优化。
+
+        `compress_failures` 是**连续失败的原因**（成功即清空，它回答"现在是不是坏着"）；
+        `compress_fail_count` 累计次数只增不减（它回答"这一局坏过几次"）。
+        """
+        self.compress_failures.append(reason)
+        self.compress_fail_count += 1
+        self.llm._trace("compress", phase="failed", game_turn=self.state.turn_count,
+                    reason=reason, consecutive=len(self.compress_failures))
+
     def _turn_fields(self) -> dict:
         """构造 TurnView 的恢复痕迹字段（所有 TurnView 出口共用同一口径）。"""
-        return {"recovered": list(self._recovered), "sub_turns": self._sub_turns}
+        return {
+            "recovered": list(self._recovered),
+            "sub_turns": self._sub_turns,
+            # N10：压缩失败必须随视图出去（否则它只活在日志里 = 不可见）
+            "compress_failures": list(self.compress_failures),
+        }
 
     # ------------------------------------------------------------------
     # 玩家操作
@@ -1340,16 +1374,27 @@ class Game:
                 purpose="compress",
                 max_tokens=COMPRESS_MAX_TOKENS,
             )
-        except Exception:  # noqa: BLE001
-            return  # 压缩失败静默降级：保留原历史，下回合重试
+        except Exception as e:  # noqa: BLE001
+            # N10：**不能静默**。连续失败 = 历史只涨不缩，直到 provider 拒请求，
+            # 而症状只是"某天开始每轮都慢"——根因必须能被看见。
+            self._note_compress_failure(f"模型调用失败：{type(e).__name__}: {e}")
+            return  # 保留原历史，下回合重试
         if not merged.strip():
-            return  # 空摘要（升级重试后仍空）：放弃本次压缩
+            self._note_compress_failure("模型返回空摘要（升级重试后仍空）")
+            return  # 空摘要：放弃本次压缩
         if finish_reason == TRUNCATED_FINISH_REASON:
-            return  # 截断摘要会替换历史前缀 = 静默丢内容 → 宁可放弃压缩（重试已在上游做过）
+            self._note_compress_failure("摘要被截断（截断摘要会静默丢内容）")
+            return  # 宁可放弃压缩（重试已在上游做过）
         rebuilt = rebuild_history(self.history, summary_idx, merged.strip(), cut)
         if not ensure_pairing(rebuilt):
-            return  # 兜底：重建后配对不变量不成立则放弃本次压缩
+            self._note_compress_failure("重建后配对不变量不成立")
+            return  # 兜底：不变量不成立则放弃本次压缩
         self.history = rebuilt
+        if self.compress_failures:
+            # 成功即清空"连续失败"（它回答的是"现在是不是坏着"）；
+            # `compress_fail_count` 不重置（它回答"这一局坏过几次"）。
+            self.compress_failures.clear()
+            self.llm._trace("compress", phase="recovered", game_turn=self.state.turn_count)
 
     # ------------------------------------------------------------------
     # J 系列：上下文溢出的预检与恢复（对齐 pi-agent 的 compact-and-retry）
