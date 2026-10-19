@@ -59,6 +59,9 @@ export const ENDPOINTS = Object.freeze({
   timeline: 'GET /api/{sid}/timeline',
   history: 'GET /api/{sid}/history',
   rewind: 'POST /api/{sid}/rewind',
+  // N13：跨重启续玩（会话活内存、时间线活磁盘）
+  timelines: 'GET /api/timelines',
+  resume: 'POST /api/{sid}/resume',
   // 创作工作台（N2a）：生成 → 进度 → 草稿 → 发布
   generate: 'POST /api/packs/generate',
   jobs: 'GET /api/packs/generate',
@@ -113,6 +116,12 @@ export const api = {
   history: (sid) => fetch(`/api/${sid}/history`).then((r) => jsonOrThrow(r, '读取历史正文')),
   /** 回到某一版：后端产生**新版本 + 新分支**（旧分支原地保留），并返回重建后的历史。 */
   rewind: (sid, rev) => post(`/api/${sid}/rewind`, { rev }).then((r) => jsonOrThrow(r, '回退')),
+
+  // ---- N13：跨重启续玩 ----
+  /** 盘上可继续的局（服务重启之后仍然在——会话活内存，时间线活在磁盘） */
+  timelines: () => fetch('/api/timelines').then((r) => jsonOrThrow(r, '读取上次的局')),
+  /** 从磁盘重新打开这一局（缺省接着 head；给 rev 就=从那一版继续） */
+  resume: (sid, rev) => post(`/api/${sid}/resume`, rev == null ? {} : { rev }).then((r) => jsonOrThrow(r, '继续这一局')),
 
   // ---- 创作工作台（N2a）----
 

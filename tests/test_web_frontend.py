@@ -320,6 +320,36 @@ def test_every_engine_recovery_kind_has_a_player_facing_label():
         )
 
 
+def test_views_register_mounted_exactly_once():
+    """每个视图只能有一个 `onMounted`——重复注册会让挂载副作用跑两遍。
+
+    **这是实测缺陷的墓碑**（2026-10，N13 期间顺手发现）：`PlayView.vue` 里
+    `onMounted` 被写了两份、内容一样，于是开局 `applyView(openingView)` 执行两遍
+    ——玩家看到的开场正文**出现两次**。它不报错、所有测试仍绿，只有真机冒烟的
+    输出里能看出同一段话连着出现两遍（我是在一次变异验证的截屏里注意到的）。
+
+    副作用型注册（`onMounted` / `onBeforeUnmount`）都是这个形状：多一份就多跑一遍，
+    而且不崩。所以按**出现次数**钉，而不是"存在即通过"。
+    """
+    import re as _re
+
+    for vue in (WEBUI / "src" / "views").glob("*.vue"):
+        src = vue.read_text(encoding="utf-8")
+        for hook in ("onMounted", "onBeforeUnmount"):
+            count = len(_re.findall(rf"^\s*{hook}\(\s*(?:async\s*)?\(", src, _re.M))
+            assert count <= 1, (
+                f"{vue.name} 里 {hook} 被注册了 {count} 次——挂载副作用会跑 {count} 遍"
+            )
+
+
+def test_opening_view_is_applied_only_once():
+    """行为侧的同一条：开局视图只许应用一次（否则开场正文重复）。"""
+    src = _src("views", "PlayView.vue")
+    assert src.count("applyView(props.session.openingView)") == 1, (
+        "开局视图被应用了不止一次——开场正文会重复出现"
+    )
+
+
 def test_stage_a_assets_are_gone():
     """回归守卫：Stage A 的原生 JS/CSS 不应复活（已由 Vue 组件取代）。"""
     for name in ("app.js", "app.css"):

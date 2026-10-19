@@ -12,17 +12,28 @@ import { computed, ref } from 'vue'
 const props = defineProps({
   packs: { type: Array, default: () => [] },
   saves: { type: Array, default: () => [] },
+  // N13：盘上可以继续的局（服务重启之后仍然在——会话活内存、时间线活磁盘）
+  timelines: { type: Array, default: () => [] },
   defaultMode: { type: String, default: 'story' },
   busy: { type: Boolean, default: false },
 })
-const emit = defineEmits(['start', 'load', 'refresh', 'studio'])
+const emit = defineEmits(['start', 'load', 'refresh', 'studio', 'resume'])
 
 const picked = ref(null)
 const mode = ref(props.defaultMode)
 
 const playable = computed(() => props.packs.filter((p) => p.playable))
 const usableSaves = computed(() => props.saves.filter((s) => !s.error))
+const recentGames = computed(() => props.timelines.slice(0, 5))  // 最近 5 局
 const savePath = ref('')
+
+/** 续玩一行：世界名 + 跑到第几回合 + 什么时候 + 模式。 */
+function recentLabel(t) {
+  const when = t.mtime ? new Date(t.mtime * 1000).toLocaleString() : ''
+  const modeText = t.mode === 'free' ? '自由探索' : '跟着主线'
+  const who = t.pack_name || t.pack_id || '（未知的卡）'
+  return `《${who}》 · ${modeText} · 第 ${t.turn} 回合（第 ${t.day} 天） · ${when}`
+}
 
 function label(p) {
   const bits = []
@@ -100,5 +111,26 @@ function load() {
       <button :disabled="!usableSaves.length || busy" @click="load">读取</button>
     </div>
     <p v-if="saves.length && !usableSaves.length" class="t">存档目录里没有可读的档。</p>
+
+    <!-- N13：**接着上次玩**。会话活在内存里（关掉服务就没了），但每一版都记在磁盘上，
+         所以"关掉终端、第二天回来"不该等于"那一局消失了"。 -->
+    <div v-if="recentGames.length" class="recent-games">
+      <h3 class="sec">接着上次玩</h3>
+      <p class="t">
+        这几局记录在本地磁盘上——即使服务重启过，也能从**最后一版**继续（不是回到存档点）。
+      </p>
+      <div v-for="t in recentGames" :key="t.sid" class="recent-row">
+        <button
+          class="recent-item"
+          :disabled="busy || !t.resumable"
+          @click="emit('resume', { sid: t.sid })"
+        >
+          <span class="pname">{{ recentLabel(t) }}</span>
+          <span v-if="!t.resumable" class="pera">不能继续：{{ t.reason }}</span>
+          <span v-else-if="t.legacy" class="pera">{{ t.reason }}</span>
+          <span v-else class="pera">rev {{ t.rev }} · 分支 {{ t.branch }}</span>
+        </button>
+      </div>
+    </div>
   </div>
 </template>

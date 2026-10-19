@@ -42,7 +42,7 @@ from pydantic import BaseModel
 
 from . import catalog, creator, jobs, timeline, usage, worldgen
 from .config import load_settings, resolve_context_window
-from .game import Game, GameError
+from .game import Game, GameError, TurnView
 from .jobs import GenerationJob
 from .llm import LLMClient, LLMTurnError, build_tools
 from .save import (
@@ -55,9 +55,9 @@ from .save import (
 )
 from .schedule import ScheduleError
 from .state import GameState
-from .storyline import FREE_INPUT_OPTION, StorylineError
+from .storyline import FREE_INPUT_OPTION, StorylineError, filter_choices
 from .usage import UsageTracker
-from .worldpack import WorldPackError, load_worldpack
+from .worldpack import WorldPackError, load_worldpack, pack_meta
 
 DEFAULT_PACK = "world-packs/ancient_jianghu"
 SAVE_ROOT = Path("saves").resolve()  # A-1：存档根目录（路径穿越防御）
@@ -389,6 +389,54 @@ def api_derived(sid: str) -> dict:
     return {"ok": True, "enabled": True, "stats": session.derived.stats()}
 
 
+def _build_game(
+    sid: str,
+    pack,
+    state: GameState,
+    *,
+    mainline_enabled: bool,
+    rng: random.Random | None = None,
+) -> tuple[Game, UsageTracker]:
+    """用**给定的包与状态**造一局（N13：把几个入口收成一个）。
+
+    调用方需要的其实是同一件事，之前各写一份：新开一局（状态从包初始化）、
+    跨重启续玩（状态来自时间线快照）。构造选项必须一致（`_game_options`），
+    否则续玩出来的局会**悄悄降级**——`mainline_enabled` / `context_window` /
+    `critique_on_critical` / `factcheck_every` 这些只该有一处算。
+
+    `rng`：续玩必须**沿用快照里的随机流**，否则"明明接着上一局，世界却从另一条
+    随机线继续长"。
+    """
+    settings = load_settings()
+    if not settings.has_api_key:
+        raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
+    # N5/C3：游玩调用也带 **pack 归因轴**（"这张卡上共花了多少钱"答得出游玩那一半）
+    tracker = UsageTracker(_usage_path(sid), session=sid, pack=pack_meta(pack)["id"])
+    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
+    game = Game(
+        pack, state, llm,
+        rng=rng if rng is not None else random.Random(),
+        autosave_path=_autosave_path(sid, pack),  # B-4 按会话隔离 + N4 按卡分目录
+        mainline_enabled=mainline_enabled,  # E-4：自由游玩不进入主线节点
+        **_game_options(),
+    )
+    return game, tracker
+
+
+def _rng_from_payload(payload: dict) -> random.Random:
+    """从快照还原随机流（与 `runlog.rebuild_game` 同一口径，只此一处）。
+
+    JSON 回环会把元组读成列表，而 `Random.setstate` 要求元组——回退与跨重启续玩
+    共用这个入口，免得两处各写一遍然后悄悄不同步。
+    """
+    rng = random.Random()
+    rng_state = payload.get("rng_state")
+    if rng_state is not None:
+        version, keys, gauss = rng_state
+        rng.setstate((version, tuple(keys), tuple(gauss) if gauss is not None else None))
+    return rng
+
+
 def _make_game(
     sid: str,
     pack_id: str | None = None,
@@ -400,23 +448,11 @@ def _make_game(
 
     选定的是哪个包不在这里回传：答案就在 `game.pack_meta["id"]`（唯一真源）。
     """
-    settings = load_settings()
-    if not settings.has_api_key:
-        raise HTTPException(500, "未配置 DEEPSEEK_API_KEY")
-    pack_path, pack_id = _resolve_pack(pack_id, draft)
+    pack_path, _pid = _resolve_pack(pack_id, draft)
     pack = load_worldpack(pack_path)
-    state = GameState.from_pack(pack)
-    # N5/C3：游玩调用也带 **pack 归因轴**。此前只有创作者账本带这个字段，
-    # 于是"这张卡上共花了多少钱"答不出游玩那一半（只能按会话一个个翻）。
-    tracker = UsageTracker(_usage_path(sid), session=sid, pack=pack_id)
-    llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
-    game = Game(
-        pack, state, llm,
-        autosave_path=_autosave_path(sid, pack),  # B-4 按会话隔离 + N4 按卡分目录
-        mainline_enabled=mainline_enabled,  # E-4：自由游玩不进入主线节点
-        **_game_options(),
+    return _build_game(
+        sid, pack, GameState.from_pack(pack), mainline_enabled=mainline_enabled
     )
-    return game, tracker
 
 
 def _rebuild_from_checkpoint(sid: str, session: "Session", payload: dict) -> Game:
@@ -433,14 +469,9 @@ def _rebuild_from_checkpoint(sid: str, session: "Session", payload: dict) -> Gam
     """
     old = session.game
     state = GameState.from_dict(payload["state"])
-    rng = random.Random()
-    rng_state = payload.get("rng_state")
-    if rng_state is not None:
-        version, keys, gauss = rng_state
-        rng.setstate((version, tuple(keys), tuple(gauss) if gauss is not None else None))
     game = Game(
         old.pack, state, old.llm,
-        rng=rng,
+        rng=_rng_from_payload(payload),
         autosave_path=_autosave_path(sid, old.pack),
         mainline_enabled=old.mainline_enabled,  # 自由/剧本模式必须跟着走
         **_game_options(),
@@ -1448,6 +1479,10 @@ def _checkpoint_turn(sid: str, session: Session, req: TurnRequest) -> str:
             history=session.game.history,
             rng=session.game.rng,
             label=_turn_label(session.game, req),
+            # N13：身份与模式随快照落盘——服务重启之后，盘上这份时间线是唯一能回答
+            # "这局是哪张卡、什么模式"的东西（会话活在内存里，进程一停就没了）。
+            pack=session.game.pack_meta,
+            mainline=session.game.mainline_enabled,
         )
     except Exception as e:  # noqa: BLE001 — 存档点失败不该毁掉已经提交的回合
         return f"（这一回合没能记入时间线：{type(e).__name__}: {e}——回退可能少一版）"
@@ -1495,6 +1530,272 @@ def _history_entries(game: Game) -> list[dict]:
             if text:
                 out.append({"role": "player", "text": text})
     return out
+
+
+# ---------------------------------------------------------------------------
+# N13：跨重启续玩
+# ---------------------------------------------------------------------------
+#
+# **为什么需要**：会话活在进程内存里（`SESSIONS`），服务一停就没了；而这恰恰是玩家
+# 最常撞到的一堵墙——关掉终端、第二天回来，那一局就"消失"了（存档还在，但那是另一条
+# 体验：读档回到存档点，不是接着刚才那一回合）。
+#
+# 磁盘上其实什么都在：`saves/timeline-<sid>/` 有每一版的 state + history + rng，
+# 而 N13 之前的快照缺的只是"这局属于哪张卡、什么模式"这一层身份。补上之后，
+# "继续上次的局"就只是一次重建。
+
+
+def _timeline_or_404(sid: str) -> timeline.Timeline:
+    """按 sid 拿到盘上的时间线；不存在就明确 404（**不自动建**）。
+
+    N13 之后这条路径会被**客户端可控的 sid** 直接打到（`POST /api/{sid}/resume`
+    不需要会话就生效），所以 `timeline_root` 的白名单拒绝必须翻译成 4xx——
+    否则一个 `a b` 这样的 sid 会变成 500，看着像服务出错。
+    """
+    try:
+        tl = _timeline(sid)
+    except timeline.TimelineError as e:
+        raise HTTPException(400, str(e)) from e
+    if not tl.entries():
+        raise HTTPException(
+            404, f"没有这一局的时间线：{sid}（saves/{timeline.TIMELINE_DIRNAME}-{sid}/ 里没有索引）"
+        )
+    return tl
+
+
+def _resume_pack(meta: dict) -> tuple[str, str]:
+    """从时间线的身份推断要用的世界包 → `(pack_id, 说明文字)`。
+
+    **三条路径，每条都说清理由**：
+    1. 有身份戳（新快照）→ 查表；**digest 漂移就拒绝**（与读档 G2 同一口径：
+       卡被改过之后旧局不通用，硬续会静默穿帮）；
+    2. 没有身份戳（N13 之前的旧快照）但有世界名 → 在库里**唯一匹配**才认；
+    3. 都没有 / 多个候选 → 拒绝，并告诉玩家该怎么办。**不猜**。
+    """
+    pack = meta.get("pack") or {}
+    pid = str(pack.get("id") or "")
+    if pid:
+        entry = catalog.resolve_pack(pid, _pack_root())
+        if entry is None:
+            raise HTTPException(
+                409, f"这一局用的世界包 {pid!r} 已经不在库里了——把它放回 world-packs/ 再继续。"
+            )
+        if not entry.playable:
+            raise HTTPException(409, f"这一局用的世界包 {pid!r} 现在无法加载：{entry.error}")
+        want = str(pack.get("digest") or "")
+        if want and entry.digest and want != entry.digest:
+            raise HTTPException(
+                409,
+                f"这一局的卡和现在库里那份不是同一份内容（这一局 {want[:8]} / 现在 "
+                f"{entry.digest[:8]}）。卡改过之后旧局不通用（NPC id / 旗标可能已变），"
+                f"要么把卡恢复到那一版，要么从存档列表读档另开一局。",
+            )
+        return pid, ""
+
+    name = str(meta.get("pack_name") or "")
+    matches = [
+        e for e in catalog.list_packs(_pack_root())
+        if e.name == name and e.playable
+    ] if name else []
+    if len(matches) == 1:
+        return matches[0].id, (
+            f"这一局是旧格式时间线（没有身份戳），已按世界名《{name}》匹配到 {matches[0].id}"
+        )
+    if not name:
+        raise HTTPException(
+            409, "这一局的时间线是旧格式（没有身份戳，也没有世界名），无法判断属于哪张卡。"
+                 "请从存档列表读档，或让开发者用旧版重新记一版。"
+        )
+    raise HTTPException(
+        409, f"这一局是旧格式时间线（没有身份戳），而库里叫《{name}》的卡有 "
+             f"{len(matches)} 张，无法确定是哪一张。请从存档列表读档。"
+    )
+
+
+def _last_choices(history: list[dict]) -> list[str]:
+    """从历史里取回**上一回合的候选项**（N13）。
+
+    候选项没存进 `state`，但它在历史里：`submit_narration` 的参数里就有
+    `choices`（和正文同一个地方——见 `_narration_of` 的注释）。所以续玩之后
+    不必把玩家打回"只能自由输入"：上一轮的选项原样给回去。
+    """
+    for m in reversed(history):
+        if m.get("role") != "assistant":
+            continue
+        for tc in m.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            if fn.get("name") != "submit_narration":
+                continue
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                return []
+            return [str(c) for c in (args.get("choices") or [])]
+    return []
+
+
+class ResumeRequest(BaseModel):
+    """N13：从哪一版继续。缺省 = head（接着刚才那一回合）。"""
+
+    rev: int | None = None
+
+
+def _open_session(sid: str, session: Session) -> None:
+    """把一个 Session 挂进进程表（含 N8 的派生调度器）。**顺序有讲究**：
+
+    调度器必须**先挂**再让这一局开始跑回合——反过来会让派生步骤内联执行
+    （不算错，只是白丢一次收益；`api_new` 里踩过同一个坑）。
+    """
+    if DERIVED_ASYNC:
+        session.derived = _DerivedWorker(sid, session)
+    _attach_scheduler(sid, session)
+    SESSIONS[sid] = session
+
+
+@app.get("/api/timelines")
+def api_timelines() -> dict:
+    """盘上**可以继续玩**的局（N13：跨重启续玩的那一屏）。
+
+    只读磁盘、不需要会话——这正是它的意义：进程刚起来、`SESSIONS` 空着的时候，
+    玩家仍然能看见"上次玩到哪一版"。
+
+    每条带 `resumable` 与 `reason`：**不可续的原因写在数据里**，而不是让玩家点下去
+    才吃一个 409。
+    """
+    rows: list[dict] = []
+    problems: list[dict] = []
+    for tl in timeline.list_timelines(SAVE_ROOT):
+        try:
+            meta = tl.meta()
+        except timeline.TimelineError as e:  # 单个坏时间线不拖垮列表
+            problems.append({"sid": tl.sid, "error": str(e)})
+            continue
+        if meta.get("empty"):
+            continue
+        row = {
+            "sid": meta["sid"],
+            "rev": meta["head_rev"],
+            "branch": meta["branch"],
+            "turn": meta["turn"],
+            "day": meta["day"],
+            "mode": MODE_STORY if meta["mainline"] else MODE_FREE,
+            "pack_id": (meta.get("pack") or {}).get("id", ""),
+            "pack_name": meta["pack_name"],
+            "legacy": meta["legacy"],
+            "size_bytes": meta["size_bytes"],
+            "mtime": int(meta["mtime"]),
+            "live": meta["sid"] in SESSIONS,  # 已经在内存里跑着
+            "resumable": True,
+            "reason": "",
+        }
+        try:
+            pid, note = _resume_pack(meta)
+            row["pack_id"] = pid
+            row["reason"] = note  # 旧格式的兜底说明（空 = 一切正常）
+        except HTTPException as e:
+            row["resumable"] = False
+            row["reason"] = str(e.detail)
+        rows.append(row)
+    rows.sort(key=lambda r: r["mtime"], reverse=True)
+    return {"ok": True, "timelines": rows, "problems": problems}
+
+
+@app.post("/api/{sid}/resume")
+def api_resume(sid: str, req: ResumeRequest | None = None) -> dict:
+    """**从磁盘上的时间线重新打开这一局**（N13）。
+
+    - 默认从 head 继续；给出 `rev` 就从那一版继续（= 回退语义：开一条新分支）；
+    - 进程里已经有这一局 → **幂等返回现状**（不重建），避免把进行中的会话顶掉；
+    - 会话不存在也没关系——这正是"服务重启之后还能接着玩"的意思。
+
+    返回的形状与 `POST /api/new` 对齐（`sid/pack_id/mode/view`），另加 `history`
+    与 `rev`：前端可以直接进游戏屏并重建正文栏。
+    """
+    req = req or ResumeRequest()
+    live = SESSIONS.get(sid)
+    if live is not None:
+        # 幂等：进程里已经有这一局就直接回现状，**不要**重建（重建会把进行中的
+        # 会话顶掉，玩家正在打的那一回合会消失）
+        game = live.game
+        live_head = _timeline(sid).head()
+        return {
+            "ok": True,
+            "sid": sid,
+            "pack_id": session_pack_id(live),
+            "mode": session_mode(live),
+            "name": game.pack.world.name,
+            "draft": session_is_draft(live),
+            "rev": live_head.rev if live_head else None,
+            "turn": game.state.turn_count,
+            "day": game.state.day,
+            "view": _view(game, _resume_view(game, [])),
+            "history": _history_entries(game),
+            "note": "这一局已经在内存里跑着，没有重建。",
+        }
+
+    tl = _timeline_or_404(sid)
+    meta = tl.meta()
+    pack_id, note = _resume_pack(meta)
+    pack_path, _pid = _resolve_pack(pack_id, None)
+    pack = load_worldpack(pack_path)
+
+    head = tl.head()
+    target = req.rev if req.rev is not None else (head.rev if head else None)
+    if target is None:
+        raise HTTPException(404, f"这一局还没有任何版本：{sid}")
+    if head is not None and target != head.rev:
+        # 从旧版继续 = 回退（开新分支、旧线保留），与 `/rewind` 完全同一套语义
+        entry = tl.rewind_to(target)
+        note = (note + "；" if note else "") + f"从 rev {target} 继续，开了新分支 {entry.branch}"
+    else:
+        entry = head
+    try:
+        payload = tl.payload(entry.rev)
+    except timeline.TimelineError as e:
+        raise HTTPException(400, str(e))
+
+    state = GameState.from_dict(payload["state"])
+    game, tracker = _build_game(
+        sid, pack, state,
+        mainline_enabled=bool(payload.get("mainline", meta["mainline"])),
+        rng=_rng_from_payload(payload),
+    )
+    game.history = list(payload.get("history") or [])
+    session = Session(game=game, lock=threading.Lock(), usage=tracker)
+    with session.lock:
+        _open_session(sid, session)
+    choices = _last_choices(game.history)
+    return {
+        "ok": True,
+        "sid": sid,
+        "pack_id": session_pack_id(session),
+        "mode": session_mode(session),
+        "name": game.pack.world.name,
+        "draft": session_is_draft(session),
+        "rev": entry.rev,
+        "branch": entry.branch,
+        "turn": game.state.turn_count,
+        "day": game.state.day,
+        # 候选/关键抉择都要还原：否则续玩第一屏是"只能自由输入"，像是丢了东西
+        "view": _view(game, _resume_view(game, choices)),
+        "history": _history_entries(game),
+        "note": note,
+    }
+
+
+def _resume_view(game: Game, choices: list[str]) -> "TurnView":
+    """续玩第一屏的视图。
+
+    **正文刻意留空**：续玩的正文由 `history` 重建（前端把它铺进正文栏），
+    这里再给一遍最后一段，玩家就会看到同一段正文出现两次（真机冒烟抓到的）。
+    视图只负责 `choices` 与 `choice_prompt`——「上一回合的候选项」和「仍待决的
+    关键抉择」这两样在 history 里没有，必须由视图带回。
+    """
+    return TurnView(
+        narration=None,
+        choices=filter_choices(game.pack, choices),
+        choice_prompt=game.story.pending_choice(game.state),
+    )
 
 
 class RewindRequest(BaseModel):

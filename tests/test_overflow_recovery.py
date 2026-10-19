@@ -390,10 +390,17 @@ def test_cli_and_web_wire_context_window_from_settings():
 
     opts = inspect.getsource(web._game_options)
     assert "context_window=resolve_context_window(settings)" in opts, "_game_options 未接线"
-    # 两个入口都必须走 `_game_options()`，否则就出现了"第二份构造选项"
-    for fn_name in ("_make_game", "_rebuild_from_checkpoint"):
+    # 每个**真的构造 Game** 的地方都必须走 `_game_options()`，否则就出现"第二份构造选项"。
+    # N13 把"新开一局"与"跨重启续玩"收进了 `_build_game`，所以清单是：
+    # 建局/续玩（`_build_game`）+ 回退重建（`_rebuild_from_checkpoint`）。
+    for fn_name in ("_build_game", "_rebuild_from_checkpoint"):
         src = inspect.getsource(getattr(web, fn_name))
         assert "_game_options()" in src, f"{fn_name} 没有用共享选项（回退会悄悄退化）"
+    # `_make_game` 不再自己构造 Game——它是 `_build_game` 的薄壳。
+    # 断言"别再自己拼一个"比"必须包含某字符串"更能挡住分叉。
+    shell = inspect.getsource(web._make_game)
+    assert "Game(" not in shell, "_make_game 又自己构造 Game 了——应当走 _build_game"
+    assert "_build_game(" in shell, "_make_game 没有走共享的 _build_game"
 
 
 def test_resolve_context_window_prefers_explicit_config():

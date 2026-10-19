@@ -343,10 +343,63 @@ function startStub() {
           { path: 'other_world/web.json', dir: 'other_world', pack: { id: 'other_world', digest: 'b'.repeat(16) }, pack_name: '另一张卡', save_version: 3, turn_count: 5, day: 2, history: 4, size: 120, mtime: 1762000100 },
         ],
       })
-    if (path === '/api/sessions') return json({ ok: true, sessions: [] })
     if (/^\/api\/[^/]+\/load$/.test(path))
       // 读档要回 `path`（前端会显示"已读档：…"）；状态刷新走 status/timeline，另有桩。
       return json({ ok: true, path: 'other_world/web.json', status: '【场景】长安城·沈府门前' })
+    if (path === '/api/sessions') return json({ ok: true, sessions: [] })
+    // N13：盘上能继续的局。桩里刻意安排**两条**：一条可续、一条不可续（包漂移），
+    // 好让"接着上次玩"与"不能继续：说明原因"这两件事都能被看见。
+    if (path === '/api/timelines')
+      return json({
+        ok: true,
+        problems: [],
+        timelines: [
+          {
+            sid: 'saved_world_1', rev: 3, branch: 'b1', turn: 2, day: 1, mode: 'story',
+            pack_id: 'demo_world', pack_name: '演示世界', legacy: false,
+            size_bytes: 4096, mtime: 1762000300, live: false, resumable: true, reason: '',
+          },
+          {
+            sid: 'saved_world_2', rev: 7, branch: 'b2', turn: 5, day: 2, mode: 'free',
+            pack_id: 'gone_world', pack_name: '已经改过的卡', legacy: false,
+            size_bytes: 8192, mtime: 1762000200, live: false, resumable: false,
+            reason: '这一局的卡和现在库里那份不是同一份内容（这一局 aaaa / 现在 bbbb）。',
+          },
+        ],
+      })
+    if (/^\/api\/[^/]+\/resume$/.test(path)) {
+      // N13：续玩的第一屏 = 历史正文 + 上一回合的候选项（不是"只能自由输入"）
+      state.turns = 2
+      return json({
+        ok: true,
+        sid: 'saved_world_1',
+        pack_id: 'demo_world',
+        mode: 'story',
+        name: '演示世界',
+        draft: false,
+        rev: 3,
+        branch: 'b1',
+        turn: 2,
+        day: 1,
+        view: {
+          narration: '这是上次留下的最后一段正文。',
+          choices: ['继续上次的路', '换个方向', FREE_INPUT],
+          briefing: null,
+          ending: null,
+          choice_prompt: null,
+          recovered: [],
+          sub_turns: 1,
+          turn: 2,
+          context_audit: null,
+        },
+        history: [
+          { role: 'assistant', text: '上次的开场正文。' },
+          { role: 'player', text: '我上次说了这句话。' },
+          { role: 'assistant', text: '这是上次留下的最后一段正文。' },
+        ],
+        note: '',
+      })
+    }
     if (path === '/api/new') {
       state.turns = 0
       // 草稿试玩：`draft` 选项（§3.2 ③）——回包里带 `draft: true`，
@@ -627,6 +680,64 @@ async function main() {
       label: '选卡屏重新加载',
     })
 
+    // ---- N13：接着上次玩（服务重启过也没关系） ----
+    check(
+      '选卡屏列出盘上能继续的局（会话活内存、时间线活磁盘）',
+      await cdp.eval(`!!document.querySelector('#app .recent-games')`),
+    )
+    const recentText = await cdp.eval(
+      `document.querySelector('#app .recent-games').textContent`,
+    )
+    check(
+      '续玩行说清是哪张卡、什么模式、跑到第几回合',
+      recentText.includes('演示世界') && recentText.includes('跟着主线') &&
+        recentText.includes('第 2 回合'),
+      recentText.slice(0, 100),
+    )
+    check(
+      '不可续的局**显示出原因**（而不是点下去才失败）',
+      recentText.includes('不是同一份内容') &&
+        (await cdp.eval(`[...document.querySelectorAll('#app .recent-games button')]
+           .some(b => b.disabled && /不是同一份内容/.test(b.textContent))`)),
+      recentText.slice(0, 160),
+    )
+    const resumed = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .recent-games button')]
+        .find(x => !x.disabled)
+      if (!b) return false
+      b.click()
+      return true
+    })()`)
+    check('点了「继续」', resumed)
+    await cdp.waitFor(`!!document.querySelector('#app .col-mid')`, { label: '续玩进入游戏屏' })
+    const resumedProse = await cdp.eval(`document.querySelector('#app .prose').textContent`)
+    check(
+      '续玩把**已有历史**铺回正文栏（不是从空白开始）',
+      resumedProse.includes('上次的开场正文') &&
+        resumedProse.includes('我上次说了这句话') &&
+        resumedProse.includes('这是上次留下的最后一段正文'),
+      resumedProse.slice(0, 120),
+    )
+    check(
+      '续玩还原上一回合的候选项（不是只能自由输入）',
+      await cdp.eval(
+        `[...document.querySelectorAll('#app .choices button')].some(b => /继续上次的路/.test(b.textContent))`,
+      ),
+    )
+    check(
+      '续玩给出结论先行的提示（玩家要知道自己回到了哪一版）',
+      await cdp.eval(`/已继续上次的局/.test(document.querySelector('#app .notice')?.textContent || '')`),
+    )
+    // 退回选卡屏继续后面的用例（真实入口就在左栏）
+    await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .col-left button')]
+        .find(x => x.textContent.trim() === '换一张卡')
+      if (b) b.click()
+    })()`)
+    await cdp.waitFor(`document.querySelectorAll('#app .pack').length >= 2`, {
+      label: '退回选卡屏',
+    })
+
     // ---- 点卡 → 开始 ----
     await cdp.eval(`document.querySelector('#app .pack:not(.broken)').click()`)
     await cdp.eval(`document.querySelector('#app .save-row button').click()`)
@@ -642,6 +753,13 @@ async function main() {
     // ---- 正文 + 关键抉择 ----
     const prose = await cdp.eval(`document.querySelector('#app .prose')?.textContent || ''`)
     check('正文流渲染出开局叙事', prose.includes('你挡在了她身前'), prose.slice(0, 40))
+    // 开局正文只许出现一次：`onMounted` 被重复注册时（2026-10 的真实缺陷）
+    // 开局视图会被应用两遍，这段话就会连着出现两次——不报错，只能这样看出来。
+    check(
+      '开局正文只出现一次（重复注册挂载钩子会渲染两遍）',
+      (prose.match(/她敛衽一礼/g) || []).length === 1,
+      `出现 ${(prose.match(/她敛衽一礼/g) || []).length} 次`,
+    )
     check(
       '关键抉择提示渲染',
       await cdp.eval(`/关键抉择/.test(document.querySelector('#app .col-mid').textContent)`),

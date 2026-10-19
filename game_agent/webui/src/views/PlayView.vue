@@ -17,7 +17,9 @@ import { useTurnStream } from '../composables/useTurnStream'
 import { recoveryNote } from '../lib/recovery'
 
 const props = defineProps({
-  session: { type: Object, required: true }, // { sid, pack_id, name, mode }
+  // { sid, pack_id, name, mode, openingView?, openingHistory? }
+  // openingHistory：N13 续玩时已有的一屏历史（正文栏要接着上次那一段）
+  session: { type: Object, required: true },
   freeInput: { type: String, default: '' },
   saves: { type: Array, default: () => [] },
 })
@@ -96,6 +98,14 @@ function money(v) {
 }
 
 onMounted(async () => {
+  // N13：续玩时先铺上**已有历史**（正文栏接着上次那一段，而不是从空白开始）。
+  // 与 `rewindTo` 用同一个映射：玩家输入加括号、模型正文原样。
+  if (props.session.openingHistory?.length) {
+    entries.value = props.session.openingHistory.map((h) => ({
+      text: h.role === 'player' ? `（你说：${h.text}）` : h.text,
+      recovery: '',
+    }))
+  }
   // **开局的 view 必须被应用**：它带着开场叙事、候选项与（往往第一个）关键抉择。
   // 漏掉它的症状是"三栏都渲染出来了，但正文与候选都是空的、右栏一直显示等待开局"
   // ——结构测试全绿、只有真机冒烟能发现（scripts/webui_smoke.mjs 就是为此存在的）。
@@ -173,16 +183,6 @@ async function rewindTo(rev) {
 function shortTime(ts) {
   return (ts || '').slice(5, 16).replace('T', ' ')
 }
-
-onMounted(async () => {
-  // **开局的 view 必须被应用**：它带着开场叙事、候选项与（往往第一个）关键抉择。
-  // 漏掉它的症状是"三栏都渲染出来了，但正文与候选都是空的、右栏一直显示等待开局"
-  // ——结构测试全绿、只有真机冒烟能发现（scripts/webui_smoke.mjs 就是为此存在的）。
-  if (props.session.openingView) applyView(props.session.openingView)
-  // 状态栏与行动区不在任何流式事件里，必须开局时主动取一次
-  await refresh()
-  await loadTimeline()
-})
 
 async function doSave() {
   const name = `${props.session.pack_id}${props.session.mode === 'free' ? '-free' : ''}.json`

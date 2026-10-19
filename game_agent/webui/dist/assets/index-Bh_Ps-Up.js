@@ -6430,15 +6430,35 @@ const _hoisted_17$2 = {
   key: 0,
   class: "t"
 };
+const _hoisted_18$2 = {
+  key: 1,
+  class: "recent-games"
+};
+const _hoisted_19$2 = ["disabled", "onClick"];
+const _hoisted_20$2 = { class: "pname" };
+const _hoisted_21$2 = {
+  key: 0,
+  class: "pera"
+};
+const _hoisted_22$2 = {
+  key: 1,
+  class: "pera"
+};
+const _hoisted_23$2 = {
+  key: 2,
+  class: "pera"
+};
 const _sfc_main$7 = {
   __name: "LibraryView",
   props: {
     packs: { type: Array, default: () => [] },
     saves: { type: Array, default: () => [] },
+    // N13：盘上可以继续的局（服务重启之后仍然在——会话活内存、时间线活磁盘）
+    timelines: { type: Array, default: () => [] },
     defaultMode: { type: String, default: "story" },
     busy: { type: Boolean, default: false }
   },
-  emits: ["start", "load", "refresh", "studio"],
+  emits: ["start", "load", "refresh", "studio", "resume"],
   setup(__props, { emit: __emit }) {
     const props = __props;
     const emit2 = __emit;
@@ -6446,7 +6466,14 @@ const _sfc_main$7 = {
     const mode = ref(props.defaultMode);
     const playable = computed(() => props.packs.filter((p2) => p2.playable));
     const usableSaves = computed(() => props.saves.filter((s) => !s.error));
+    const recentGames = computed(() => props.timelines.slice(0, 5));
     const savePath = ref("");
+    function recentLabel(t) {
+      const when = t.mtime ? new Date(t.mtime * 1e3).toLocaleString() : "";
+      const modeText = t.mode === "free" ? "自由探索" : "跟着主线";
+      const who = t.pack_name || t.pack_id || "（未知的卡）";
+      return `《${who}》 · ${modeText} · 第 ${t.turn} 回合（第 ${t.day} 天） · ${when}`;
+    }
     function label(p2) {
       const bits = [];
       if (p2.npcs) bits.push(`${p2.npcs} 名角色`);
@@ -6471,7 +6498,7 @@ const _sfc_main$7 = {
     }
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", _hoisted_1$7, [
-        _cache[9] || (_cache[9] = createBaseVNode("h2", null, "选一张卡", -1)),
+        _cache[11] || (_cache[11] = createBaseVNode("h2", null, "选一张卡", -1)),
         createBaseVNode("p", _hoisted_2$7, [
           createTextVNode(" 共 " + toDisplayString(__props.packs.length) + " 张卡（可玩 " + toDisplayString(playable.value.length) + "）。 ", 1),
           createBaseVNode("button", {
@@ -6546,7 +6573,26 @@ const _sfc_main$7 = {
             onClick: load
           }, "读取", 8, _hoisted_16$2)
         ]),
-        __props.saves.length && !usableSaves.value.length ? (openBlock(), createElementBlock("p", _hoisted_17$2, "存档目录里没有可读的档。")) : createCommentVNode("", true)
+        __props.saves.length && !usableSaves.value.length ? (openBlock(), createElementBlock("p", _hoisted_17$2, "存档目录里没有可读的档。")) : createCommentVNode("", true),
+        recentGames.value.length ? (openBlock(), createElementBlock("div", _hoisted_18$2, [
+          _cache[9] || (_cache[9] = createBaseVNode("h3", { class: "sec" }, "接着上次玩", -1)),
+          _cache[10] || (_cache[10] = createBaseVNode("p", { class: "t" }, " 这几局记录在本地磁盘上——即使服务重启过，也能从**最后一版**继续（不是回到存档点）。 ", -1)),
+          (openBlock(true), createElementBlock(Fragment, null, renderList(recentGames.value, (t) => {
+            return openBlock(), createElementBlock("div", {
+              key: t.sid,
+              class: "recent-row"
+            }, [
+              createBaseVNode("button", {
+                class: "recent-item",
+                disabled: __props.busy || !t.resumable,
+                onClick: ($event) => emit2("resume", { sid: t.sid })
+              }, [
+                createBaseVNode("span", _hoisted_20$2, toDisplayString(recentLabel(t)), 1),
+                !t.resumable ? (openBlock(), createElementBlock("span", _hoisted_21$2, "不能继续：" + toDisplayString(t.reason), 1)) : t.legacy ? (openBlock(), createElementBlock("span", _hoisted_22$2, toDisplayString(t.reason), 1)) : (openBlock(), createElementBlock("span", _hoisted_23$2, "rev " + toDisplayString(t.rev) + " · 分支 " + toDisplayString(t.branch), 1))
+              ], 8, _hoisted_19$2)
+            ]);
+          }), 128))
+        ])) : createCommentVNode("", true)
       ]);
     };
   }
@@ -6870,6 +6916,11 @@ const api = {
   history: (sid) => fetch(`/api/${sid}/history`).then((r) => jsonOrThrow(r, "读取历史正文")),
   /** 回到某一版：后端产生**新版本 + 新分支**（旧分支原地保留），并返回重建后的历史。 */
   rewind: (sid, rev) => post(`/api/${sid}/rewind`, { rev }).then((r) => jsonOrThrow(r, "回退")),
+  // ---- N13：跨重启续玩 ----
+  /** 盘上可继续的局（服务重启之后仍然在——会话活内存，时间线活在磁盘） */
+  timelines: () => fetch("/api/timelines").then((r) => jsonOrThrow(r, "读取上次的局")),
+  /** 从磁盘重新打开这一局（缺省接着 head；给 rev 就=从那一版继续） */
+  resume: (sid, rev) => post(`/api/${sid}/resume`, rev == null ? {} : { rev }).then((r) => jsonOrThrow(r, "继续这一局")),
   // ---- 创作工作台（N2a）----
   /** 起一个后台生成任务（立刻返回 job_id；进度看 SSE）。会**真的花钱**，除非 offline。 */
   generate: (body) => post("/api/packs/generate", body).then((r) => jsonOrThrow(r, "起生成任务")),
@@ -7048,8 +7099,9 @@ const _hoisted_28$1 = {
 const _sfc_main$2 = {
   __name: "PlayView",
   props: {
+    // { sid, pack_id, name, mode, openingView?, openingHistory? }
+    // openingHistory：N13 续玩时已有的一屏历史（正文栏要接着上次那一段）
     session: { type: Object, required: true },
-    // { sid, pack_id, name, mode }
     freeInput: { type: String, default: "" },
     saves: { type: Array, default: () => [] }
   },
@@ -7119,6 +7171,13 @@ const _sfc_main$2 = {
       return v == null ? "—" : `¥${Number(v).toFixed(3)}`;
     }
     onMounted(async () => {
+      var _a;
+      if ((_a = props.session.openingHistory) == null ? void 0 : _a.length) {
+        entries.value = props.session.openingHistory.map((h) => ({
+          text: h.role === "player" ? `（你说：${h.text}）` : h.text,
+          recovery: ""
+        }));
+      }
       if (props.session.openingView) applyView(props.session.openingView);
       await refresh();
       await loadTimeline();
@@ -7178,11 +7237,6 @@ const _sfc_main$2 = {
     function shortTime(ts) {
       return (ts || "").slice(5, 16).replace("T", " ");
     }
-    onMounted(async () => {
-      if (props.session.openingView) applyView(props.session.openingView);
-      await refresh();
-      await loadTimeline();
-    });
     async function doSave() {
       const name = `${props.session.pack_id}${props.session.mode === "free" ? "-free" : ""}.json`;
       try {
@@ -8423,6 +8477,7 @@ const _sfc_main = {
     const config = ref({ free_input: "", default_mode: "story" });
     const packs = ref([]);
     const saves = ref([]);
+    const timelines = ref([]);
     const session = ref(null);
     const view = ref("library");
     const busy = ref(false);
@@ -8435,9 +8490,10 @@ const _sfc_main = {
     }
     async function refreshLists() {
       try {
-        const [cat, sv] = await Promise.all([api.catalog(), api.saves()]);
+        const [cat, sv, tls] = await Promise.all([api.catalog(), api.saves(), api.timelines()]);
         packs.value = cat.packs || [];
         saves.value = sv.saves || [];
+        timelines.value = tls.timelines || [];
       } catch (e) {
         say(e.message, true);
       }
@@ -8503,6 +8559,31 @@ const _sfc_main = {
       say("");
       refreshLists();
     }
+    async function resumeGame({ sid }) {
+      busy.value = true;
+      try {
+        const d = await api.resume(sid);
+        session.value = {
+          sid: d.sid,
+          pack_id: d.pack_id,
+          name: d.name,
+          mode: d.mode,
+          draft: d.draft === true,
+          // 续玩第一屏：正文栏由 history 重建，候选项来自上一回合，关键抉择若仍待决会带回
+          openingView: d.view,
+          openingHistory: d.history || []
+        };
+        view.value = "play";
+        say(
+          d.note ? `已继续上次的局（rev ${d.rev}）——${d.note}` : `已继续上次的局：第 ${d.turn} 回合（rev ${d.rev}，分支 ${d.branch}）`
+        );
+      } catch (e) {
+        say(e.message, true);
+        await refreshLists();
+      } finally {
+        busy.value = false;
+      }
+    }
     function leaveToLibrary() {
       session.value = null;
       view.value = "library";
@@ -8542,13 +8623,15 @@ const _sfc_main = {
           key: 2,
           packs: packs.value,
           saves: saves.value,
+          timelines: timelines.value,
           "default-mode": config.value.default_mode || "story",
           busy: busy.value,
           onStart: start,
           onLoad: loadSave,
+          onResume: resumeGame,
           onRefresh: refreshLists,
           onStudio: _cache[4] || (_cache[4] = ($event) => view.value = "studio")
-        }, null, 8, ["packs", "saves", "default-mode", "busy"]))
+        }, null, 8, ["packs", "saves", "timelines", "default-mode", "busy"]))
       ]);
     };
   }

@@ -262,6 +262,68 @@ class Timeline:
             return 0
         return sum(p.stat().st_size for p in self.root.glob("*.json*") if p.is_file())
 
+    # ---- 跨重启续玩（N13） ----
+
+    @property
+    def sid(self) -> str:
+        """这一版时间线属于哪个会话——**从目录名反推**，不另存一份。
+
+        与 `session_pack_id` / `session_mode` 同一条纪律：能推出来的东西不要再存，
+        存了就有"两份不一致"的可能。
+        """
+        prefix = f"{TIMELINE_DIRNAME}-"
+        name = self.root.name
+        return name[len(prefix):] if name.startswith(prefix) else ""
+
+    def meta(self) -> dict:
+        """磁盘上这一局的身份与进度（**不需要活会话**就能读）。
+
+        这是"服务重启之后还能继续玩"的入口：会话活在内存里，进程一停就没了；
+        但 `saves/timeline-<sid>/` 还在盘上，它足以回答"这是哪张卡、什么模式、
+        跑到第几回合"。返回：
+
+        - `pack`: `{id, digest}`（新快照有；**旧快照没有 → None**，由调用方兜底）
+        - `mainline`: 是否主线模式（旧快照同样没有 → 默认 True，调用方须说明）
+        - `pack_name` / `turn` / `day`：来自 head 的 `state`（旧快照也有）
+        - `legacy`: 快照早于 N13（没有身份戳），续玩时要么兜底要么如实拒绝
+        """
+        head = self.head()
+        if head is None:
+            return {"sid": self.sid, "head_rev": None, "branch": "", "pack": None,
+                    "mainline": True, "pack_name": "", "turn": 0, "day": 0,
+                    "size_bytes": self.size_bytes(), "mtime": 0.0, "legacy": False,
+                    "empty": True}
+        st: dict = {}
+        pack: dict | None = None
+        mainline = True
+        legacy = False
+        if (self.root / head.checkpoint).is_file():
+            try:
+                payload = self.payload(head.rev)
+            except (TimelineError, json.JSONDecodeError):
+                payload = {}
+            st = payload.get("state") or {}
+            pack = payload.get("pack")
+            mainline = bool(payload.get("mainline", True))
+            legacy = "pack" not in payload
+        else:
+            legacy = True  # head 的快照已被回收：连身份都读不出来
+        return {
+            "sid": self.sid,
+            "head_rev": head.rev,
+            "branch": head.branch,
+            "pack": pack,
+            "mainline": mainline,
+            "pack_name": str(st.get("pack_name") or ""),
+            "turn": int(st.get("turn_count", 0)),
+            "day": int(st.get("day", 0)),
+            "size_bytes": self.size_bytes(),
+            "mtime": (self.root / head.checkpoint).stat().st_mtime
+            if (self.root / head.checkpoint).is_file() else 0.0,
+            "legacy": legacy,
+        }
+
+
     def _entry(self, rev: int) -> Entry:
         for e in self.entries():
             if e.rev == rev:
@@ -277,16 +339,22 @@ class Timeline:
     # ---- 写 ----
 
     def append(self, *, state, history: list[dict], rng, label: str,
-               note: str = "") -> Entry:
+               note: str = "", pack: dict | None = None,
+               mainline: bool = True) -> Entry:
         """记录一个 revision（回合**已提交**之后调用）。
 
         `rng` 传 `game.rng`；`label` 是给玩家看的一句话（谁做了什么），
         `note` 非空表示这一版是"回退派生"出来的。
+
+        **跨重启续玩**（N13）：`pack` / `mainline` 记进快照——服务重启之后，
+        `saves/timeline-<sid>/` 是磁盘上唯一能回答"这一局属于哪张卡、什么模式"的东西。
+        旧快照没有这两个字段，读取端走 `pack_name` 兜底并说明（见 `web._resume_pack`）。
         """
         rev = self._next_rev()
         branch = self.current_branch() or "b1"
         return self._write(rev=rev, branch=branch, parent=None, state=state,
-                           history=history, rng=rng, label=label, note=note)
+                           history=history, rng=rng, label=label, note=note,
+                           pack=pack, mainline=mainline)
 
     def rewind_to(self, rev: int, *, label: str = "") -> Entry:
         """回退到 rev：**产生一个新 revision + 新分支**，并返回它。
@@ -314,7 +382,8 @@ class Timeline:
         )
 
     def _write(self, *, rev: int, branch: str, parent: int | None, state, history,
-               rng, label: str, note: str = "", reuse: str = "") -> Entry:
+               rng, label: str, note: str = "", reuse: str = "",
+               pack: dict | None = None, mainline: bool = True) -> Entry:
         self.root.mkdir(parents=True, exist_ok=True)
         if reuse:
             src = self.root / reuse
@@ -330,6 +399,10 @@ class Timeline:
                 # 与 `runlog.RunRecorder.checkpoint` 同一口径：JSON 回环把元组读成
                 # 列表，重建时由 `runlog.rebuild_game` 还原成元组。
                 payload["rng_state"] = rng.getstate()
+            # 跨重启续玩的元数据：没有它，磁盘上的时间线答不出"这局是哪张卡、什么模式"
+            if pack is not None:
+                payload["pack"] = dict(pack)
+            payload["mainline"] = bool(mainline)
             cp_name = _rev_name(rev)
             (self.root / cp_name).write_text(
                 json.dumps(payload, ensure_ascii=False), encoding="utf-8"
@@ -350,3 +423,25 @@ class Timeline:
         # 崩一次就留下一个最大的垃圾堆）。
         self.prune()
         return entry
+
+
+def list_timelines(base: str | Path) -> list["Timeline"]:
+    """扫出磁盘上**所有**一局的时间线（N13）。
+
+    目录名就是 `timeline-<sid>`（`timeline_root` 是唯一写口），所以这里只认这个前缀；
+    也顺手跳过空的/坏目录（单个坏时间线不该让列表整个失败——与 `catalog` 同一姿态）。
+    """
+    base = Path(base)
+    if not base.is_dir():
+        return []
+    prefix = f"{TIMELINE_DIRNAME}-"
+    out: list[Timeline] = []
+    for d in sorted(base.iterdir()):
+        if not d.is_dir() or not d.name.startswith(prefix):
+            continue
+        if not (d / INDEX_NAME).is_file():
+            continue
+        tl = Timeline(d)
+        if tl.sid:
+            out.append(tl)
+    return out

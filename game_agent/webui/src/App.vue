@@ -21,6 +21,7 @@ import { api } from './api/client'
 const config = ref({ free_input: '', default_mode: 'story' })
 const packs = ref([])
 const saves = ref([])
+const timelines = ref([]) // N13：盘上可以继续的局
 const session = ref(null) // 非空 = 在游戏中
 const view = ref('library') // library | play | studio；session 非空时以 play 为准
 const busy = ref(false)
@@ -36,9 +37,10 @@ function say(message, isError = false) {
 
 async function refreshLists() {
   try {
-    const [cat, sv] = await Promise.all([api.catalog(), api.saves()])
+    const [cat, sv, tls] = await Promise.all([api.catalog(), api.saves(), api.timelines()])
     packs.value = cat.packs || []
     saves.value = sv.saves || []
+    timelines.value = tls.timelines || []
   } catch (e) {
     say(e.message, true)
   }
@@ -113,6 +115,35 @@ function leave() {
   refreshLists()
 }
 
+/** N13：从磁盘上的时间线**重新打开**这一局（服务重启过也没关系）。 */
+async function resumeGame({ sid }) {
+  busy.value = true
+  try {
+    const d = await api.resume(sid)
+    session.value = {
+      sid: d.sid,
+      pack_id: d.pack_id,
+      name: d.name,
+      mode: d.mode,
+      draft: d.draft === true,
+      // 续玩第一屏：正文栏由 history 重建，候选项来自上一回合，关键抉择若仍待决会带回
+      openingView: d.view,
+      openingHistory: d.history || [],
+    }
+    view.value = 'play'
+    say(
+      d.note
+        ? `已继续上次的局（rev ${d.rev}）——${d.note}`
+        : `已继续上次的局：第 ${d.turn} 回合（rev ${d.rev}，分支 ${d.branch}）`,
+    )
+  } catch (e) {
+    say(e.message, true)
+    await refreshLists()  // 拒绝原因可能是包漂移，列表也该跟着更新
+  } finally {
+    busy.value = false
+  }
+}
+
 function leaveToLibrary() {
   session.value = null
   view.value = 'library'
@@ -159,10 +190,12 @@ onMounted(boot)
       v-else
       :packs="packs"
       :saves="saves"
+      :timelines="timelines"
       :default-mode="config.default_mode || 'story'"
       :busy="busy"
       @start="start"
       @load="loadSave"
+      @resume="resumeGame"
       @refresh="refreshLists"
       @studio="view = 'studio'"
     />
