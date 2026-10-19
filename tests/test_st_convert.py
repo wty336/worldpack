@@ -432,7 +432,8 @@ def test_real_card_samples_activate_automatically():
     cards = sorted((REPO / "samples" / "st_cards").glob("*.json"))
     if not cards:
         pytest.skip(
-            "samples/st_cards/ 里还没有真实卡语料（N9 的收尾项）。"
+            "samples/st_cards/ 里还没有真实卡语料——这是 N9 唯一**环境受限未验**的验收项"
+            "（本机无网络、全盘无 ST 卡；作者已决定不为它挂起）。"
             "放一张 ST 导出的 JSON 进来，这条测试会自动开始验证它。"
         )
     for path in cards:
