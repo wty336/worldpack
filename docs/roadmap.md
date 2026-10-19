@@ -18,7 +18,7 @@
 
 ## 0. 当前状态（2026-10）
 
-**离线测试 1165 项全绿** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **69/69** · CI 绿。
+**离线测试 1165 项全绿（1 项 skip = 等真实 ST 卡）** · 8 个世界包 `check-worldpack` 全通过 · 前端真机冒烟 **69/69** · CI 绿。
 
 ### 已完成
 
@@ -856,7 +856,7 @@ def _defer(self, job):
 | `game_agent/st_convert.py` | `parse_card()`（V1/V2/V3 + 裸世界书归一）、`character_book_to_lore()`、`lore_to_character_book()`（**两个方向**）、`card_to_source_text()`、`lore_into_world_yaml()` |
 | `scripts/import_story.py --format sillytavern` | 卡片散文 → 生成管线当素材；世界书 → **确定性**合并进生成包的 `world.yaml`（顶替生成器自拟的 lore，合并后再过严格校验） |
 | `scripts/st_card_probe.py` | 体检一份真实卡：**用到哪些映射字段 / 会丢什么**（只读，可对着别人的卡跑） |
-| `tests/test_st_convert.py` | 20 项：读宽归一、不静默、往返、合并后仍过校验、CLI 真跑一遍 |
+| `tests/test_st_convert.py` | 20 项 + 1 条**自动发现**（放卡即生效，无卡则 skip 说明原因）：读宽归一、不静默、往返、合并后仍过校验、CLI 真跑一遍 |
 
 **为什么世界书不走 LLM**：它是作者已经写好的确定内容。让模型"重新发明"设定是这条链
 最容易失真的一步——所以世界书确定性搬运、散文才交给生成管线。
@@ -888,9 +888,11 @@ def _defer(self, job):
 > 在 8 张卡里**零用量**，那几行映射至今只被构造数据验证过（与 A 系列"十个字段零用量"
 > 是同一个形状，只是这次提前看见了）。
 
-补上这一条的办法已经备好：拿到真卡后 `python scripts/st_card_probe.py <card.json>`
-一条命令就能看到"这份语料用到哪些映射行、会丢什么"；再把它放进 `samples/` 让往返
-测试带上它。**已列为 N9 的收尾项**（不是"已完成"的一部分）。
+补上这一条的办法已经做成"**放进去就生效**"：把 ST 导出的 JSON 丢进
+`samples/st_cards/`，`tests/test_st_convert.py::test_real_card_samples_activate_automatically`
+会**自动**开始验证它（没有文件时那条测试 `skip` 并说明原因——不假装通过），
+`scripts/st_card_probe.py` 则一条命令告诉你"这份语料用到哪些映射行、会丢什么"。
+放卡的说明写在 `samples/st_cards/README.md`。**这仍是 N9 唯一未兑现的验收项。**
 
 #### 验证
 

@@ -355,6 +355,37 @@ def test_cli_sillytavern_import_end_to_end(tmp_path):
     assert any(e.constant for e in pack.world.lore)
 
 
+def test_real_card_samples_activate_automatically():
+    """`samples/st_cards/*.json` 里一旦有真实卡，就**自动**进入往返验证。
+
+    期 4 的纪律要求 E-1 由真实卡驱动；本仓库目前没有（无网络、手里也没有），
+    所以这条在有卡之前 `skip` 并说明原因——**不假装通过**。
+
+    为什么写成"自动发现"而不是等以后补一条测试：补测试这件事永远排在后面。
+    把卡丢进目录就生效，收尾成本才是一个人真会付出的成本（`samples/st_cards/README.md`
+    里写了怎么放）。
+    """
+    cards = sorted((REPO / "samples" / "st_cards").glob("*.json"))
+    if not cards:
+        pytest.skip(
+            "samples/st_cards/ 里还没有真实卡语料（N9 的收尾项）。"
+            "放一张 ST 导出的 JSON 进来，这条测试会自动开始验证它。"
+        )
+    for path in cards:
+        w = st.StWarnings()
+        card = st.read_card_file(path, w)
+        lore = st.character_book_to_lore(card.get("character_book"), warnings=w)
+        if not lore:
+            continue  # 只有散文、没有世界书的卡：对映射表没有信息量
+        back = st.character_book_to_lore(st.lore_to_character_book(lore))
+        assert len(back) == len(lore), f"{path.name}: 条目数变了"
+        for src, dst in zip(lore, back):
+            assert dst["text"] == src["text"], f"{path.name}: text 不等价"
+            assert dst["keys"] == list(src["keys"]), f"{path.name}: keys 不等价"
+            assert bool(dst.get("constant")) == bool(src.get("constant"))
+            assert list(dst.get("secondary_keys") or []) == list(src.get("secondary_keys") or [])
+
+
 def test_lore_merge_into_a_real_pack_still_validates(tmp_path):
     """把卡里的 lore 合并进一个真实包 → 仍然能被**严格加载**（写严）。
 
