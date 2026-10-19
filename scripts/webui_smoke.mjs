@@ -95,6 +95,23 @@ const VIEW_DAILY = {
 /** 流式增量：与 done.narration 同源（真实引擎就是这个形状）。 */
 const DELTAS = ['她侧身让开半步，', '随即记下了你的名字。', '天色渐晚。']
 
+/** N10-1：零效果叙事回合（模型只写了正文、没调协议工具）。
+ *
+ *  `recovered: ['narration_only']` 是引擎给的**事实**，前端据此必须说清
+ *  "数值与道具未变化"——不说这句，玩家会以为正文里那句"武力大涨"真的生效了。
+ */
+const VIEW_NARRATION_ONLY = {
+  narration: '她的目光在你脸上停了一瞬，又移开了。',
+  choices: [FREE_INPUT],          // 零效果回合拿不到候选项，只剩自由输入
+  briefing: null,
+  ending: null,
+  choice_prompt: null,
+  recovered: ['narration_only'],
+  sub_turns: 1,
+  turn: 3,
+  context_audit: null,            // 这一轮不重复渲染账本
+}
+
 // ---- 创作工作台（N2a）桩 ----
 //
 // 为什么这一屏也必须有真机冒烟：工作台的价值全在"Vue 真的把进度流画出来了吗"——
@@ -397,7 +414,10 @@ function startStub() {
       // 于是第一个 turn 又回了开局视图——断言因此"通过"得毫无意义（它匹配到的是
       // 流式草稿，而不是提交后的终稿）。桩自己的状态机错了，比没有桩更危险。
       state.turns += 1
-      const view = VIEW_DAILY
+      // N10-1：**第二次**回合改成"只写了正文、没调工具"的零效果叙事——
+      // 玩家必须看到"数值与道具未变化"这句，否则会以为正文里那句"武力大涨"生效了。
+      // 桩里分成两个视图，是为了让两种恢复痕迹各自可被单独观察到（不是混在一条里）。
+      const view = state.turns >= 2 ? VIEW_NARRATION_ONLY : VIEW_DAILY
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' })
       res.write(`event: start\ndata: ${JSON.stringify({ kind: 'say' })}\n\n`)
       let i = 0
@@ -719,6 +739,54 @@ async function main() {
       '账本展示预算与总量（调参先看这两个数）',
       auditText.includes('5856') && auditText.includes('1500'),
       auditText.slice(0, 80),
+    )
+
+    // ---- N10-1：零效果叙事（模型只写了正文、没调协议工具） ----
+    //
+    // 这一条守的是"**玩家必须被告知数值没变**"。引擎侧的守卫证明叙事被接受、
+    // 状态纹丝不动；但"界面有没有把那句话显示出来"只有真机看得见——
+    // 而那正是这个特性的全部意义：不说这句，玩家会以为正文里那句"武力大涨"生效了。
+    await cdp.eval(`(() => {
+      const inp = document.querySelector('#app .input-dock input[type=text]');
+      inp.value = '我什么也没做，只是看着她。';
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`)
+    const sent2 = await cdp.eval(`(() => {
+      const b = [...document.querySelectorAll('#app .input-dock button')]
+        .find(x => x.textContent.trim() === '发言');
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`)
+    check('第二回合已发出（零效果叙事）', sent2)
+    await cdp.waitFor(
+      `/她的目光在你脸上停了一瞬/.test(document.querySelector('#app .prose')?.textContent || '')`,
+      { timeout: 8000, label: '零效果叙事进入正文' },
+    )
+    const proseAfterZeroEffect = await cdp.eval(
+      `document.querySelector('#app .prose').textContent`,
+    )
+    check(
+      '零效果叙事确实显示在正文里（不是被丢掉）',
+      proseAfterZeroEffect.includes('她的目光在你脸上停了一瞬'),
+      proseAfterZeroEffect.slice(-80),
+    )
+    check(
+      '玩家被告知"数值与道具未变化"（否则会以为文中那句"大涨"生效了）',
+      proseAfterZeroEffect.includes('按零效果叙事接受') &&
+        proseAfterZeroEffect.includes('数值与道具未变化'),
+      proseAfterZeroEffect.slice(-120),
+    )
+    check(
+      '界面上没有露出引擎内部的英文 key（文案表覆盖不到位时就会漏出来）',
+      !proseAfterZeroEffect.includes('narration_only'),
+      proseAfterZeroEffect.slice(-120),
+    )
+    check(
+      '零效果回合只剩自由输入入口（拿不到候选项，但玩家仍能继续玩）',
+      await cdp.eval(
+        `document.querySelectorAll('#app .choices button').length === 1`,
+      ),
     )
 
     // ---- N7：时间线 / 回退 / 分支 ----
