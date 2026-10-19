@@ -483,6 +483,9 @@ def test_status_endpoint_survives_and_reports_after_rejection(monkeypatch, tmp_p
 #: （它不是测试的一部分），是"改路径要连带查谁在断言它"这条纪律查出来的。
 _WORLD_PACK_ENUMERATORS = {
     "game_agent/catalog.py": "world.yaml",  # `_is_pack_dir`——生产口径，单一真源
+    # N11：分发改动冒烟要数"仓库里有几张卡"，再与 wheel 里的比。判据必须是
+    # `world.yaml`（与打包侧同一套规则），否则两边数出来的东西不是一回事。
+    "scripts/dist_probe.py": "world.yaml",
     "scripts/eval_quota_check.py": "judge_corpus.yaml",
     "scripts/card_hook_check.py": "judge_corpus.yaml",
     "scripts/axis_coverage_check.py": "judge_corpus.yaml",

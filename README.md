@@ -131,7 +131,7 @@ world-packs/       # 世界包（纯 YAML 内容，换一包换一个游戏，8 
   campus_otome/    # 校园乙游《青槐高中·告白之前》（3 攻略 + 1 闺蜜 · 5 养成轴 · 10 结局）
   …                # 现代校园 / 80 年代 / 太空科幻 / 中性探针
   _drafts/         # 草稿区（生成产物先落这里，过 check-worldpack 才发布；**不是卡**）
-tests/             # 离线测试与守卫（1165 项，CI 执行）
+tests/             # 离线测试与守卫（1165 项，CI 执行；分发改动另跑 scripts/dist_probe.py）
 docs/              # 设计文档 / 计划 / 复盘（26 份 ADR 级记录）
 scripts/           # 质量门 / 冒烟 / 长局探针 / 素材导入等 38 个 Python 工具（另有前端真机冒烟 webui_smoke.mjs）
 eval-sets/         # 评测语料（**运行时门禁用**：注入防御 / 记忆冲突 / 去重 / extract）
