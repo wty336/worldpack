@@ -204,7 +204,7 @@ def test_cascade_meltdown_keeps_window_clean():
     state.completed_nodes.append("n1_first_meeting")
     state.flags["met_shen"] = True
     llm = LLMClient(FakeClient([
-        resp(msg(content="a")), resp(msg(content="b")), resp(msg(content="c")),  # 主回合熔断
+        resp(msg()), resp(msg()), resp(msg()),  # 主回合熔断（N10-1：熔断要用空输出造）
         resp(msg(tool_calls=[tool_call(
             "s1", "submit_narration",
             {"narration": "级联轮正常叙事。", "choices": ["一", "二", "三"], "plot_signal": "normal"},

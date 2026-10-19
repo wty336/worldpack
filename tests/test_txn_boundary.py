@@ -204,7 +204,7 @@ def test_meltdown_during_critical_choice_must_still_show_the_choice():
 
     判据是"视图与引擎状态不许自相矛盾"：引擎说还得选，视图就得给出选项。
     """
-    pack, state, game = _game([resp(msg(content="（不调收尾工具）"))] * 3)
+    pack, state, game = _game([resp(msg())] * 3)
     game.state.current_node = "n1_first_meeting"
     game.state.pending_choice = "how_to_help"
 
@@ -221,7 +221,7 @@ def test_meltdown_during_critical_choice_must_still_show_the_choice():
     assert "重新选择" in view.narration, "兜底文案要告诉玩家该做什么"
 
     # 反向守卫：非抉择期的熔断**不该**凭空造出一个 choice_prompt
-    _, state2, game2 = _game([resp(msg(content="（不调收尾工具）"))] * 3)
+    _, state2, game2 = _game([resp(msg())] * 3)
     state2.pending_choice = None
     view2 = game2._llm_round()
     assert view2.choice_prompt is None, "没有待决抉择时不许伪造选项视图"

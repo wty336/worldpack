@@ -36,7 +36,7 @@ def _always_meltdown_game(pack_path: Path, **kwargs):
     """每轮都返回"没有工具调用"的坏输出 → 协议熔断（LLMTurnError）。"""
     pack = load_worldpack(pack_path)
     state = GameState.from_pack(pack)
-    llm = LLMClient(FakeClient([resp(msg(content="这不是工具调用"))] * 12), "fake",
+    llm = LLMClient(FakeClient([resp(msg())] * 12), "fake",
                     build_tools(pack.schedule))
     return pack, state, Game(pack, state, llm, **kwargs)
 
@@ -128,7 +128,7 @@ def test_pick_rolls_back_choice_on_meltdown(tmp_path=None):
     """
     pack = load_worldpack(OTOME)
     state = GameState.from_pack(pack)
-    llm = LLMClient(FakeClient([resp(msg(content="坏输出"))] * 12), "fake",
+    llm = LLMClient(FakeClient([resp(msg())] * 12), "fake",
                     build_tools(pack.schedule))
     # critique_on_critical=True → 走缓冲+自校正路径（真实 CLI/Web 默认）
     game = Game(pack, state, llm, critique_on_critical=True)
@@ -192,7 +192,7 @@ def test_rollback_restores_rng_stream():
 
     pack = load_worldpack(PROBE)
     state = GameState.from_pack(pack)
-    llm = LLMClient(FakeClient([resp(msg(content="坏输出"))] * 12), "fake",
+    llm = LLMClient(FakeClient([resp(msg())] * 12), "fake",
                     build_tools(pack.schedule))
     game = Game(pack, state, llm, rng=random.Random(7))
 
@@ -219,7 +219,7 @@ def test_duck_typed_rng_without_getstate_is_tolerated():
 
     pack = load_worldpack(PROBE)
     state = GameState.from_pack(pack)
-    llm = LLMClient(FakeClient([resp(msg(content="坏输出"))] * 12), "fake",
+    llm = LLMClient(FakeClient([resp(msg())] * 12), "fake",
                     build_tools(pack.schedule))
     game = Game(pack, state, llm, rng=_Minimal())
 

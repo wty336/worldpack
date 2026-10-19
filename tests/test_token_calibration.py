@@ -27,12 +27,17 @@ def _pack():
     return load_worldpack(PACK_PATH)
 
 
-def _resp_with_usage(prompt_tokens: int):
-    """带 usage 的假响应（真实 provider 回传 prompt_tokens，fake 默认没有）。"""
+def _resp_with_usage(prompt_tokens: int, content: str | None = "x"):
+    """带 usage 的假响应（真实 provider 回传 prompt_tokens，fake 默认没有）。
+
+    `content` 可显式给 `None`：**主营回合**的"协议重试"路径需要空正文
+    （N10-1：正文非空 + 没调工具会被接受为零效果叙事并终止回合，就到不了重试），
+    而**侧信道**（judge 等）要的恰恰是非空文本，两者共用一个 helper。
+    """
     return SimpleNamespace(
         choices=[
             SimpleNamespace(
-                message=SimpleNamespace(content="x", tool_calls=None, reasoning_content=None),
+                message=SimpleNamespace(content=content, tool_calls=None, reasoning_content=None),
                 finish_reason="stop",
             )
         ],
@@ -96,7 +101,9 @@ def test_run_turn_updates_turn_bucket():
         {"narration": "叙事", "choices": ["一", "二", "三"], "plot_signal": "normal"},
     )
     # 消息内容很短（估算小），声明 prompt_tokens=500 → 因子上行
-    llm = _llm_with_calibrator([_resp_with_usage(500), resp(msg(tool_calls=[submit]))])
+    # 第一次响应必须**空正文**（N10-1）：非空正文 + 没调工具会被接受并结束回合，
+    # 走不到本测试要覆盖的"协议重试那次调用也要回填"这条路径。
+    llm = _llm_with_calibrator([_resp_with_usage(500, content=None), resp(msg(tool_calls=[submit]))])
     result = llm.run_turn([{"role": "user", "content": "短消息"}])
     assert result.narration == "叙事"
     assert llm.token_factor("turn") > 1.0

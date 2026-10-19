@@ -100,7 +100,7 @@ def test_normal_turn_has_no_recovery_marks():
 
 def test_meltdown_marks_recovered_and_counts_subturn():
     """熔断兜底必须如实上报（玩家需要知道"效果没生效"）。"""
-    bad = resp(msg(content="没有工具调用"))
+    bad = resp(msg())
     game = _game([bad, bad, bad])
     view = game.say("你好")
 

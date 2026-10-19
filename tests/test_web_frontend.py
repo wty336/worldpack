@@ -267,6 +267,33 @@ def test_generation_timer_present():
     assert "setInterval" in app and "elapsed" in app
 
 
+def test_every_engine_recovery_kind_has_a_player_facing_label():
+    """引擎会发出的**每一种**恢复痕迹，前端都必须有中文说明（N10-1 顺带补的）。
+
+    **为什么值得单列一条**：`ProseStream.vue` 的 `RECOVERY_LABELS` 是
+    `key → 中文` 的映射，找不到 key 时**退化成显示原始 key**（`narration_only` 这样
+    的英文标识符直接怼给玩家看）。它不是崩溃，所以任何"能跑就行"的验证都发现不了；
+    而它的信息量又恰恰在最需要说清的时刻（本轮发生了什么、数值有没有真的变）。
+
+    做法：引擎侧的 `_note_recovery("...")` 调用点是**唯一**的 key 生产者，
+    把它抓出来与前端映射表求差集。新增一种恢复手段却忘了写文案 → 这条红。
+    """
+    import re as _re
+
+    engine_keys = set()
+    for f in WEBUI.parent.glob("*.py"):  # WEBUI.parent = game_agent/（= 引擎包目录）
+        engine_keys |= set(_re.findall(r'_note_recovery\("([a-z_]+)"\)', f.read_text("utf-8")))
+    assert engine_keys, "没抓到任何 recovery key——正则或调用点变了，这条守卫会变成空气"
+
+    src = _src("components", "ProseStream.vue")
+    block = _re.search(r"const RECOVERY_LABELS = \{(.*?)\n\}", src, _re.S)
+    assert block, "RECOVERY_LABELS 不见了（恢复痕迹就没法翻译给玩家看）"
+    labels = set(_re.findall(r"^\s*([a-z_]+):", block.group(1), _re.M))
+
+    missing = engine_keys - labels
+    assert not missing, f"这些恢复痕迹没有玩家可见的说明：{sorted(missing)}（引擎会发、界面只会显示英文 key）"
+
+
 def test_stage_a_assets_are_gone():
     """回归守卫：Stage A 的原生 JS/CSS 不应复活（已由 Vue 组件取代）。"""
     for name in ("app.js", "app.css"):

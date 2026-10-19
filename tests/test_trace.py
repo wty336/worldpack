@@ -145,7 +145,7 @@ def test_unknown_tool_recorded(tmp_path):
 def test_meltdown_recorded(tmp_path):
     """熔断必须留下 outcome=meltdown——轨迹要能回放'为什么死'。"""
     rec = TraceRecorder(tmp_path / "trace.jsonl")
-    bad = resp(msg(content="没有工具调用"))
+    bad = resp(msg())
     client, apply = _client([bad, bad, bad], rec)
     with pytest.raises(LLMTurnError, match="熔断"):
         client.run_turn([{"role": "user", "content": "hi"}], apply)

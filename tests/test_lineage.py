@@ -122,7 +122,7 @@ def test_assistant_messages_marked_as_model(tmp_path):
 
 def test_engine_injected_messages_marked_as_engine():
     """引擎注入的元消息带 origin="engine"（与 name="engine" 同口径）。"""
-    client = _client([resp(msg(content="没有工具调用")), resp(msg(tool_calls=[SUBMIT]))])
+    client = _client([resp(msg()), resp(msg(tool_calls=[SUBMIT]))])
     result = client.run_turn([{"role": "user", "content": "hi"}], lambda a: "[已执行]")
     injected = [m for m in result.messages if m.get("name") == "engine"]
     assert injected and all(m.get("origin") == "engine" for m in injected)

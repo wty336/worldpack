@@ -230,7 +230,9 @@ def test_replan_only_on_stuck_hint():
 
 def test_meltdown_returns_conservative_view():
     """连续协议失败 → 不抛 LLMTurnError，返回保守视图，历史含熔断标记。"""
-    responses = [resp(msg(content="纯文本无工具"), finish_reason="stop") for _ in range(3)]
+    # N10-1 之后"有正文、没调工具"会被**接受**为零效果叙事，所以熔断只能用
+    # "什么都没产出"来造：空响应既无正文、也无工具调用。
+    responses = [resp(msg(), finish_reason="stop") for _ in range(3)]
     pack, state, game = _game(responses, mutate=_n1_done)
     view = game.say("你好")
     assert view.narration is not None and "生成失败" in view.narration
@@ -241,9 +243,9 @@ def test_meltdown_returns_conservative_view():
 def test_game_recovers_after_meltdown():
     """熔断轮之后下一回合照常工作（会话不死）。"""
     responses = [
-        resp(msg(content="a")),
-        resp(msg(content="b")),
-        resp(msg(content="c")),
+        resp(msg()),  # N10-1：空输出才会熔断（有正文没工具现在被接受）
+        resp(msg()),
+        resp(msg()),
         resp(msg(tool_calls=[_submit("熔断后恢复正常叙事")])),
     ]
     pack, state, game = _game(responses, mutate=_n1_done)

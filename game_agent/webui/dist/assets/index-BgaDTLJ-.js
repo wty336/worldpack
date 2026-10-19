@@ -6710,7 +6710,10 @@ const _sfc_main$4 = {
     const RECOVERY_LABELS = {
       overflow_recovered: "本轮上下文超限，已压缩历史后重试成功",
       critique: "本轮初稿未通过自检，已重写",
-      meltdown: "本轮多次未达协议，已跳过（效果未生效）"
+      meltdown: "本轮多次未达协议，已跳过（效果未生效）",
+      // N10-1：模型只写了正文、没按协议调工具 → 叙事被接受，但没有效果落地。
+      // 文案必须点明"数值未变化"，否则玩家会以为正文里那些"大涨/得宝"真的生效了。
+      narration_only: "本轮模型只写了正文、未调用工具，已按零效果叙事接受（数值与道具未变化）"
     };
     function recoveryNote(list, subTurns) {
       const parts = (list || []).map((r) => RECOVERY_LABELS[r] || r);

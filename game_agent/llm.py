@@ -58,6 +58,10 @@ class TurnResult:
     memories: list[dict] = field(default_factory=list)  # 已写入的记忆提议（含结果，M2a）
     iterations: int = 1
     messages: list[dict] = field(default_factory=list)  # 更新后的轨迹，供引擎续用
+    #: N10-1：本轮是**只写了正文、没调任何工具**的回合（零效果叙事）。
+    #: 它不是"熔断"，但也不是"正常完成"：拿不到候选项、没有任何效果落地。
+    #: 引擎据此给玩家一条中性说明（"数值未变化"），不能让它悄悄发生。
+    narration_only: bool = False
 
 
 def build_tools(schedule: ScheduleSpec) -> list[dict]:
@@ -586,6 +590,40 @@ class LLMClient:
 
             tool_calls = getattr(msg, "tool_calls", None)
             if not tool_calls:
+                # N10-1（§8.1）：**有正文、没调工具** = 零效果叙事，接受它。
+                #
+                # 改动前这里的处理是"协议失败 → 重试"，重试 3 次后熔断：整轮作废、
+                # 换成一句兜底文案，玩家读到的是"本轮生成失败"而不是故事。可模型
+                # 明明写出了正文——只是没按协议包一层 `submit_narration`。
+                #
+                # 为什么不破坏不变量：契约说的是"没有已提交的效果，就没有被接受的
+                # 叙事"。零效果回合两边都是空集（effects = ∅），不变量依然成立；
+                # 回落的是**候选项**（choices 为空 → 界面只剩自由输入），
+                # 而这比"整轮变成兜底文本"好得多。
+                #
+                # **仍然拒绝的两种情况**（都不在这里放行）：
+                # ① `finish_reason=length`：正文被输出上限腰斩，接受它等于交付半句话；
+                # ② 正文洗干净之后为空：没有可交付的内容。
+                # 有工具调用但参数被截断的那条另有守卫（截断即整批作废），不受影响。
+                content = (getattr(msg, "content", None) or "").strip()
+                if content and finish != "length":
+                    narration = clean_narration(content)
+                    if narration:
+                        _reattach_origins(msgs, origin_by_identity, user_origin_by_content)
+                        self._trace(
+                            "turn_end", turn_seq=turn_seq, outcome="narration_only",
+                            iterations=i, narration_chars=len(narration),
+                            choices=0, plot_signal="normal",
+                            stat_changes=0, memories=0,
+                        )
+                        return TurnResult(
+                            narration=narration,
+                            choices=[],
+                            plot_signal="normal",  # 没调工具 ⇒ 无法自报节点完成；代码会复核
+                            iterations=i,
+                            messages=msgs,
+                            narration_only=True,
+                        )
                 reason = (
                     f"未调用任何工具（finish_reason={finish}：输出因超长被截断）。"
                     if finish == "length"

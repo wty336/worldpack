@@ -160,9 +160,9 @@ def test_plain_failure_still_melts_down_without_compaction():
     """非溢出错误（如协议连续失败）不得触发压缩重试——行为与改前一致。"""
     game = _game(
         [
-            resp(msg(content="没有工具调用")),
-            resp(msg(content="没有工具调用")),
-            resp(msg(content="没有工具调用")),
+            resp(msg()),
+            resp(msg()),
+            resp(msg()),
         ],
         context_window=100_000,
         keep_turns=2,

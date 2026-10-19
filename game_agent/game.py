@@ -654,6 +654,10 @@ class Game:
         if not result.narration:
             self._txn_rollback(snapshot, reason="empty_narration")
             return TurnView(narration=None, choices=result.choices, **self._turn_fields())
+        # N10-1：零效果叙事（只写了正文、没调工具）不算失败，但**必须让玩家看见**
+        # "数值没有变化"——否则玩家会以为那句"你的武力大涨"真的生效了。
+        if result.narration_only:
+            self._note_recovery("narration_only")
         outcome = self.story.end_turn(self.state, result.plot_signal)
         self.history.extend(outcome.messages)
         self._defer(lambda m=list(outcome.messages): self._maybe_replan(m))

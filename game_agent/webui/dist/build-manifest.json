@@ -7,7 +7,7 @@
     "src/components/ChoiceList.vue": "8bceb199a1598da0",
     "src/components/InputDock.vue": "313f598f3fe20e69",
     "src/components/NoticeBar.vue": "259d4eb7727f5d0a",
-    "src/components/ProseStream.vue": "3193662353328e55",
+    "src/components/ProseStream.vue": "2a686a6138e9fc38",
     "src/components/StatusPanel.vue": "0800524f9bae3ca6",
     "src/composables/useCreatorStream.js": "02b51df8f093734f",
     "src/composables/useJobStream.js": "aa12a427229135c9",
@@ -19,7 +19,7 @@
     "src/views/StudioView.vue": "af17416c30da7e22",
     "vite.config.js": "12b50d34691fc71f"
   },
-  "sourceDigest": "db93724b254d5462",
+  "sourceDigest": "9de075dc9ecd1f8f",
   "count": 18,
   "generatedBy": "vite.config.js"
 }

@@ -61,7 +61,7 @@ def _game(responses, trace_path: Path | None):
 def test_meltdown_records_explicit_rollback_event(tmp_path):
     """熔断 → 效果作废 → trace 必须留下 txn_rollback。"""
     trace = tmp_path / "t.jsonl"
-    pack, state, game = _game([resp(msg(content="这也能叫工具调用？"))] * 8, trace)
+    pack, state, game = _game([resp(msg())] * 8, trace)
 
     game.say("我练剑")
 
@@ -78,7 +78,7 @@ def test_meltdown_records_explicit_rollback_event(tmp_path):
 def test_meltdown_trace_previously_looked_successful(tmp_path):
     """对照：熔断轮的 call 事件仍在，只有 txn_rollback 能纠正"效果生效"的错觉。"""
     trace = tmp_path / "t.jsonl"
-    pack, state, game = _game([resp(msg(content="坏输出"))] * 8, trace)
+    pack, state, game = _game([resp(msg())] * 8, trace)
 
     game.say("我练剑")
 
@@ -101,7 +101,7 @@ def test_no_rollback_event_on_successful_turn(tmp_path):
 
 def test_trace_is_optional_and_silent_without_recorder(tmp_path):
     """观测层纪律：没有 tracer 时必须零开销、零行为变化（不得因补 trace 而报错）。"""
-    pack, state, game = _game([resp(msg(content="坏输出"))] * 8, None)
+    pack, state, game = _game([resp(msg())] * 8, None)
 
     view = game.say("我练剑")  # 熔断会走 _txn_rollback → 内部 _trace 是 no-op
 

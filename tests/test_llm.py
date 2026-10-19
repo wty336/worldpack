@@ -74,12 +74,55 @@ def test_change_stat_across_iterations():
     assert any(m["role"] == "tool" for m in result.messages)
 
 
-def test_retry_after_no_tool_call():
-    """无工具调用 = 协议失败 → 结构化反馈重试一次后成功。"""
+def test_content_without_tool_call_is_accepted_as_zero_effect():
+    """N10-1（§8.1）：**有正文、没调工具** = 零效果叙事，直接接受。
+
+    改动前这里会重试，重试 3 次后熔断（整轮作废、换成兜底文案）——可模型明明写出了
+    正文。契约「没有已提交的效果，就没有被接受的叙事」在零效果回合上两边都是空集，
+    所以接受它并不破坏不变量；回落的是候选项。
+    """
     client, apply = _client([_resp(_msg(content="直接输出了文本")), _resp(_msg(tool_calls=[SUBMIT]))])
     result = client.run_turn([{"role": "user", "content": "hi"}], apply)
-    assert result.iterations == 2
-    assert result.narration
+    assert result.iterations == 1, "应当**当轮接受**，不该再重试"
+    assert result.narration == "直接输出了文本"
+    assert result.choices == [], "零效果回合拿不到候选项（界面只剩自由输入）"
+    assert result.plot_signal == "normal"
+    assert result.narration_only is True
+    # 没有"协议失败"的反馈消息被塞回去（没有重试）
+    assert not any("不符合协议" in (m.get("content") or "") for m in result.messages)
+
+
+def test_empty_output_without_tool_call_still_retries():
+    """N10-1 的边界：**空输出**仍然算协议失败 → 重试，重试完仍空才熔断。
+
+    这条守着"接受"的门槛：不是"没调工具就接受"，而是"**有可交付正文**才接受"。
+    """
+    client, apply = _client([_resp(_msg()), _resp(_msg(tool_calls=[SUBMIT]))])
+    result = client.run_turn([{"role": "user", "content": "hi"}], apply)
+    assert result.iterations == 2  # 第一次空 → 重试 → 第二次收尾
+    assert result.narration == "你登上诗台，满座皆惊。"
+    assert any("不符合协议" in (m.get("content") or "") for m in result.messages)
+
+
+def test_truncated_prose_is_not_accepted_as_narration():
+    """N10-1 的另一个边界：`finish_reason=length` 的正文**不接受**。
+
+    被输出上限腰斩的文字交付给玩家等于交付半句话；这类要重试并要求缩短，
+    不是"零效果叙事"。
+    """
+    from types import SimpleNamespace
+
+    truncated = SimpleNamespace(
+        choices=[SimpleNamespace(
+            finish_reason="length",
+            message=_msg(content="很长的叙事，说到一半就被截断"),
+        )]
+    )
+    client, apply = _client([truncated, _resp(_msg(tool_calls=[SUBMIT]))])
+    result = client.run_turn([{"role": "user", "content": "hi"}], apply)
+    assert result.iterations == 2, "截断的正文必须重试，不能被当成叙事接受"
+    assert result.narration == "你登上诗台，满座皆惊。"
+    assert result.narration_only is False
 
 
 def test_length_truncation_retry_instructs_shorten():
@@ -191,8 +234,13 @@ def test_length_truncated_prompt_tells_model_to_shorten():
 
 
 def test_meltdown_after_consecutive_failures():
-    """连续 3 次协议失败 → 熔断抛 LLMTurnError。"""
-    bad = _resp(_msg(content="没有工具调用"))
+    """连续 3 次**空输出** → 熔断抛 LLMTurnError。
+
+    （N10-1 之后"有正文但没调工具"不再是熔断原因，见
+    `test_content_without_tool_call_is_accepted_as_zero_effect`；熔断留给
+    "模型什么都没交出来"这一种。）
+    """
+    bad = _resp(_msg())
     client, apply = _client([bad, bad, bad])
     with pytest.raises(LLMTurnError, match="熔断"):
         client.run_turn([{"role": "user", "content": "hi"}], apply)
