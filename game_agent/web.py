@@ -412,7 +412,7 @@ def _make_game(
     llm = LLMClient.from_settings(settings, build_tools(pack.schedule), tracker=tracker)
     game = Game(
         pack, state, llm,
-        autosave_path=SAVE_ROOT / f"autosave-{sid}.json",  # B-4：按会话隔离，避免互覆
+        autosave_path=_autosave_path(sid, pack),  # B-4 按会话隔离 + N4 按卡分目录
         mainline_enabled=mainline_enabled,  # E-4：自由游玩不进入主线节点
         **_game_options(),
     )
@@ -441,7 +441,7 @@ def _rebuild_from_checkpoint(sid: str, session: "Session", payload: dict) -> Gam
     game = Game(
         old.pack, state, old.llm,
         rng=rng,
-        autosave_path=SAVE_ROOT / f"autosave-{sid}.json",
+        autosave_path=_autosave_path(sid, old.pack),
         mainline_enabled=old.mainline_enabled,  # 自由/剧本模式必须跟着走
         **_game_options(),
     )
@@ -739,19 +739,138 @@ def _creator_lock(name: str) -> threading.Lock:
         return lock
 
 
-def _safe_save_path(raw: str) -> Path:
-    """A-1（审查修复 C1）：存档路径约束——**严格拒绝**一切非裸文件名。
+# ---------------------------------------------------------------------------
+# N4：存档按剧本隔离（目录级）
+# ---------------------------------------------------------------------------
+#
+# **关键区别：打标能"检查"，目录才能"分开"**。此前存档只有 `pack:{id,digest}`
+# 身份戳（G2），能事后发现"这个档不是这张卡的"，却挡不住两件事：
+#
+# ① **同名互覆**——存档名由客户端给（`SaveRequest.path` 的缺省值就是 `web.json`；
+#    前端 `PlayView` 用的是 `<pack_id>.json`，所以这条在 API 层可达、在默认 UI 里不易撞上。
+#    无论如何，"名字由调用方决定"加上"所有卡共用一个平面"，就必然存在互覆面：
+#    两张卡用同一个名字各存一次，第二次直接盖掉第一次；覆盖一旦发生，事后校验再准也没用。
+# ② **列表里同路径**——两个档都叫 `web.json`，界面上无法共存，玩家只能靠"读了被拒"
+#    来分辨它们属于哪张卡。
+#
+# 这与 E-7 草稿区（`world-packs/_drafts/`）是同一条思路：**用目录结构表达归属**，
+# 而不是在同一个平面里靠字段区分。
 
-    客户端可控的 path 直传文件 API 是任意路径读写洞（../ 覆写 .env/世界包等）。
-    规则：path 必须是 saves/ 根下的 .json 裸文件名（不含目录成分/盘符）。
+_SAVE_NAME_RE = re.compile(r"[\w\-.]{1,128}\.json")
+_PACK_ID_RE = re.compile(r"[\w\-]{1,64}")
+
+
+def pack_save_dir(pack_id: str) -> Path:
+    """某张卡的存档目录 `saves/<pack_id>/`（N4）。
+
+    `pack_id` 来自 `game.pack_meta["id"]`（= 包目录名，`Path.name` 保证不含分隔符），
+    但仍然做白名单校验：这个值最终要拼进路径，而"客户端可控字符串直传文件 API"
+    是路径穿越洞（`catalog` / `timeline.timeline_root` 同一姿态）。
     """
-    name = Path(raw).name
-    if raw != name or not re.fullmatch(r"[\w\-.]{1,128}\.json", name):
+    if not _PACK_ID_RE.fullmatch(pack_id):
+        raise HTTPException(400, f"非法的世界包 id: {pack_id!r}")
+    d = (SAVE_ROOT / pack_id).resolve()
+    if not d.is_relative_to(SAVE_ROOT.resolve()):  # 防御纵深
+        raise HTTPException(400, "非法的世界包 id")
+    return d
+
+
+def _autosave_path(sid: str, pack) -> Path:
+    """W-C 自动存档路径：落进**这张卡自己的目录**（N4）。
+
+    `sid` 由 `web.py` 生成（hex），不参与穿越风险；这里只借它做按会话隔离
+    （B-4 的原始诉求），归属那一维交给目录。
+    """
+    return pack_save_dir(pack.root.name) / f"autosave-{sid}.json"
+
+
+def _safe_save_path(raw: str, pack_id: str, *, for_write: bool) -> Path:
+    """A-1（路径穿越防御）+ N4（按卡隔离）：把客户端的存档引用解析成绝对路径。
+
+    接受两种写法：
+
+    - `name.json` —— **本局这张卡**的存档（`saves/<pack_id>/name.json`）。
+      读档时若卡目录里没有、而 `saves/` 根上有同名的旧档，则沿用旧位置
+      ——N4 之前（以及 G2 之前）的档就躺在根上，它们不该因为目录改造而读不出来。
+    - `<pack_id>/name.json` —— 显式带卡名。**只能是自己这张卡**：
+      带别的卡名去写 = 往别人的目录里塞文件（拒绝）；带别的卡名去读 =
+      跨卡读档（拒绝，并在错误里说清"这张档属于谁"）。
+      留这个写法是因为 `/api/saves` 返回的 `path` 就是它，前端原样回传。
+
+    **拒绝而不是降级**：跨卡读档在 N4 之后不是"内容可能不兼容"，而是"你走错了卡"。
+    这正是目录隔离换来的更好的错误——以前只能靠 `state_pack_mismatch` 事后猜。
+    """
+    if not isinstance(raw, str) or not raw or "\\" in raw or raw.startswith("/"):
         raise HTTPException(400, "非法存档路径：仅允许 saves/ 内的 .json 文件名")
-    p = (SAVE_ROOT / name).resolve()
-    if not p.is_relative_to(SAVE_ROOT):  # 防御纵深
-        raise HTTPException(400, "非法存档路径")
-    return p
+    parts = raw.split("/")
+    if len(parts) == 1:
+        ref_pack: str | None = None
+        name = parts[0]
+    elif len(parts) == 2:
+        ref_pack, name = parts
+        if not _PACK_ID_RE.fullmatch(ref_pack):
+            raise HTTPException(400, f"非法的世界包 id: {ref_pack!r}")
+        if ref_pack != pack_id:
+            if for_write:
+                raise HTTPException(
+                    400,
+                    f"存档只能写进本局这张卡的目录（{pack_id}/），"
+                    f"不能写进 {ref_pack}/（那会把别人的档盖掉）",
+                )
+            raise HTTPException(
+                400,
+                f"读档被拒绝：该存档属于世界包 {ref_pack!r}，本局是 {pack_id!r}。"
+                f"请先换到那张卡再读档，或在存档列表里选本局这张卡的档。",
+            )
+    else:
+        raise HTTPException(400, "非法存档路径：最多一层卡目录 + 文件名")
+
+    if not _SAVE_NAME_RE.fullmatch(name):
+        raise HTTPException(400, "非法存档路径：仅允许 saves/ 内的 .json 文件名")
+
+    target = pack_save_dir(ref_pack or pack_id) / name
+    if not for_write and ref_pack is None and not target.exists():
+        legacy = SAVE_ROOT / name  # N4 之前的平铺存档：原地可读，不搬动玩家的文件
+        if legacy.exists():
+            return legacy
+    return target
+
+
+def _save_ref(path: Path) -> str:
+    """把存档的绝对路径回成**可直接再传回来的引用**（N4）。
+
+    形式与 `GET /api/saves` 的 `path` 一致：卡目录里的档是 `<pack_id>/name.json`，
+    根上的旧档是 `name.json`。这样"存完得到的字符串"和"列表里看到的字符串"是同一套
+    ——调用方不必知道 `SAVE_ROOT` 在哪，也不会把本机绝对路径显示给玩家。
+    """
+    try:
+        # 两边都 resolve：`SAVE_ROOT` 在测试里是被替换过的（未必已规范化），
+        # 而 `relative_to` 是纯字面比较——不比一下就会出现"路径明明在里面却算不进去"。
+        return path.resolve().relative_to(SAVE_ROOT.resolve()).as_posix()
+    except ValueError:  # 不在存档根下（理论上不可能）——退回裸名，不抛
+        return path.name
+
+
+def _iter_save_files() -> list[tuple[Path, str | None]]:
+    """枚举所有存档文件：`[(路径, 所属卡目录名 or None)]`（N4）。
+
+    `None` = 根上的旧档（N4 之前平铺的）。跳过 `saves/timeline-<sid>/`——
+    那是 N7 的会话级时间线，里面的 `rev-*.json` 是快照而不是玩家存档，
+    把它们混进存档列表会让玩家看到一堆读不了的"档"。
+    """
+    out: list[tuple[Path, str | None]] = []
+    if not SAVE_ROOT.is_dir():
+        return out
+    for p in SAVE_ROOT.glob("*.json"):
+        out.append((p, None))
+    for d in sorted(SAVE_ROOT.iterdir()):
+        if not d.is_dir() or d.name.startswith(f"{timeline.TIMELINE_DIRNAME}-"):
+            continue
+        if not _PACK_ID_RE.fullmatch(d.name):
+            continue  # 不像卡目录的目录不当成存档目录
+        for p in d.glob("*.json"):
+            out.append((p, d.name))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -801,19 +920,27 @@ def api_sessions() -> dict:
 
 @app.get("/api/saves")
 def api_saves() -> dict:
-    """E-9：存档列表（只读顶层摘要，反序列化留给真正读档时）。
+    """E-9 + N4：存档列表（只读顶层摘要，反序列化留给真正读档时）。
 
     按 mtime 倒序 —— 玩家找的是"最近那局"，不是按文件名字典序。
+
+    **`path` 是可直接回传给保存/读档端点的引用**（N4）：卡目录里的档给
+    `<pack_id>/name.json`，根上的旧档给裸文件名（读档时自动回退到旧位置）。
+    `dir` 是这份档**实际躺着的卡目录名**——前端据它决定"用哪张卡开会话读这个档"，
+    这比依赖存档里的身份戳更可靠（戳可能缺失，目录不会撒谎）。
     """
-    if not SAVE_ROOT.is_dir():
-        return {"ok": True, "saves": []}
     out: list[dict] = []
-    for p in SAVE_ROOT.glob("*.json"):
+    for p, pack_dir in _iter_save_files():
         try:
-            out.append(save_summary(p))
+            row = save_summary(p)
         except (ValueError, OSError) as e:
             # 单个坏档不拖垮列表（与 catalog 同一姿态）
-            out.append({"path": p.name, "error": f"{type(e).__name__}: {e}"})
+            row = {"save_version": None, "pack": None, "pack_name": None,
+                   "turn_count": None, "day": None, "mtime": 0,
+                   "error": f"{type(e).__name__}: {e}"}
+        row["path"] = f"{pack_dir}/{p.name}" if pack_dir else p.name
+        row["dir"] = pack_dir
+        out.append(row)
     out.sort(key=lambda r: r.get("mtime", 0), reverse=True)
     return {"ok": True, "saves": out}
 
@@ -1271,8 +1398,13 @@ def api_turn(sid: str, req: TurnRequest) -> StreamingResponse:
 def _timeline(sid: str) -> timeline.Timeline:
     """本会话的时间线（目录 `saves/timeline-<sid>/`）。
 
-    放在 `SAVE_ROOT` 下是刻意的：时间线是**会话级产物**，与 `autosave-<sid>.json`、
-    `usage-<sid>.jsonl` 同类。`_safe_save_path` 那条"只接受裸文件名"的限制不适用于它
+    放在 `SAVE_ROOT` 下是刻意的：时间线是**会话级产物**，与 `usage-<sid>.jsonl` 同类。
+    **它在 N4 之后仍然平铺在根上**，而不是搬进 `saves/<pack_id>/`：目录表达的是
+    "这份档属于哪张卡"（玩家会挑、会读、会跨卡看），而时间线按**会话**索引、由引擎
+    自己读写，玩家从不直接挑它。`_iter_save_files` 会跳过 `timeline-*` 目录，
+    所以它不会混进存档列表。
+
+    `_safe_save_path` 那套"只接受 `<pack_id>/name.json`"的限制也不适用于它
     ——那个限制防的是**客户端可控路径**，而这里的 `<sid>` 是服务端生成的 hex，
     且 `timeline_root` 另做了一次白名单（纵深防御）。
     """
@@ -1554,19 +1686,21 @@ def _release_stream(session: Session, deltas: "queue.Queue") -> None:
 @app.post("/api/{sid}/save")
 def api_save(sid: str, req: SaveRequest) -> dict:
     session = _ensure_session(sid)
-    path = _safe_save_path(req.path)  # A-1：约束后的存档路径
+    # N4：存档落进本局这张卡的目录；客户端最多只能指定"本卡 + 文件名"。
+    path = _safe_save_path(req.path, session_pack_id(session), for_write=True)
     with session.lock:  # B-4：与流式回合互斥，存档的是完整回合后的状态
         # G2：写入剧本身份戳，读档时据此拒绝"改版后读旧档"
         save_game(
             session.game.state, path, session.game.history, pack_meta=session.game.pack_meta
         )
-    return {"ok": True, "path": str(path)}
+    return {"ok": True, "path": _save_ref(path)}
 
 
 @app.post("/api/{sid}/load")
 def api_load(sid: str, req: SaveRequest) -> dict:
     session = _ensure_session(sid)
-    path = _safe_save_path(req.path)  # A-1：约束后的存档路径
+    # N4：跨卡的档在这里就被拒（说清"属于哪张卡"），不再靠内容校验事后猜。
+    path = _safe_save_path(req.path, session_pack_id(session), for_write=False)
     with session.lock:
         try:
             # G2：先校验剧本身份（不一致抛 PackMismatchError，属 ValueError）；
@@ -1590,7 +1724,7 @@ def api_load(sid: str, req: SaveRequest) -> dict:
         session.game.history = history
         session.game.ending = None
         status = session.game.status_text()
-    return {"ok": True, "path": str(path), "status": status}
+    return {"ok": True, "path": _save_ref(path), "status": status}
 
 
 

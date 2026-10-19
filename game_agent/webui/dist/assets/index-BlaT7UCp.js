@@ -6463,10 +6463,11 @@ const _sfc_main$7 = {
       if (picked.value) emit2("start", { packId: picked.value.id, mode: mode.value });
     }
     function load() {
-      var _a;
       const path = savePath.value || usableSaves.value[0] && usableSaves.value[0].path;
       if (!path) return;
-      emit2("load", { path, packId: ((_a = picked.value) == null ? void 0 : _a.id) || null, mode: mode.value });
+      const pickedSave = usableSaves.value.find((s) => s.path === path);
+      const packId = pickedSave && (pickedSave.dir || pickedSave.pack && pickedSave.pack.id) || picked.value && picked.value.id || null;
+      emit2("load", { path, packId, mode: mode.value });
     }
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("div", _hoisted_1$7, [

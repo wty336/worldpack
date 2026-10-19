@@ -32,7 +32,7 @@ def _isolate_session_artifacts(tmp_path, monkeypatch):
     （smoke-* / baseline-* / playthrough-* 等 90 余份带语义名字的运行记录），
     但跑测试的会话级产物名字里带**随机会话号**：
 
-    - `saves/autosave-<sid>.json`（B-4 按会话隔离的自动存档）
+    - `saves/<pack_id>/autosave-<sid>.json`（B-4 按会话隔离的自动存档；N4 之后按卡分目录）
     - `saves/usage-<sid>.jsonl`（G1 每会话账本）
     - `saves/timeline-<sid>/`（N7 每会话时间线）
 

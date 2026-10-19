@@ -492,6 +492,18 @@ _WORLD_PACK_ENUMERATORS = {
 }
 
 
+#: **看起来在遍历 `world-packs/`、其实遍历的是别处**的文件（N4 引入）。
+#: 检测用的是粗口径（"文件里同时出现 `world-packs` 与 `iterdir(`"），这个方向是
+#: 刻意的：多抓一个无害，漏抓有害。但粗口径会误伤——`game_agent/web.py` 遍历的是
+#: `SAVE_ROOT`（存档目录，N4 按卡分目录），只是文件里另有一处提到 `world-packs`。
+#: 所以给它一条**写明理由的豁免**，而不是往上面那张表里塞一个它根本没有的"判据"
+#: （那会让表本身变成谎话，而这个守卫的全部价值就在表是真话）。
+#: 下面的测试会核对豁免是否名副其实：被豁免的文件里不许出现真正的包根遍历。
+_NOT_PACK_ENUMERATORS = {
+    "game_agent/web.py": "遍历 `SAVE_ROOT`（存档按卡分目录），不是 `world-packs/`",
+}
+
+
 def test_world_packs_enumerators_all_discriminate():
     """每个遍历 `world-packs/` 的文件都必须写明"凭什么算一张卡"。
 
@@ -506,7 +518,7 @@ def test_world_packs_enumerators_all_discriminate():
     这条不是洁癖——第一版用原始文本，结果把 `catalog.list_packs` 换成一个不存在的函数、
     只在上面留一句提到它的注释，守卫**照样绿**。注释能满足的守卫等于没有守卫。
     检测"这个文件遍历了 world-packs"仍用原始文本（宁可多抓：多登记一个文件是无害的，
-    漏登记才是有害的方向）。
+    漏登记才是有害的方向），误抓的走 `_NOT_PACK_ENUMERATORS` 并写明理由。
     """
     import ast
 
@@ -518,11 +530,21 @@ def test_world_packs_enumerators_all_discriminate():
             if "world-packs" in text and "iterdir(" in text:
                 found.add(f"{sub}/{f.name}")
 
-    unregistered = found - set(_WORLD_PACK_ENUMERATORS)
+    # 豁免要名副其实：被豁免的文件里不许有真正的包根遍历（否则豁免就是个洞）
+    for rel, _why in _NOT_PACK_ENUMERATORS.items():
+        text = (root / rel).read_text(encoding="utf-8")
+        for real in ('"world-packs").iterdir(', "'world-packs').iterdir(", "_pack_root().iterdir("):
+            assert real not in text, (
+                f"{rel} 声明自己不是包遍历者（{_NOT_PACK_ENUMERATORS[rel]}），"
+                f"但里面有 `{real}` ——豁免名不副实"
+            )
+
+    unregistered = found - set(_WORLD_PACK_ENUMERATORS) - set(_NOT_PACK_ENUMERATORS)
     assert not unregistered, (
         f"这些文件遍历了 world-packs/ 但没登记判据：{sorted(unregistered)}。"
         f"请在 `_WORLD_PACK_ENUMERATORS` 里登记它靠什么区分目录与卡"
         f"（或改用 `catalog.list_packs()`）——草稿区 `_drafts/` 会让裸遍历抛异常。"
+        f"如果它遍历的其实是别的目录，登记到 `_NOT_PACK_ENUMERATORS` 并写明理由。"
     )
 
     for rel, discriminator in _WORLD_PACK_ENUMERATORS.items():

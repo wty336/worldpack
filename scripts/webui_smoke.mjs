@@ -295,17 +295,31 @@ function startStub() {
           { id: 'broken_world', name: '坏包', era: '', npcs: 0, nodes: 0, endings: 0, lore: 0, locations: 0, digest: '', playable: false, error: '缺少文件: mainline.yaml', path: 'world-packs/broken_world' },
         ],
       })
-    if (path === '/api/saves') return json({ ok: true, saves: [] })
+    // N4：存档按卡分目录。两个档同名（`web.json`）但属于不同的卡——目录隔离之后
+    // 它们能并存，而列表的 `path` 就是可直接回传的引用（`<pack_id>/name.json`）。
+    if (path === '/api/saves')
+      return json({
+        ok: true,
+        saves: [
+          { path: 'demo_world/web.json', dir: 'demo_world', pack: { id: 'demo_world', digest: 'a'.repeat(16) }, pack_name: '演示世界', save_version: 3, turn_count: 3, day: 1, history: 2, size: 100, mtime: 1762000000 },
+          { path: 'other_world/web.json', dir: 'other_world', pack: { id: 'other_world', digest: 'b'.repeat(16) }, pack_name: '另一张卡', save_version: 3, turn_count: 5, day: 2, history: 4, size: 120, mtime: 1762000100 },
+        ],
+      })
     if (path === '/api/sessions') return json({ ok: true, sessions: [] })
+    if (/^\/api\/[^/]+\/load$/.test(path))
+      // 读档要回 `path`（前端会显示"已读档：…"）；状态刷新走 status/timeline，另有桩。
+      return json({ ok: true, path: 'other_world/web.json', status: '【场景】长安城·沈府门前' })
     if (path === '/api/new') {
       state.turns = 0
       // 草稿试玩：`draft` 选项（§3.2 ③）——回包里带 `draft: true`，
       // 前端据此在顶栏打「未发布」水印。
+      // N4：`pack_id` 要**照抄请求**（读档时前端用"档自己那张卡"开局，桩不能自作主张
+      // 换回默认卡——那样这条冒烟就测不出"用档的卡开局"到底有没有生效）。
       return void readBody(req).then((body) =>
         json({
           sid: 'smoke1',
-          name: body.draft ? '草稿·过校验的一版' : '演示世界',
-          pack_id: body.draft || 'demo_world',
+          name: body.draft ? '草稿·过校验的一版' : (body.pack_id === 'other_world' ? '另一张卡' : '演示世界'),
+          pack_id: body.draft || body.pack_id || 'demo_world',
           mode: body.mode || 'story',
           draft: Boolean(body.draft),
           view: VIEW_OPENING,
@@ -533,6 +547,43 @@ async function main() {
          !!document.querySelector('#app .save-row button')`,
       ),
     )
+
+    // ---- N4：存档列表按卡分目录 + 读档用**档自己那张卡**开局 ----
+    const saveOpts = await cdp.eval(
+      `[...document.querySelectorAll('#app .save-row option')].map(o => o.textContent).join(' | ')`,
+    )
+    check(
+      '存档列表显示所属卡目录（N4：一张卡一个目录，同名档可并存）',
+      saveOpts.includes('other_world/web.json') && saveOpts.includes('demo_world/web.json'),
+      saveOpts.slice(0, 90),
+    )
+    check(
+      '没选卡也能读档（档自己带"属于哪张卡"）',
+      await cdp.eval(
+        `(() => {
+           const sel = document.querySelector('#app .save-row select')
+           const opt = [...sel.options].find(o => o.value === 'other_world/web.json')
+           if (!opt) return false
+           sel.value = opt.value
+           sel.dispatchEvent(new Event('change'))
+           return true
+         })()`,
+      ),
+    )
+    // 「读取」是 save-row 的第二个按钮（第一个是"开始这一局"）
+    await cdp.eval(`document.querySelectorAll('#app .save-row button')[1].click()`)
+    await cdp.waitFor(`!!document.querySelector('#app .col-mid')`, { label: '读档后进入游戏屏' })
+    check(
+      '读档用档自己的卡开局（不是默认卡、也不是界面上选中的卡）',
+      await cdp.eval(
+        `/世界包：\\s*other_world/.test(document.querySelector('#app .col-left')?.textContent || document.querySelector('#app')?.textContent || '')`,
+      ),
+    )
+    // 读档会离开选卡屏；下面还要测"点卡 → 开始"，重新载入一次页面（真实用户也会这么做）。
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/` })
+    await cdp.waitFor(`document.querySelectorAll('#app .pack').length >= 2`, {
+      label: '选卡屏重新加载',
+    })
 
     // ---- 点卡 → 开始 ----
     await cdp.eval(`document.querySelector('#app .pack:not(.broken)').click()`)

@@ -45,8 +45,16 @@ function start() {
 function load() {
   const path = savePath.value || (usableSaves.value[0] && usableSaves.value[0].path)
   if (!path) return
-  // 读档也要知道用哪张卡/哪个模式来承载状态；优先用玩家选中的卡
-  emit('load', { path, packId: picked.value?.id || null, mode: mode.value })
+  // 读档也要知道用哪张卡/哪个模式来承载状态。
+  // **N4：用存档自己那张卡，而不是玩家刚点选的那张**——存档按卡分目录之后，
+  // "属于哪张卡"是档自己的属性（`dir` 比身份戳更可靠：戳可能缺失，目录不会撒谎）。
+  // 拿 A 卡开局去读 B 卡的档，后端会正当拒绝；与其让玩家撞一次墙，不如按档来开。
+  const pickedSave = usableSaves.value.find((s) => s.path === path)
+  const packId =
+    (pickedSave && (pickedSave.dir || (pickedSave.pack && pickedSave.pack.id))) ||
+    (picked.value && picked.value.id) ||
+    null
+  emit('load', { path, packId, mode: mode.value })
 }
 </script>
 

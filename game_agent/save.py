@@ -103,7 +103,9 @@ def save_summary(path: str | Path) -> dict:
     data = _read(p)
     history = data.get("history")
     return {
-        "path": p.name,  # 只回裸文件名：Web 侧的存档路径本来就是裸名（`_safe_save_path`）
+        # 裸文件名。**Web 侧会改写它**：N4 之后存档按卡分目录，对外回的是
+        # `<pack_id>/name.json`（见 `web._save_ref`）；这里的裸名是"文件本身叫什么"。
+        "path": p.name,
         "save_version": data.get("save_version"),
         "pack": _pack_meta_from(data),
         # `pack_name` 是状态里自报的世界名。**旧档没有身份戳**（`pack` 为 None），

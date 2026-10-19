@@ -176,32 +176,43 @@ def test_full_flow_new_pick_say_save_load(tmp_path):
         assert events[-1][0] == "done"
         assert json.loads(events[-1][1])["narration"] == "测试叙事"
 
-        # 存档 → 读档（A-1：路径被约束到 saves/ 根 + .json 白名单）
+        # 存档 → 读档（A-1：路径被约束到 saves/ 内 + .json 白名单；N4：落进本卡目录）
         r = client.post(f"/api/{sid}/save", json={"path": "web-test-save.json"})
         assert r.json()["ok"] is True
+        saved = web_module.SAVE_ROOT / "ancient_jianghu" / "web-test-save.json"
+        assert saved.exists(), "N4：存档必须落进这张卡的目录"
         r = client.post(f"/api/{sid}/load", json={"path": "web-test-save.json"})
         assert r.json()["ok"] is True and "status" in r.json()
-        (web_module.SAVE_ROOT / "web-test-save.json").unlink(missing_ok=True)  # 清理
+        saved.unlink(missing_ok=True)  # 清理
 
 
 def test_save_path_traversal_rejected():
-    """A-1（C1）：任意路径读写洞——目录成分/绝对路径/非 .json 后缀一律 400。"""
+    """A-1（C1）：任意路径读写洞——目录成分/绝对路径/非 .json 后缀一律 400。
+
+    N4 之后多了一层**卡目录**，所以"带目录成分"不再一律非法：`<本卡>/x.json` 是
+    合法写法（`/api/saves` 返回的 `path` 就是它）。穿越面因此更大，
+    这条守卫的职责也更大：三层以上、`..`、盘符、绝对路径、别的卡，全部拒绝。
+    """
     with TestClient(web_module.app) as client:
         sid = "trav-session"
         _seed_fake_session(sid)
         for bad in ("../../.env", "..\\..\\pyproject.toml", "sub/dir/x.json",
-                    "C:/evil.json", "x.txt", "x", "saves/../.env"):
+                    "C:/evil.json", "x.txt", "x", "saves/../.env",
+                    "ancient_jianghu/../../.env", "../ancient_jianghu/x.json"):
             r = client.post(f"/api/{sid}/save", json={"path": bad})
             assert r.status_code == 400, f"应拒绝 {bad!r}，实际 {r.status_code}"
             r = client.post(f"/api/{sid}/load", json={"path": bad})
             assert r.status_code == 400, f"应拒绝 {bad!r}，实际 {r.status_code}"
-        # 直接函数级验证：严格拒绝一切目录成分（剥除式会静默改名，故取拒绝）
+        # 直接函数级验证：严格拒绝一切越界成分（剥除式会静默改名，故取拒绝）
         import pytest
 
-        for bad in ("a/b/c.json", "C:/tmp/evil.json"):
+        for bad in ("a/b/c.json", "C:/tmp/evil.json", "../../x.json", "/abs/x.json"):
             with pytest.raises(Exception):
-                web_module._safe_save_path(bad)
-        assert web_module._safe_save_path("ok-name.json") == web_module.SAVE_ROOT / "ok-name.json"
+                web_module._safe_save_path(bad, "ancient_jianghu", for_write=True)
+        assert (
+            web_module._safe_save_path("ok-name.json", "ancient_jianghu", for_write=True)
+            == web_module.SAVE_ROOT / "ancient_jianghu" / "ok-name.json"
+        )
 
 
 def test_turn_errors_are_reported_via_sse():
