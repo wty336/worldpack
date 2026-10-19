@@ -293,6 +293,72 @@ def test_bad_json_is_reported(tmp_path):
     assert "不是合法 JSON" in str(ei.value)
 
 
+def test_three_malformed_shapes_normalize_to_the_same_model():
+    """§E-3 的第一条验收："三份异形输入解析后得到**同一个**标准模型"。
+
+    三份异形：① `tags` 是逗号串、② 缺省可选字段、③ V1 老卡（字段在顶层）。
+    断言的是**同一套键 + 同一套类型**，而不是某个字段值——归一化的意义是
+    "下游只需要认识一种形状"，这样校验层才不用为每种来源各长一条分支。
+    """
+    v2_string_lists = {
+        "spec": "chara_card_v2",
+        "data": {"name": "甲", "description": "设定", "tags": "古代,名门",
+                 "character_book": {"entries": [{"keys": "a|b", "content": "正文"}]}},
+    }
+    v2_minimal = {"spec": "chara_card_v2", "data": {"name": "甲", "description": "设定"}}
+    v1_flat = {"name": "甲", "description": "设定", "tags": ["古代", "名门"]}
+
+    models = [st.parse_card(x) for x in (v2_string_lists, v2_minimal, v1_flat)]
+    key_sets = {tuple(sorted(m)) for m in models}
+    assert len(key_sets) == 1, f"三种载体的字段集不一致：{key_sets}"
+    for m in models:
+        assert isinstance(m["tags"], list) and isinstance(m["alternate_greetings"], list)
+        assert m["name"] == "甲" and m["description"] == "设定"
+    # 字符串形式的关键词也被归一成列表
+    rows = st.character_book_to_lore(models[0]["character_book"])
+    assert rows[0]["keys"] == ["a", "b"]
+
+
+def test_parse_layer_does_not_import_the_validation_layer():
+    """§E-3 的第二条验收："解析层与校验层**无交叉调用**"。
+
+    为什么值得一条守卫：校验器一旦开始"为每种来源长一条分支"，它的复杂度就会随
+    来源数量增长（这正是 ST 那个 169 行手写校验器的形状）。结构上的保证是：
+    `st_convert` 只依赖标准库 + `yaml`，**不 import `worldpack`**（= 严格校验层）。
+    归一化产出的就是普通 dict，交给 `load_worldpack` 时它不再知道数据从哪来。
+    """
+    import ast
+
+    src = (REPO / "game_agent" / "st_convert.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+        elif isinstance(node, ast.Import):
+            imported.update(a.name for a in node.names)
+    forbidden = {m for m in imported if m.startswith("game_agent") or m == "worldpack"}
+    assert not forbidden, (
+        f"解析层不该依赖引擎/校验层（否则校验器会为每种来源长分支）：{sorted(forbidden)}"
+    )
+
+    # 而且它确实不调用校验函数。**只看代码标识符，不看文本**：上一版用
+    # `"check_worldpack" not in src`，结果被模块 docstring 里那句"check_worldpack
+    # 才是严格的那条"判成违约（假红）。文本能满足的断言，两头都不算数。
+    identifiers: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            identifiers.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            identifiers.add(node.attr)
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            identifiers.add(node.name)
+    banned = {"load_worldpack", "check_worldpack", "_validate", "_cross_check"}
+    assert not (identifiers & banned), (
+        f"解析层里出现了校验层的调用：{sorted(identifiers & banned)}——解析层只产普通 dict"
+    )
+
+
 def test_card_to_source_text_carries_the_prose_fields():
     card = st.parse_card({
         "spec": "chara_card_v2",
@@ -307,8 +373,6 @@ def test_card_to_source_text_carries_the_prose_fields():
 # ---------------------------------------------------------------------------
 # 5. 合并进世界包：换掉生成器瞎编的 lore，且结果仍过严格校验
 # ---------------------------------------------------------------------------
-
-
 def test_cli_sillytavern_import_end_to_end(tmp_path):
     """`--format sillytavern --offline` 一条命令跑通（**真跑 CLI**，不是只调函数）。
 
